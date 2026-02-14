@@ -1,0 +1,245 @@
+type AudioClientErrorCode =
+  | 'permission_denied'
+  | 'device_not_found'
+  | 'device_busy'
+  | 'not_supported'
+  | 'unknown';
+
+export class AudioClientError extends Error {
+  readonly code: AudioClientErrorCode;
+
+  constructor(code: AudioClientErrorCode, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+interface StartStreamingOptions {
+  onFrame: (frame: Uint8Array) => void;
+  frameMs?: number;
+  targetSampleRate?: number;
+}
+
+type BrowserAudioContext = typeof AudioContext;
+
+let mediaStream: MediaStream | null = null;
+let audioContext: AudioContext | null = null;
+let sourceNode: MediaStreamAudioSourceNode | null = null;
+let processorNode: ScriptProcessorNode | null = null;
+let silentGainNode: GainNode | null = null;
+let pendingSamples = new Float32Array(0);
+let frameEmitter: ((frame: Uint8Array) => void) | null = null;
+let currentFrameSize = 320;
+let currentTargetRate = 16000;
+
+function getAudioContextCtor(): BrowserAudioContext | null {
+  const candidate = window.AudioContext || (window as unknown as { webkitAudioContext?: BrowserAudioContext }).webkitAudioContext;
+  return candidate ?? null;
+}
+
+function ensureSupported(): void {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new AudioClientError('not_supported', 'Microphone API is not supported in this browser');
+  }
+  if (!getAudioContextCtor()) {
+    throw new AudioClientError('not_supported', 'AudioContext is not supported in this browser');
+  }
+}
+
+function mapMediaError(error: unknown): AudioClientError {
+  if (!(error instanceof Error)) {
+    return new AudioClientError('unknown', 'Unknown audio error');
+  }
+
+  switch (error.name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return new AudioClientError('permission_denied', 'Microphone permission denied');
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return new AudioClientError('device_not_found', 'No microphone device found');
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return new AudioClientError('device_busy', 'Microphone is currently busy');
+    case 'NotSupportedError':
+      return new AudioClientError('not_supported', 'Audio capture is not supported');
+    default:
+      return new AudioClientError('unknown', error.message || 'Audio capture failed');
+  }
+}
+
+function appendFloat32(left: Float32Array, right: Float32Array): Float32Array {
+  if (left.length === 0) {
+    return right;
+  }
+  if (right.length === 0) {
+    return left;
+  }
+  const merged = new Float32Array(left.length + right.length);
+  merged.set(left, 0);
+  merged.set(right, left.length);
+  return merged;
+}
+
+function downsampleBuffer(input: Float32Array, sourceRate: number, targetRate: number): Float32Array {
+  if (targetRate >= sourceRate) {
+    return input;
+  }
+
+  const ratio = sourceRate / targetRate;
+  const outputLength = Math.floor(input.length / ratio);
+  if (outputLength <= 0) {
+    return new Float32Array(0);
+  }
+
+  const output = new Float32Array(outputLength);
+  let outputOffset = 0;
+  let inputOffset = 0;
+
+  while (outputOffset < output.length) {
+    const nextOffset = Math.min(Math.round((outputOffset + 1) * ratio), input.length);
+    let accum = 0;
+    let count = 0;
+
+    for (let i = inputOffset; i < nextOffset; i += 1) {
+      accum += input[i];
+      count += 1;
+    }
+
+    output[outputOffset] = count > 0 ? accum / count : 0;
+    outputOffset += 1;
+    inputOffset = nextOffset;
+  }
+
+  return output;
+}
+
+function floatToPCM16(input: Float32Array): Uint8Array {
+  const output = new DataView(new ArrayBuffer(input.length * 2));
+
+  for (let i = 0; i < input.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, input[i]));
+    const value = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+    output.setInt16(i * 2, value, true);
+  }
+
+  return new Uint8Array(output.buffer);
+}
+
+function emitAvailableFrames(flushPartial: boolean): void {
+  if (!frameEmitter) {
+    return;
+  }
+
+  while (pendingSamples.length >= currentFrameSize) {
+    const frame = pendingSamples.slice(0, currentFrameSize);
+    pendingSamples = pendingSamples.slice(currentFrameSize);
+    frameEmitter(floatToPCM16(frame));
+  }
+
+  if (flushPartial && pendingSamples.length > 0) {
+    const padded = new Float32Array(currentFrameSize);
+    padded.set(pendingSamples, 0);
+    pendingSamples = new Float32Array(0);
+    frameEmitter(floatToPCM16(padded));
+  }
+}
+
+export async function ensurePermission(): Promise<void> {
+  ensureSupported();
+
+  let testStream: MediaStream | null = null;
+  try {
+    testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (error) {
+    throw mapMediaError(error);
+  } finally {
+    testStream?.getTracks().forEach((track) => track.stop());
+  }
+}
+
+export async function startMicStreaming(options: StartStreamingOptions): Promise<void> {
+  ensureSupported();
+  await stopMicStreaming();
+
+  const targetSampleRate = options.targetSampleRate ?? 16000;
+  const frameMs = options.frameMs ?? 20;
+  currentFrameSize = Math.floor((targetSampleRate * frameMs) / 1000);
+  currentTargetRate = targetSampleRate;
+  frameEmitter = options.onFrame;
+  pendingSamples = new Float32Array(0);
+
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (error) {
+    frameEmitter = null;
+    throw mapMediaError(error);
+  }
+
+  try {
+    const AudioContextCtor = getAudioContextCtor();
+    if (!AudioContextCtor) {
+      throw new AudioClientError('not_supported', 'AudioContext is not available');
+    }
+
+    audioContext = new AudioContextCtor();
+    sourceNode = audioContext.createMediaStreamSource(mediaStream);
+    processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+    silentGainNode = audioContext.createGain();
+    silentGainNode.gain.value = 0;
+
+    processorNode.onaudioprocess = (event) => {
+      const mono = event.inputBuffer.getChannelData(0);
+      const downsampled = downsampleBuffer(mono, event.inputBuffer.sampleRate, currentTargetRate);
+      pendingSamples = appendFloat32(pendingSamples, downsampled);
+      emitAvailableFrames(false);
+    };
+
+    sourceNode.connect(processorNode);
+    processorNode.connect(silentGainNode);
+    silentGainNode.connect(audioContext.destination);
+  } catch (error) {
+    await stopMicStreaming();
+    if (error instanceof AudioClientError) {
+      throw error;
+    }
+    throw mapMediaError(error);
+  }
+}
+
+export async function stopMicStreaming(): Promise<void> {
+  emitAvailableFrames(true);
+
+  if (processorNode) {
+    processorNode.disconnect();
+    processorNode.onaudioprocess = null;
+    processorNode = null;
+  }
+
+  if (sourceNode) {
+    sourceNode.disconnect();
+    sourceNode = null;
+  }
+
+  if (silentGainNode) {
+    silentGainNode.disconnect();
+    silentGainNode = null;
+  }
+
+  if (mediaStream) {
+    mediaStream.getTracks().forEach((track) => track.stop());
+    mediaStream = null;
+  }
+
+  if (audioContext) {
+    await audioContext.close();
+    audioContext = null;
+  }
+
+  frameEmitter = null;
+  pendingSamples = new Float32Array(0);
+}
+
+export function getAudioContext(): AudioContext | null {
+  return audioContext;
+}

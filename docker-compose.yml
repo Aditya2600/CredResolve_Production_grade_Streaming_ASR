@@ -1,0 +1,93 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes: ["redis_data:/data"]
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      - ASR_MODEL_NAME=${ASR_MODEL_NAME}
+      - ASR_DECODER=${ASR_DECODER}
+      - ASR_INFERENCE_TIMEOUT_MS=${ASR_INFERENCE_TIMEOUT_MS}
+      - ASR_DEFAULT_LANGUAGE=${ASR_DEFAULT_LANGUAGE}
+      - WORKER_MAX_JOBS=${WORKER_MAX_JOBS}
+      - HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN}
+      - HF_TOKEN=${HUGGINGFACE_HUB_TOKEN}
+      - HF_HOME=${HF_HOME}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - EVAL_LOGS_ENABLED=${EVAL_LOGS_ENABLED}
+      - EVAL_LOG_SAMPLE_RATE=${EVAL_LOG_SAMPLE_RATE}
+      - EVAL_LOG_TEXT_PREVIEW_CHARS=${EVAL_LOG_TEXT_PREVIEW_CHARS}
+    ports: ["9000:9000"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: ["gpu"]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - MAX_CONNS_PER_KEY=${MAX_CONNS_PER_KEY}
+      - NEW_CONN_PER_MIN=${NEW_CONN_PER_MIN}
+      - CONN_BURST=${CONN_BURST}
+      - MAX_BYTES_PER_SEC=${MAX_BYTES_PER_SEC}
+      - GATEWAY_MAX_INFLIGHT_WORKER=${GATEWAY_MAX_INFLIGHT_WORKER}
+      - WORKER_TIMEOUT_MS=${WORKER_TIMEOUT_MS}
+      - WORKER_URL=${WORKER_URL}
+      - CIRCUIT_BREAKER_FAILS=${CIRCUIT_BREAKER_FAILS}
+      - CIRCUIT_BREAKER_RESET_MS=${CIRCUIT_BREAKER_RESET_MS}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - EVAL_LOGS_ENABLED=${EVAL_LOGS_ENABLED}
+      - EVAL_LOG_SAMPLE_RATE=${EVAL_LOG_SAMPLE_RATE}
+      - EVAL_LOG_TEXT_PREVIEW_CHARS=${EVAL_LOG_TEXT_PREVIEW_CHARS}
+    ports: ["8000:8000"]
+    depends_on: ["redis", "worker"]
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports: ["80:80"]
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: ["gateway"]
+
+volumes:
+  redis_data:
