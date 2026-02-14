@@ -7,3 +7,11 @@ __pycache__/
 frontend/node_modules/
 frontend/.vite/
 frontend/dist/
+
+# Models and weights
+models/
+worker/models/
+worker/nemo_weights/
+*.nemo
+*.pth
+*.ckpt
