@@ -1,64 +1,9 @@
-# Environment
 .env
-.env.local
-.env.*.local
-
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.python-version
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Virtual environments
 venv/
 .venv/
 env/
-
-# Logs and runtime files
-*.log
-*.pid
-*.pid.lock
-
-# Node / frontend
+__pycache__/
+*.pyc
 frontend/node_modules/
-frontend/dist/
 frontend/.vite/
-frontend/.cache/
-
-# IDE/editor
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Local caches / data
-.cache/
-tmp/
-models/
-worker/models/
-worker/nemo_weights/
-
-venv/
-.venv/
-frontend/node_modules/
-__pycache__/
-*.pyc
-.env
-venv/
-.venv/
-env/
-frontend/node_modules/
-__pycache__/
-*.pyc
-.env
-
-__pycache__/
-*.pyc
+frontend/dist/
