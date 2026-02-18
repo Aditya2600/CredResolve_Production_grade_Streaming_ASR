@@ -120,10 +120,12 @@ For local development, the application will work even without a WebSocket connec
 ```json
 { "type": "ready" }
 { "type": "vad", "voice_detected": true }
-{ "type": "partial", "transcript": "hello wor..." }
-{ "type": "final", "transcript": "hello world" }
+{ "type": "partial", "text": "hello wor...", "language": "hi", "language_source": "lid_cached" }
+{ "type": "final", "text": "hello world", "language": "hi", "language_source": "client" }
 { "type": "error", "error": "error message" }
 ```
+
+If the start payload uses `language: "auto"`, backend may resolve language via LID and return the resolved language metadata above. The UI default language remains `hi`.
 
 ## Future Enhancements
 

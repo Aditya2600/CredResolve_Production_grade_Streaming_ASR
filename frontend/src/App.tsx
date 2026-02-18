@@ -383,6 +383,10 @@ function App() {
 
         <VoiceOrb state={orbState} />
 
+        <div className="w-full flex-1 flex flex-col min-h-0">
+          <TranscriptPanel messages={messages} currentPartial={currentPartial} />
+        </div>
+
         <Controls
           phase={phase}
           isMuted={isMuted}
@@ -396,10 +400,6 @@ function App() {
           onLanguageChange={setLanguage}
           onReconnect={handleReconnect}
         />
-
-        <div className="w-full">
-          <TranscriptPanel messages={messages} currentPartial={currentPartial} />
-        </div>
       </main>
     </div>
   );

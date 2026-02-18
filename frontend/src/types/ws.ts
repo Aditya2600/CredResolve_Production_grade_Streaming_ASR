@@ -32,12 +32,16 @@ export interface PartialMessage {
   type: 'partial';
   text: string;
   ts_ms?: number;
+  language?: string;
+  language_source?: string;
 }
 
 export interface FinalMessage {
   type: 'final';
   text: string;
   ts_ms?: number;
+  language?: string;
+  language_source?: string;
 }
 
 export interface DoneMessage {

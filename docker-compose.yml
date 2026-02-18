@@ -6,16 +6,26 @@ services:
     volumes: ["redis_data:/data"]
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.1
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9090:9090"
+    depends_on:
+      - gateway
+      - worker
+      - node-exporter
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.1.0
     ports:
       - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
       - prometheus
 
@@ -34,6 +44,22 @@ services:
       - '--path.sysfs=/host/sys'
       - '--path.rootfs=/rootfs'
 
+  # Optional DCGM Exporter for GPU metrics
+  # dcgm-exporter:
+  #   image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.5-3.2.0
+  #   ports:
+  #     - "9400:9400"
+  #   environment:
+  #     - DCGM_EXPORTER_LISTEN=:9400
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
+  #   restart: unless-stopped
+
 
   worker:
     build:
@@ -44,6 +70,12 @@ services:
       - ASR_DECODER=${ASR_DECODER}
       - ASR_INFERENCE_TIMEOUT_MS=${ASR_INFERENCE_TIMEOUT_MS}
       - ASR_DEFAULT_LANGUAGE=${ASR_DEFAULT_LANGUAGE}
+      - ASR_SUPPORTED_LANGS=${ASR_SUPPORTED_LANGS}
+      - ASR_ENABLE_LID=${ASR_ENABLE_LID}
+      - ASR_LID_MODEL_SOURCE=${ASR_LID_MODEL_SOURCE}
+      - ASR_LID_MODEL_DIR=${ASR_LID_MODEL_DIR}
+      - ASR_LID_CACHE_TTL_SEC=${ASR_LID_CACHE_TTL_SEC}
+      - ASR_LID_CACHE_MAX_ENTRIES=${ASR_LID_CACHE_MAX_ENTRIES}
       - WORKER_MAX_JOBS=${WORKER_MAX_JOBS}
       - HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN}
       - HF_TOKEN=${HUGGINGFACE_HUB_TOKEN}
@@ -52,6 +84,10 @@ services:
       - EVAL_LOGS_ENABLED=${EVAL_LOGS_ENABLED}
       - EVAL_LOG_SAMPLE_RATE=${EVAL_LOG_SAMPLE_RATE}
       - EVAL_LOG_TEXT_PREVIEW_CHARS=${EVAL_LOG_TEXT_PREVIEW_CHARS}
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     ports: ["9000:9000"]
     deploy:
       resources:
@@ -80,6 +116,10 @@ services:
       - EVAL_LOG_SAMPLE_RATE=${EVAL_LOG_SAMPLE_RATE}
       - EVAL_LOG_TEXT_PREVIEW_CHARS=${EVAL_LOG_TEXT_PREVIEW_CHARS}
     ports: ["8000:8000"]
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     depends_on: ["redis", "worker"]
 
   nginx:

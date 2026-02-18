@@ -17,7 +17,13 @@ from .config import (
     CIRCUIT_BREAKER_FAILS, CIRCUIT_BREAKER_RESET_MS
 )
 from .logging_setup import setup_logging
-from .metrics import WS_CONNECTIONS, WS_REJECTS, VAD_UTTERANCES, BYTES_IN
+from .metrics import (
+    WS_CONNECTIONS, WS_REJECTS, WS_DISCONNECTS,
+    AUDIO_BYTES_RECEIVED, AUDIO_FRAMES_RECEIVED,
+    UTTERANCES, VAD_FRAMES,
+    GATEWAY_LATENCY, E2E_LATENCY,
+    VAD_FRAMES
+)
 from .vad import VADSegmenter
 from .worker_client import WorkerClient
 from .circuit_breaker import CircuitBreaker
@@ -54,6 +60,7 @@ async def startup():
 async def shutdown():
     if redis:
         await redis.close()
+    await worker.close()
 
 @app.get("/healthz")
 async def healthz():
@@ -76,17 +83,22 @@ def jdump(obj) -> str:
 
 class ByteRateGuard:
     def __init__(self, max_bps: int):
-        self.max_bps = max_bps
-        self.window_start = time.time()
-        self.bytes = 0
+        self.rate = float(max_bps)
+        # Allow short burst buffering without dropping otherwise valid real-time streams.
+        self.capacity = float(max_bps) * 2.0
+        self.tokens = self.capacity
+        self.last_check = time.monotonic()
 
     def add(self, n: int) -> bool:
-        now = time.time()
-        if now - self.window_start >= 1.0:
-            self.window_start = now
-            self.bytes = 0
-        self.bytes += n
-        return self.bytes <= self.max_bps
+        now = time.monotonic()
+        elapsed = max(0.0, now - self.last_check)
+        self.last_check = now
+
+        self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+        if n > self.tokens:
+            return False
+        self.tokens -= n
+        return True
 
 @app.websocket("/ws/stt")
 async def ws_stt(ws: WebSocket):
@@ -199,9 +211,11 @@ async def ws_stt(ws: WebSocket):
 
         last_partial = ""
         last_partial_ts_ms = 0
+        utt_start_time = 0.0
 
         while True:
             msg = await ws.receive()
+            out = None
             if msg.get("type") == "websocket.disconnect":
                 close_reason = "client_disconnect"
                 break
@@ -216,7 +230,8 @@ async def ws_stt(ws: WebSocket):
 
             if "bytes" in msg and msg["bytes"]:
                 frame = msg["bytes"]
-                BYTES_IN.inc(len(frame))
+                AUDIO_BYTES_RECEIVED.inc(len(frame))
+                AUDIO_FRAMES_RECEIVED.inc()
                 total_audio_bytes += len(frame)
 
                 # Throughput abuse guard
@@ -238,6 +253,9 @@ async def ws_stt(ws: WebSocket):
 
                 events, audio_ready = vad.push(frame)
                 for e in events:
+                    if e == "speech_start":
+                        utt_start_time = time.time()
+                    VAD_FRAMES.labels(state=e).inc()
                     await ws.send_text(jdump({"type":"vad","state":e}))
 
                 now_ms = int(time.time() * 1000)
@@ -245,10 +263,11 @@ async def ws_stt(ws: WebSocket):
 
                 # Partial decode every ~600ms while in speech, if enough buffered
                 if vad.in_speech and (now_ms - last_partial_ts_ms) > 600 and len(vad.buffer) > sample_rate * 2 * 1:
+                    out = None
                     if breaker.allow() and not worker_sem.locked():
                         async with worker_sem:
+                            partial_t0 = time.time()
                             try:
-                                partial_t0 = time.time()
                                 out = await worker.transcribe(
                                     bytes(vad.buffer),
                                     sample_rate,
@@ -259,29 +278,44 @@ async def ws_stt(ws: WebSocket):
                                     utterance_id=partial_utterance_id,
                                     sampled=sampled,
                                 )
+                                # Approximate Gateway latency for partials (not perfect but valid)
+                                GATEWAY_LATENCY.observe(max(0, time.time() - partial_t0))
+
                                 partial_latency_ms = int((time.time() - partial_t0) * 1000)
                                 breaker.on_success()
                             except Exception:
                                 breaker.on_failure()
                                 continue
 
-                        if out.text and out.text != last_partial:
-                            last_partial = out.text
-                            last_partial_ts_ms = now_ms
-                            await ws.send_text(jdump({"type":"partial","text":out.text,"ts_ms":now_ms}))
-                            emit_eval_event(
-                                log,
-                                "partial_sent",
-                                session_id=session_id,
-                                utterance_id=partial_utterance_id,
-                                sampled=sampled,
-                                worker_latency_ms=partial_latency_ms,
-                                **text_metadata(out.text),
+                    if out and out.text and out.text != last_partial:
+                        last_partial = out.text
+                        last_partial_ts_ms = now_ms
+                        await ws.send_text(
+                            jdump(
+                                {
+                                    "type": "partial",
+                                    "text": out.text,
+                                    "ts_ms": now_ms,
+                                    "language": out.language,
+                                    "language_source": out.language_source,
+                                }
                             )
+                        )
+                        emit_eval_event(
+                            log,
+                            "partial_sent",
+                            session_id=session_id,
+                            utterance_id=partial_utterance_id,
+                            sampled=sampled,
+                            worker_latency_ms=partial_latency_ms,
+                            resolved_language=out.language or None,
+                            language_source=out.language_source or None,
+                            **text_metadata(out.text),
+                        )
 
                 # Finalize on VAD end / max_utt
                 if audio_ready:
-                    VAD_UTTERANCES.inc()
+                    UTTERANCES.inc()
                     utterance_count += 1
                     utterance_id = f"utt-{utterance_count:04d}"
                     finalize_trigger = "max_utt" if "max_utt" in events else "speech_end"
@@ -311,6 +345,7 @@ async def ws_stt(ws: WebSocket):
                         await ws.close()
                         return
 
+                    out = None
                     async with worker_sem:
                         try:
                             final_t0 = time.time()
@@ -324,6 +359,8 @@ async def ws_stt(ws: WebSocket):
                                 utterance_id=utterance_id,
                                 sampled=sampled,
                             )
+                            GATEWAY_LATENCY.observe(max(0, time.time() - final_t0))
+
                             final_latency_ms = int((time.time() - final_t0) * 1000)
                             breaker.on_success()
                         except Exception:
@@ -331,7 +368,20 @@ async def ws_stt(ws: WebSocket):
                             await ws.send_text(jdump({"type":"error","code":"WORKER_ERROR"}))
                             continue
 
-                    await ws.send_text(jdump({"type":"final","text":out.text,"ts_ms":int(time.time()*1000)}))
+                    if out is None:
+                        continue
+
+                    await ws.send_text(
+                        jdump(
+                            {
+                                "type": "final",
+                                "text": out.text,
+                                "ts_ms": int(time.time() * 1000),
+                                "language": out.language,
+                                "language_source": out.language_source,
+                            }
+                        )
+                    )
                     emit_eval_event(
                         log,
                         "final_sent",
@@ -340,8 +390,13 @@ async def ws_stt(ws: WebSocket):
                         sampled=sampled,
                         worker_latency_ms=final_latency_ms,
                         trigger=finalize_trigger,
+                        resolved_language=out.language or None,
+                        language_source=out.language_source or None,
                         **text_metadata(out.text),
                     )
+                    if utt_start_time > 0:
+                        E2E_LATENCY.observe(time.time() - utt_start_time)
+                        utt_start_time = 0.0
                     last_partial = ""
                     last_partial_ts_ms = 0
 
@@ -350,12 +405,17 @@ async def ws_stt(ws: WebSocket):
     except Exception as e:
         close_reason = "server_error"
         log.exception("WS error: %s", e)
+        import traceback, sys
+        trace = traceback.format_exc()
+        print(f"CRITICAL WS ERROR: {trace}", file=sys.stderr)
         try:
-            await ws.send_text(jdump({"type":"error","code":"SERVER_ERROR","detail":str(e)}))
+            await ws.send_text(jdump({"type":"error","code":"SERVER_ERROR","detail":str(e), "trace": trace}))
         except Exception:
             pass
     finally:
         WS_CONNECTIONS.dec()
+        if close_reason != "unknown":
+             WS_DISCONNECTS.labels(reason=close_reason).inc()
         if api_key:
             try:
                 if redis_limiter:
