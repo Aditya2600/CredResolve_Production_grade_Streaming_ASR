@@ -35,3 +35,29 @@ worker/nemo_weights/
 *.nemo
 *.pth
 *.ckpt
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Caches/logs
+.cache/
+.pytest_cache/
+logs/
+*.log
+
+# ML artifacts (adjust if you use these)
+models/
+checkpoints/
+weights/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.bin
+*.nemo
