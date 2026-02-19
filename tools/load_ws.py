@@ -97,7 +97,17 @@ async def run_client(client_id, args, audio_data):
     
     stream_task: asyncio.Task | None = None
     try:
-        async with websockets.connect(uri, max_size=None, close_timeout=5) as websocket:
+        ping_interval = None if args.ping_interval <= 0 else args.ping_interval
+        ping_timeout = None if args.ping_timeout <= 0 else args.ping_timeout
+
+        async with websockets.connect(
+            uri,
+            max_size=None,
+            open_timeout=args.open_timeout,
+            close_timeout=args.close_timeout,
+            ping_interval=ping_interval,
+            ping_timeout=ping_timeout,
+        ) as websocket:
             stats.connected += 1
             
             # 1. Send Start
@@ -218,6 +228,30 @@ async def main():
     parser.add_argument("--timeout-sec", type=int, default=20, help="Receive timeout")
     parser.add_argument("--max-audio-sec", type=float, default=30.0, help="Max audio duration to send")
     parser.add_argument("--expect-final", action="store_true", help="Fail if no final result received")
+    parser.add_argument(
+        "--ping-interval",
+        type=float,
+        default=60.0,
+        help="WebSocket ping interval in seconds (<=0 disables client pings)",
+    )
+    parser.add_argument(
+        "--ping-timeout",
+        type=float,
+        default=60.0,
+        help="WebSocket ping timeout in seconds (<=0 disables ping timeout)",
+    )
+    parser.add_argument(
+        "--open-timeout",
+        type=float,
+        default=30.0,
+        help="WebSocket handshake timeout in seconds",
+    )
+    parser.add_argument(
+        "--close-timeout",
+        type=float,
+        default=10.0,
+        help="WebSocket close timeout in seconds",
+    )
 
     args = parser.parse_args()
 

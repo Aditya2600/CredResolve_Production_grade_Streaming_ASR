@@ -14,7 +14,7 @@ from redis.asyncio import Redis
 from .config import (
     REDIS_URL, MAX_CONNS_PER_KEY, NEW_CONN_PER_MIN, CONN_BURST,
     MAX_BYTES_PER_SEC, GATEWAY_MAX_INFLIGHT_WORKER, WORKER_TIMEOUT_MS, WORKER_URL,
-    CIRCUIT_BREAKER_FAILS, CIRCUIT_BREAKER_RESET_MS
+    CIRCUIT_BREAKER_FAILS, CIRCUIT_BREAKER_RESET_MS, PARTIAL_DECODE_INTERVAL_MS
 )
 from .logging_setup import setup_logging
 from .metrics import (
@@ -261,8 +261,12 @@ async def ws_stt(ws: WebSocket):
                 now_ms = int(time.time() * 1000)
                 partial_utterance_id = f"utt-{utterance_count + 1:04d}"
 
-                # Partial decode every ~600ms while in speech, if enough buffered
-                if vad.in_speech and (now_ms - last_partial_ts_ms) > 600 and len(vad.buffer) > sample_rate * 2 * 1:
+                # Partial decode cadence is configurable to avoid overloading worker under high concurrency.
+                if (
+                    vad.in_speech
+                    and (now_ms - last_partial_ts_ms) > PARTIAL_DECODE_INTERVAL_MS
+                    and len(vad.buffer) > sample_rate * 2 * 1
+                ):
                     out = None
                     if breaker.allow() and not worker_sem.locked():
                         async with worker_sem:

@@ -100,6 +100,19 @@ services:
     build:
       context: .
       dockerfile: gateway/Dockerfile
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+      - --ws-ping-interval
+      - "${GATEWAY_WS_PING_INTERVAL:-120}"
+      - --ws-ping-timeout
+      - "${GATEWAY_WS_PING_TIMEOUT:-120}"
     environment:
       - REDIS_URL=${REDIS_URL}
       - MAX_CONNS_PER_KEY=${MAX_CONNS_PER_KEY}
@@ -109,6 +122,7 @@ services:
       - GATEWAY_MAX_INFLIGHT_WORKER=${GATEWAY_MAX_INFLIGHT_WORKER}
       - WORKER_TIMEOUT_MS=${WORKER_TIMEOUT_MS}
       - WORKER_URL=${WORKER_URL}
+      - PARTIAL_DECODE_INTERVAL_MS=${PARTIAL_DECODE_INTERVAL_MS}
       - CIRCUIT_BREAKER_FAILS=${CIRCUIT_BREAKER_FAILS}
       - CIRCUIT_BREAKER_RESET_MS=${CIRCUIT_BREAKER_RESET_MS}
       - LOG_LEVEL=${LOG_LEVEL}
