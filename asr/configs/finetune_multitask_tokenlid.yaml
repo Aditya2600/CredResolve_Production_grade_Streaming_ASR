@@ -1,0 +1,30 @@
+run_name: indicconformer_multitask_tokenlid_v1
+seed: 42
+dataset_snapshot_id: telephony_cs_2026_02
+model:
+  base: ai4bharat/indic-conformer-600m-multilingual
+  multitask_heads:
+    token_lang: true
+    token_script: true
+loss:
+  asr_weight: 1.0
+  token_lang_weight: 0.35
+  token_script_weight: 0.25
+training:
+  epochs: 12
+  batch_size: 10
+  learning_rate: 1.5e-4
+  scheduler: cosine
+  freeze_encoder_epochs: 1
+audio:
+  input_sample_rate: 8000
+  upsample_to: 16000
+  vad_enabled: true
+decoding:
+  beam_size: 8
+  use_lid_bias: true
+  lid_bias_alpha: 1.6
+  script_bias_alpha: 1.4
+output:
+  checkpoint_dir: artifacts/model_finetuned
+  metadata_json: artifacts/model_finetuned/metadata_multitask_v1.json

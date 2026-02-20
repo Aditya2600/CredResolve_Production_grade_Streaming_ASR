@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodeSwitchASRAnnotation",
+  "type": "object",
+  "required": [
+    "id",
+    "audio_filepath",
+    "text",
+    "sample_rate",
+    "duration_s",
+    "tokens",
+    "token_lang",
+    "token_script"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "audio_filepath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sample_rate": {
+      "type": "integer",
+      "enum": [8000, 16000]
+    },
+    "duration_s": {
+      "type": "number",
+      "minimum": 0.01
+    },
+    "tokens": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "token_lang": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["hi", "te", "en", "other"]
+      }
+    },
+    "token_script": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["devanagari", "telugu", "latin", "other"]
+      }
+    },
+    "lang_tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["hi", "te", "en", "other"]
+      }
+    }
+  },
+  "additionalProperties": true
+}

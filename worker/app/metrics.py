@@ -14,6 +14,26 @@ LID_DETECTED = Counter(
     "Detected supported languages from LID",
     ["language"],
 )
+LID_RECHECK = Counter(
+    "asr_worker_lid_recheck_total",
+    "Mid-utterance LID recheck status",
+    ["status"],
+)
+LID_SWITCHES = Counter(
+    "asr_worker_lid_switches_total",
+    "Mid-utterance language switches",
+    ["from", "to"],
+)
+ENGINE_SELECTED = Counter(
+    "asr_engine_selected_total",
+    "Selected ASR engine by language/mode",
+    ["engine", "language", "mode"],
+)
+ENGINE_FALLBACK = Counter(
+    "asr_engine_fallback_total",
+    "ASR engine routing fallbacks",
+    ["reason"],
+)
 
 # Gauges
 INFLIGHT_REQUESTS = Gauge("asr_worker_inflight_requests", "Current active worker requests")
@@ -33,6 +53,12 @@ LID_LAT = Histogram(
     "asr_worker_lid_latency_seconds",
     "LID latency seconds",
     buckets=(0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5),
+)
+ENGINE_LATENCY = Histogram(
+    "asr_engine_latency_seconds",
+    "Engine inference latency by selected backend",
+    ["engine"],
+    buckets=(0.02, 0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1, 1.5, 2, 3, 5),
 )
 
 # Legacy/Unused (kept if needed or remove if safe)

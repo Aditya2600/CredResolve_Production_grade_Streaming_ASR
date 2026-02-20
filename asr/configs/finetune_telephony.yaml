@@ -1,0 +1,35 @@
+run_name: indicconformer_telephony_v1
+seed: 42
+dataset_snapshot_id: telephony_cs_2026_02
+model:
+  source: ai4bharat/indic-conformer-600m-multilingual
+  load_path: hf
+  trust_remote_code: true
+  expected_sample_rate: 16000
+  decoding_modes: [ctc, rnnt]
+training:
+  epochs: 8
+  batch_size: 12
+  grad_accum: 2
+  learning_rate: 2.0e-4
+  warmup_steps: 2000
+  weight_decay: 0.01
+  mixed_precision: fp16
+  max_audio_sec: 35
+audio:
+  input_sample_rate: 8000
+  upsample_to: 16000
+  mono: true
+  vad:
+    enabled: true
+    frame_ms: 20
+    energy_threshold: 0.015
+    min_speech_ms: 180
+    min_silence_ms: 280
+augment:
+  telephony_noise_prob: 0.4
+  codec_artifact_prob: 0.3
+  speed_perturb: [0.9, 1.0, 1.1]
+output:
+  checkpoint_dir: artifacts/model_finetuned
+  metadata_json: artifacts/model_finetuned/metadata_v1.json

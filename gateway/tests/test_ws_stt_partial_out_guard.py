@@ -8,6 +8,11 @@ from gateway.app import main as gateway_main
 from gateway.app.worker_client import WorkerResponse
 
 
+def _disable_lifespan_hooks() -> None:
+    gateway_main.app.router.on_startup.clear()
+    gateway_main.app.router.on_shutdown.clear()
+
+
 class _NoopLimiter:
     def admit(self, _api_key: str) -> tuple[bool, str]:
         return True, "OK"
@@ -60,6 +65,7 @@ def _read_until_done(ws, max_messages: int = 12) -> list[dict[str, Any]]:
 
 
 def _prepare_common(monkeypatch) -> None:
+    _disable_lifespan_hooks()
     monkeypatch.setattr(gateway_main, "VADSegmenter", _PartialOnlyVAD)
     # Keep tests deterministic regardless of local Redis availability.
     gateway_main.redis_limiter = None

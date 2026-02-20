@@ -41,19 +41,31 @@ Supported languages include `hi`, `en`, `bn`, `ta`, etc. (Check model documentat
 
 - LID runs only when requested language is `auto` (or empty).
 - LID is CPU-only and feature-flagged (`ASR_ENABLE_LID=false` by default).
-- If LID is disabled/unavailable/unmappable, worker falls back to `ASR_DEFAULT_LANGUAGE`.
+- Optional mid-utterance recheck can be enabled with `ASR_ENABLE_LID_RECHECK=true`.
+- Language is resolved once per utterance (`speech_start` -> `speech_end`/`max_utt`) and locked for that utterance.
+- LID inspects the first ~1.0s of speech audio on utterance start, then cache is reused for remaining partial/final events of the same utterance.
+- Language can switch on the next utterance (for borrower mid-call language switching).
+- Very short utterances (`<500ms`) skip LID and fall back to session `last_language` or `ASR_DEFAULT_LANGUAGE`.
+- With recheck enabled, worker evaluates the last ~1.0s window every ~1.0s and can switch language mid-utterance using anti-jitter voting.
 - Worker `/v1/transcribe` responses include:
   - `text`
   - `language`
-  - `language_source` (`client`, `auto_default`, `lid_detected`, `lid_cached`, `lid_fallback_default`)
+  - `language_source` (`client`, `auto_default`, `lid_detected`, `lid_cached`, `lid_fallback_default`, `lid_recheck`)
 - Gateway websocket `partial` and `final` events forward `language` and `language_source`.
 - **Language Metadata**:
   - `language`: Resolved language code (e.g. `hi`, `en`, `te`).
   - `language_source`: How the language was determined:
     - `client`: Explicitly requested by user.
     - `lid_detected`: Detect by Language ID model.
-    - `lid_cached`: Used cached result from previous utterance in session.
-    - `auto_default` / `lid_fallback_*`: Fallback to default language.
+    - `lid_cached`: Used cached result for current utterance lock.
+    - `lid_recheck`: Mid-utterance recheck switched language.
+    - `auto_default`: `auto` mode with LID disabled/unavailable; falls back to session last/default.
+    - `lid_fallback_default`: LID failed, unmappable label, or short utterance fallback.
+
+Example timeline (`language=auto`):
+- `utt-0001` first partial -> `lid_detected` `hi`; final -> `lid_cached` `hi`
+- `utt-0002` first partial -> `lid_detected` `en`; final -> `lid_cached` `en`
+- `utt-0003` very short speech -> `lid_fallback_default` `en` (uses previous utterance language)
 
 ---
 
@@ -68,13 +80,45 @@ Supported languages include `hi`, `en`, `bn`, `ta`, etc. (Check model documentat
 - `GATEWAY_WS_PING_INTERVAL`
 - `GATEWAY_WS_PING_TIMEOUT`
 - `PARTIAL_DECODE_INTERVAL_MS`
+- `VAD_END_SILENCE_MS`
+- `VAD_MAX_UTT_MS`
 - `CIRCUIT_BREAKER_FAILS` + `CIRCUIT_BREAKER_RESET_MS`
 - `ASR_ENABLE_LID`
+- `ASR_ENABLE_LID_RECHECK`
 - `ASR_LID_MODEL_SOURCE`
 - `ASR_LID_MODEL_DIR`
 - `ASR_LID_CACHE_TTL_SEC`
 - `ASR_LID_CACHE_MAX_ENTRIES`
 - `ASR_SUPPORTED_LANGS`
+
+## Dual Engine Routing (Indic + English)
+
+- In-house routing supports two engines per utterance:
+  - Indic utterances -> existing AI4Bharat IndicConformer ONNX engine
+  - English utterances (`language=en`) -> self-hosted NeMo English engine
+- Worker accepts `8kHz` and `16kHz` PCM16 input and normalizes to `16kHz mono` exactly once before LID/decoding.
+- Routing is utterance-locked via current LID behavior in `language=auto`.
+- Explicit language behavior:
+  - `language=en` forces English engine
+  - other explicit languages force Indic engine
+- If English engine is disabled/unavailable, worker does **not** crash:
+  - `auto` requests fall back to last/default language with `language_source=auto_default`.
+
+Worker env knobs:
+- `ASR_ENABLE_EN_ENGINE`
+- `ASR_EN_MODEL_NAME`
+- `ASR_EN_MODEL_DEVICE`
+- `ASR_MODEL_CACHE_DIR`
+- `ASR_PRELOAD_MODELS`
+
+Engine observability:
+- `asr_engine_selected_total{engine=\"indic|en\",language,mode}`
+- `asr_engine_latency_seconds{engine}`
+- `asr_engine_fallback_total{reason=\"en_engine_unavailable|unsupported_language|error\"}`
+
+Optional English engine dependency:
+- install `worker/requirements-en.txt` in worker image/runtime when enabling NeMo engine.
+- Docker Compose build toggle: set `WORKER_INSTALL_EN_ENGINE=true` before `docker compose build`.
 
 ---
 

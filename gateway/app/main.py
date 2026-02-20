@@ -14,7 +14,8 @@ from redis.asyncio import Redis
 from .config import (
     REDIS_URL, MAX_CONNS_PER_KEY, NEW_CONN_PER_MIN, CONN_BURST,
     MAX_BYTES_PER_SEC, GATEWAY_MAX_INFLIGHT_WORKER, WORKER_TIMEOUT_MS, WORKER_URL,
-    CIRCUIT_BREAKER_FAILS, CIRCUIT_BREAKER_RESET_MS, PARTIAL_DECODE_INTERVAL_MS
+    CIRCUIT_BREAKER_FAILS, CIRCUIT_BREAKER_RESET_MS, PARTIAL_DECODE_INTERVAL_MS,
+    VAD_END_SILENCE_MS, VAD_MAX_UTT_MS
 )
 from .logging_setup import setup_logging
 from .metrics import (
@@ -113,6 +114,7 @@ async def ws_stt(ws: WebSocket):
 
     api_key = ""
     api_key_hash = ""
+    call_id = ""
     WS_CONNECTIONS.inc()
     guard = ByteRateGuard(MAX_BYTES_PER_SEC)
 
@@ -193,16 +195,24 @@ async def ws_stt(ws: WebSocket):
         frame_ms = int(cfg.get("frame_ms", 20))
         decoder = (cfg.get("decoder") or "rnnt").lower()
         language = (cfg.get("language") or "auto").strip()
+        call_id = (cfg.get("call_id") or "").strip()
+        worker_session_key = call_id or session_id
 
-        vad = VADSegmenter(sample_rate=sample_rate, frame_ms=frame_ms, mode=2, end_silence_ms=700, max_utt_ms=12000)
-        await ws.send_text(jdump({"type":"ready","call_id":cfg.get("call_id")}))
+        vad = VADSegmenter(
+            sample_rate=sample_rate,
+            frame_ms=frame_ms,
+            mode=2,
+            end_silence_ms=VAD_END_SILENCE_MS,
+            max_utt_ms=VAD_MAX_UTT_MS,
+        )
+        await ws.send_text(jdump({"type":"ready","call_id":call_id or None}))
         emit_eval_event(
             log,
             "ws_session_started",
+            call_id=call_id or None,
             session_id=session_id,
             sampled=sampled,
             api_key_hash=api_key_hash,
-            call_id=cfg.get("call_id"),
             sample_rate=sample_rate,
             frame_ms=frame_ms,
             decoder=decoder,
@@ -212,6 +222,7 @@ async def ws_stt(ws: WebSocket):
         last_partial = ""
         last_partial_ts_ms = 0
         utt_start_time = 0.0
+        last_audio_frame_ts_ms = 0
 
         while True:
             msg = await ws.receive()
@@ -230,9 +241,11 @@ async def ws_stt(ws: WebSocket):
 
             if "bytes" in msg and msg["bytes"]:
                 frame = msg["bytes"]
+                frame_received_ts_ms = int(time.time() * 1000)
                 AUDIO_BYTES_RECEIVED.inc(len(frame))
                 AUDIO_FRAMES_RECEIVED.inc()
                 total_audio_bytes += len(frame)
+                last_audio_frame_ts_ms = frame_received_ts_ms
 
                 # Throughput abuse guard
                 if not guard.add(len(frame)):
@@ -278,7 +291,8 @@ async def ws_stt(ws: WebSocket):
                                     decoder,
                                     language,
                                     mode="partial",
-                                    session_id=session_id,
+                                    call_id=call_id or None,
+                                    session_id=worker_session_key,
                                     utterance_id=partial_utterance_id,
                                     sampled=sampled,
                                 )
@@ -294,6 +308,7 @@ async def ws_stt(ws: WebSocket):
                     if out and out.text and out.text != last_partial:
                         last_partial = out.text
                         last_partial_ts_ms = now_ms
+                        partial_send_ts_ms = int(time.time() * 1000)
                         await ws.send_text(
                             jdump(
                                 {
@@ -308,10 +323,14 @@ async def ws_stt(ws: WebSocket):
                         emit_eval_event(
                             log,
                             "partial_sent",
+                            call_id=call_id or None,
                             session_id=session_id,
                             utterance_id=partial_utterance_id,
                             sampled=sampled,
                             worker_latency_ms=partial_latency_ms,
+                            frame_received_ts_ms=frame_received_ts_ms,
+                            ws_send_ts_ms=partial_send_ts_ms,
+                            from_last_audio_frame_ms=max(0, partial_send_ts_ms - last_audio_frame_ts_ms),
                             resolved_language=out.language or None,
                             language_source=out.language_source or None,
                             **text_metadata(out.text),
@@ -326,6 +345,7 @@ async def ws_stt(ws: WebSocket):
                     emit_eval_event(
                         log,
                         "vad_segment_finalized",
+                        call_id=call_id or None,
                         session_id=session_id,
                         utterance_id=utterance_id,
                         sampled=sampled,
@@ -359,7 +379,8 @@ async def ws_stt(ws: WebSocket):
                                 decoder,
                                 language,
                                 mode="final",
-                                session_id=session_id,
+                                call_id=call_id or None,
+                                session_id=worker_session_key,
                                 utterance_id=utterance_id,
                                 sampled=sampled,
                             )
@@ -375,12 +396,13 @@ async def ws_stt(ws: WebSocket):
                     if out is None:
                         continue
 
+                    final_send_ts_ms = int(time.time() * 1000)
                     await ws.send_text(
                         jdump(
                             {
                                 "type": "final",
                                 "text": out.text,
-                                "ts_ms": int(time.time() * 1000),
+                                "ts_ms": final_send_ts_ms,
                                 "language": out.language,
                                 "language_source": out.language_source,
                             }
@@ -389,10 +411,14 @@ async def ws_stt(ws: WebSocket):
                     emit_eval_event(
                         log,
                         "final_sent",
+                        call_id=call_id or None,
                         session_id=session_id,
                         utterance_id=utterance_id,
                         sampled=sampled,
                         worker_latency_ms=final_latency_ms,
+                        frame_received_ts_ms=frame_received_ts_ms,
+                        ws_send_ts_ms=final_send_ts_ms,
+                        from_last_audio_frame_ms=max(0, final_send_ts_ms - last_audio_frame_ts_ms),
                         trigger=finalize_trigger,
                         resolved_language=out.language or None,
                         language_source=out.language_source or None,
@@ -431,6 +457,7 @@ async def ws_stt(ws: WebSocket):
         emit_eval_event(
             log,
             "ws_session_closed",
+            call_id=call_id or None,
             session_id=session_id,
             sampled=sampled,
             api_key_hash=api_key_hash,

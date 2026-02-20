@@ -1,0 +1,16 @@
+decode:
+  mode: rnnt
+  beam_size: 8
+  nbest: 5
+  lid_bias_alpha: 1.5
+  script_bias_alpha: 1.2
+lm:
+  enabled: true
+  engine: kenlm
+  arpa_path: artifacts/lm/domain.arpa
+  bin_path: artifacts/lm/domain.bin
+  lm_weight: 0.55
+  word_insertion_bonus: 0.05
+postprocess:
+  normalize_text: true
+  transliterate_script_confusions: true

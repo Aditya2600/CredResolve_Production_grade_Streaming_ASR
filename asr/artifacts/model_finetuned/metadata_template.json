@@ -1,0 +1,8 @@
+{
+  "model_source": "ai4bharat/indic-conformer-600m-multilingual",
+  "model_type": "indicconformer_multitask",
+  "dataset_snapshot_id": "telephony_cs_2026_02",
+  "config_hash": "<sha256-of-config>",
+  "checkpoint_path": "artifacts/model_finetuned/checkpoint_step_10000.ckpt",
+  "created_by": "asr/models/load_indicconformer.py"
+}

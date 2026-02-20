@@ -9,25 +9,61 @@ import torch
 try:
     from speechbrain.inference.classifiers import EncoderClassifier
 except ModuleNotFoundError:
-    # speechbrain<1.0 exposes EncoderClassifier under speechbrain.pretrained
-    from speechbrain.pretrained import EncoderClassifier
+    try:
+        # speechbrain<1.0 exposes EncoderClassifier under speechbrain.pretrained
+        from speechbrain.pretrained import EncoderClassifier
+    except ModuleNotFoundError:
+        EncoderClassifier = None  # type: ignore[assignment]
 
 log = logging.getLogger("worker.lid")
 
 
 _ALIAS_MAP = {
+    "english": "en",
+    "eng": "en",
+    "en-us": "en",
+    "en-gb": "en",
+    "hindi-india": "hi",
     "hindi": "hi",
     "hin": "hi",
     "hi-in": "hi",
+    "telugu-india": "te",
     "telugu": "te",
     "tel": "te",
     "te-in": "te",
+    "tamil-india": "ta",
     "tamil": "ta",
     "tam": "ta",
     "ta-in": "ta",
+    "kannada": "kn",
+    "kan": "kn",
+    "kn-in": "kn",
+    "malayalam": "ml",
+    "mal": "ml",
+    "ml-in": "ml",
     "marathi": "mr",
     "mar": "mr",
     "mr-in": "mr",
+    "gujarati": "gu",
+    "guj": "gu",
+    "gu-in": "gu",
+    "bengali": "bn",
+    "bangla": "bn",
+    "ben": "bn",
+    "bn-in": "bn",
+    "punjabi": "pa",
+    "panjabi": "pa",
+    "pan": "pa",
+    "pa-in": "pa",
+    "urdu": "ur",
+    "urd": "ur",
+    "ur-pk": "ur",
+    "odia": "or",
+    "oriya": "or",
+    "or-in": "or",
+    "assamese": "as",
+    "asm": "as",
+    "as-in": "as",
 }
 
 
@@ -75,6 +111,11 @@ class LanguageDetector:
 
     def load_model(self) -> bool:
         log.info("Loading LID model from %s on cpu...", self.source)
+        if EncoderClassifier is None:
+            self.last_error = "speechbrain not installed"
+            log.error("Failed to load LID model: %s", self.last_error)
+            self.classifier = None
+            return False
         try:
             self.classifier = EncoderClassifier.from_hparams(
                 source=self.source,

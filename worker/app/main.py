@@ -9,13 +9,21 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from .config import (
     ASR_DECODER,
     ASR_DEFAULT_LANGUAGE,
+    ASR_ENABLE_EN_ENGINE,
     ASR_ENABLE_LID,
+    ASR_ENABLE_LID_RECHECK,
+    ASR_EN_MODEL_DEVICE,
+    ASR_EN_MODEL_NAME,
     ASR_INFERENCE_TIMEOUT_MS,
+    LID_DETECT_WINDOW_MS,
+    LID_MIN_SPEECH_MS,
     ASR_LID_CACHE_MAX_ENTRIES,
     ASR_LID_CACHE_TTL_SEC,
     ASR_LID_MODEL_DIR,
     ASR_LID_MODEL_SOURCE,
+    ASR_MODEL_CACHE_DIR,
     ASR_MODEL_NAME,
+    ASR_PRELOAD_MODELS,
     ASR_SUPPORTED_LANGS,
     HUGGINGFACE_HUB_TOKEN,
     WORKER_MAX_JOBS,
@@ -42,11 +50,19 @@ model = ONNXIndicASRWorker(
     inference_timeout_ms=ASR_INFERENCE_TIMEOUT_MS,
     default_language=ASR_DEFAULT_LANGUAGE,
     supported_language_allowlist=ASR_SUPPORTED_LANGS,
+    lid_min_speech_ms=LID_MIN_SPEECH_MS,
+    lid_detect_window_ms=LID_DETECT_WINDOW_MS,
     enable_lid=ASR_ENABLE_LID,
+    enable_lid_recheck=ASR_ENABLE_LID_RECHECK,
     lid_model_source=ASR_LID_MODEL_SOURCE,
     lid_model_dir=ASR_LID_MODEL_DIR,
     lid_cache_ttl_sec=ASR_LID_CACHE_TTL_SEC,
     lid_cache_max_entries=ASR_LID_CACHE_MAX_ENTRIES,
+    enable_en_engine=ASR_ENABLE_EN_ENGINE,
+    en_model_name=ASR_EN_MODEL_NAME,
+    en_model_device=ASR_EN_MODEL_DEVICE,
+    model_cache_dir=ASR_MODEL_CACHE_DIR,
+    preload_models=ASR_PRELOAD_MODELS,
 )
 sem = asyncio.Semaphore(WORKER_MAX_JOBS)
 
@@ -82,11 +98,13 @@ async def transcribe(
     x_decoder: str = Header(default=ASR_DECODER),
     x_language: str = Header(default=ASR_DEFAULT_LANGUAGE),
     x_mode: str = Header(default="final"),
+    x_call_id: str = Header(default=""),
     x_session_id: str = Header(default=""),
     x_utterance_id: str = Header(default=""),
 ):
     pcm = await request.body()
     mode = (x_mode or "final").lower()
+    call_id = (x_call_id or "").strip() or None
     session_id = (x_session_id or "").strip() or None
     utterance_id = (x_utterance_id or "").strip() or None
     sampled = should_sample(session_id=session_id, utterance_id=utterance_id)
@@ -94,6 +112,7 @@ async def transcribe(
     emit_eval_event(
         log,
         "transcribe_request_received",
+        call_id=call_id,
         session_id=session_id,
         utterance_id=utterance_id,
         sampled=sampled,
@@ -116,6 +135,7 @@ async def transcribe(
                 emit_eval_event(
                     log,
                     "transcribe_result_error",
+                    call_id=call_id,
                     session_id=session_id,
                     utterance_id=utterance_id,
                     sampled=sampled,
@@ -135,6 +155,7 @@ async def transcribe(
                     sample_rate=sample_rate,
                     decoder=x_decoder,
                     language=x_language,
+                    call_id=call_id,
                     session_id=session_id,
                     utterance_id=utterance_id,
                     mode=mode,
@@ -145,6 +166,7 @@ async def transcribe(
                 emit_eval_event(
                     log,
                     "transcribe_result_ok",
+                    call_id=call_id,
                     session_id=session_id,
                     utterance_id=utterance_id,
                     sampled=sampled,
@@ -168,6 +190,7 @@ async def transcribe(
                 emit_eval_event(
                     log,
                     "transcribe_result_error",
+                    call_id=call_id,
                     session_id=session_id,
                     utterance_id=utterance_id,
                     sampled=sampled,
@@ -188,6 +211,7 @@ async def transcribe(
                 emit_eval_event(
                     log,
                     "transcribe_result_timeout",
+                    call_id=call_id,
                     session_id=session_id,
                     utterance_id=utterance_id,
                     sampled=sampled,
@@ -211,6 +235,7 @@ async def transcribe(
                 emit_eval_event(
                     log,
                     "transcribe_result_not_ready",
+                    call_id=call_id,
                     session_id=session_id,
                     utterance_id=utterance_id,
                     sampled=sampled,
@@ -234,6 +259,7 @@ async def transcribe(
                 emit_eval_event(
                     log,
                     "transcribe_result_fallback",
+                    call_id=call_id,
                     session_id=session_id,
                     utterance_id=utterance_id,
                     sampled=sampled,
@@ -258,6 +284,7 @@ async def transcribe(
                 emit_eval_event(
                     log,
                     "transcribe_result_fallback",
+                    call_id=call_id,
                     session_id=session_id,
                     utterance_id=utterance_id,
                     sampled=sampled,

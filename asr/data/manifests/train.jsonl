@@ -1,0 +1,2 @@
+{"id":"train-0001","audio_filepath":"recordings/train_0001.wav","text":"నేను घर जा रहा","sample_rate":8000,"duration_s":3.2,"tokens":["నేను","घर","जा","रहा"],"token_lang":["te","hi","hi","hi"],"token_script":["telugu","devanagari","devanagari","devanagari"]}
+{"id":"train-0002","audio_filepath":"recordings/train_0002.wav","text":"నాకు हेल्प चाहिए","sample_rate":8000,"duration_s":2.9,"tokens":["నాకు","हेल्प","चाहिए"],"token_lang":["te","hi","hi"],"token_script":["telugu","devanagari","devanagari"]}

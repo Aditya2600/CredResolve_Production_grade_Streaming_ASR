@@ -35,6 +35,7 @@ class WorkerClient:
         decoder: str,
         language: str,
         mode: str,
+        call_id: Optional[str] = None,
         session_id: Optional[str] = None,
         utterance_id: Optional[str] = None,
         sampled: Optional[bool] = None,
@@ -47,6 +48,8 @@ class WorkerClient:
             "X-Language": language,
             "X-Mode": mode,
         }
+        if call_id:
+            headers["X-Call-Id"] = call_id
         if session_id:
             headers["X-Session-Id"] = session_id
         if utterance_id:
@@ -66,6 +69,7 @@ class WorkerClient:
             emit_eval_event(
                 log,
                 "worker_call",
+                call_id=call_id,
                 session_id=session_id,
                 utterance_id=utterance_id,
                 sampled=sampled,
@@ -87,6 +91,7 @@ class WorkerClient:
             emit_eval_event(
                 log,
                 "worker_call_error",
+                call_id=call_id,
                 session_id=session_id,
                 utterance_id=utterance_id,
                 sampled=sampled,

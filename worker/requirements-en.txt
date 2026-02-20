@@ -1,0 +1,4 @@
+# Optional English ASR engine dependencies
+# Install when enabling ASR_ENABLE_EN_ENGINE=true in production images.
+# Keep pinned separately to avoid forcing this stack in deployments that use Indic-only.
+nemo_toolkit[asr]==1.22.0

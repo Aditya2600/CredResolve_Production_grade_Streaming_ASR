@@ -51,6 +51,8 @@ export class WebSocketClient {
   private readonly reconnectMaxDelayMs = 30000;
 
   private jsonQueue: JsonObject[] = [];
+  private audioFrameSeq = 0;
+  private lastAudioSendTs = 0;
 
   constructor(url: string, options: WSClientOptions = {}) {
     this.url = url;
@@ -128,10 +130,19 @@ export class WebSocketClient {
         }
 
         try {
+          const receivedTs = Date.now();
           const payload = JSON.parse(event.data) as JsonObject;
           if (payload && payload.type === 'pong') {
             this.lastPongTs = Date.now();
             return;
+          }
+          const typeValue = payload?.type;
+          if (typeValue === 'partial' || typeValue === 'final') {
+            const e2eMs = this.lastAudioSendTs > 0 ? receivedTs - this.lastAudioSendTs : -1;
+            // Debug latency log: client receive time minus last sent audio frame time.
+            console.log(
+              `[ws][recv] type=${String(typeValue)} ts=${receivedTs} e2e_from_last_audio_ms=${e2eMs}`
+            );
           }
           this.messageHandler?.(payload);
         } catch (error) {
@@ -207,6 +218,12 @@ export class WebSocketClient {
 
   sendBinary(frame: ArrayBuffer | Uint8Array): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
+      const nowTs = Date.now();
+      const byteLength = frame instanceof Uint8Array ? frame.byteLength : frame.byteLength;
+      this.audioFrameSeq += 1;
+      this.lastAudioSendTs = nowTs;
+      // Debug latency log: audio send timestamp from browser.
+      console.log(`[ws][send] seq=${this.audioFrameSeq} ts=${nowTs} bytes=${byteLength}`);
       this.ws.send(frame);
     }
   }
