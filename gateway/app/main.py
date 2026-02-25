@@ -7,6 +7,7 @@ from typing import Optional
 
 import orjson
 from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
 from fastapi.responses import PlainTextResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from redis.asyncio import Redis
@@ -16,6 +17,7 @@ from .config import (
     MAX_BYTES_PER_SEC, GATEWAY_MAX_INFLIGHT_WORKER, WORKER_TIMEOUT_MS, WORKER_URL,
     CIRCUIT_BREAKER_FAILS, CIRCUIT_BREAKER_RESET_MS, PARTIAL_DECODE_INTERVAL_MS
 )
+from .config import REASONING_API_KEY, REASONING_MODEL, REASONING_TIMEOUT_MS
 from .logging_setup import setup_logging
 from .metrics import (
     WS_CONNECTIONS, WS_REJECTS, WS_DISCONNECTS,
@@ -30,6 +32,7 @@ from .circuit_breaker import CircuitBreaker
 from .fallback_limiter import FallbackLimiter
 from .redis_limiter import RedisLimiter
 from .eval_logging import emit_eval_event, hash_value, should_sample, text_metadata
+from .reasoning import CallReasoner
 
 setup_logging()
 log = logging.getLogger("gateway")
@@ -42,6 +45,24 @@ breaker = CircuitBreaker(CIRCUIT_BREAKER_FAILS, CIRCUIT_BREAKER_RESET_MS)
 redis: Optional[Redis] = None
 redis_limiter: Optional[RedisLimiter] = None
 fallback_limiter = FallbackLimiter(MAX_CONNS_PER_KEY, NEW_CONN_PER_MIN, CONN_BURST)
+reasoner = CallReasoner(REASONING_API_KEY, REASONING_MODEL, REASONING_TIMEOUT_MS)
+
+
+class ReasoningTurn(BaseModel):
+    role: str = Field(pattern="^(agent|borrower)$")
+    text: str
+
+
+class ReasoningRequest(BaseModel):
+    callee_name: str
+    amount_due: str
+    borrower_text: str
+    history: list[ReasoningTurn] = Field(default_factory=list)
+
+
+class ReasoningResponse(BaseModel):
+    agent_text: str
+    source: str
 
 @app.on_event("startup")
 async def startup():
@@ -77,6 +98,17 @@ async def metrics():
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return Response(status_code=204)
+
+
+@app.post("/v1/reasoning/respond", response_model=ReasoningResponse)
+async def reasoning_respond(req: ReasoningRequest):
+    result = await reasoner.respond(
+        borrower_text=req.borrower_text,
+        callee_name=req.callee_name,
+        amount_due=req.amount_due,
+        history=[item.model_dump() for item in req.history],
+    )
+    return ReasoningResponse(agent_text=result.text, source=result.source)
 
 def jdump(obj) -> str:
     return orjson.dumps(obj).decode("utf-8")

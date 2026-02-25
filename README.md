@@ -9,6 +9,24 @@ This repo is a production-ready reference implementation for a **streaming-ish**
   - `gateway` (CPU): WebSocket sessions + auth + VAD + partial/final events
   - `worker` (GPU): IndicConformer ONNX/TorchScript transcription service
 
+## New: Borrower-Agent reasoning loop (Gemini)
+
+The gateway now exposes `POST /v1/reasoning/respond` as a separate reasoning layer that:
+- accepts borrower ASR text + conversation history,
+- generates the next call-agent sentence in debt-collection style,
+- is optimized for low-latency (`REASONING_TIMEOUT_MS`, default 3000ms),
+- falls back to deterministic rule-based replies when Gemini is unavailable.
+
+Set in environment:
+- `GEMINI_API_KEY` (required for Gemini generation)
+- `REASONING_MODEL` (default: `gemini-2.0-flash-lite`)
+- `REASONING_TIMEOUT_MS` (default: `3000`)
+
+Frontend call flow:
+- Page 1 asks for **Callee Name** and **EMI Amount**.
+- Page 2 starts with: `नमस्ते। मैं SMFG से राधा बोल रही हूँ...`
+- After each borrower utterance (from ASR or text box), frontend calls reasoning endpoint and shows an agent response bubble.
+
 ---
 
 ## Architecture
