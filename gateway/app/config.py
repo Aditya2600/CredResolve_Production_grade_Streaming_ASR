@@ -48,3 +48,7 @@ LOG_LEVEL = getenv_str("LOG_LEVEL", "INFO")
 EVAL_LOGS_ENABLED = getenv_bool("EVAL_LOGS_ENABLED", False)
 EVAL_LOG_SAMPLE_RATE = min(1.0, max(0.0, getenv_float("EVAL_LOG_SAMPLE_RATE", 1.0)))
 EVAL_LOG_TEXT_PREVIEW_CHARS = max(0, getenv_int("EVAL_LOG_TEXT_PREVIEW_CHARS", 16))
+
+REASONING_MODEL = getenv_str("REASONING_MODEL", "gemini-2.0-flash-lite")
+REASONING_API_KEY = getenv_str("GEMINI_API_KEY", "")
+REASONING_TIMEOUT_MS = max(300, getenv_int("REASONING_TIMEOUT_MS", 3000))

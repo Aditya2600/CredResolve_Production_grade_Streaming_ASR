@@ -3,6 +3,7 @@ import { Header } from './components/Header';
 import { VoiceOrb } from './components/VoiceOrb';
 import { Controls } from './components/Controls';
 import { TranscriptPanel } from './components/TranscriptPanel';
+import { TextInput } from './components/TextInput';
 import { useWebSocket } from './hooks/useWebSocket';
 import {
   AudioClientError,
@@ -12,6 +13,7 @@ import {
 } from './lib/audioClient';
 import type { AudioState } from './types/audio';
 import type { ServerMessage, TranscriptItem } from './types/ws';
+import { requestAgentReply } from './lib/reasoningClient';
 import {
   AUDIO_CONFIG,
   DEFAULT_DECODER,
@@ -66,6 +68,9 @@ function toUserFacingAudioError(error: unknown): string {
 
 function App() {
   const wsUrl = import.meta.env.VITE_WS_URL || DEFAULT_WS_URL;
+  const [calleeName, setCalleeName] = useState('सद्दाम हुसैन');
+  const [amountDue, setAmountDue] = useState('19,928');
+  const [hasStartedCall, setHasStartedCall] = useState(false);
   const [language, setLanguage] = useState<string>(DEFAULT_LANGUAGE);
   const languageRef = useRef(language);
   languageRef.current = language;
@@ -87,6 +92,7 @@ function App() {
   const [phase, setPhase] = useState<SessionPhase>('idle');
   const [messages, setMessages] = useState<TranscriptItem[]>([]);
   const [currentPartial, setCurrentPartial] = useState('');
+  const [latestBorrowerText, setLatestBorrowerText] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isMuted, setIsMuted] = useState(false);
 
@@ -95,6 +101,62 @@ function App() {
   const stopDoneResolverRef = useRef<(() => void) | null>(null);
   const isMutedRef = useRef(false);
   const isStreamingRef = useRef(false);
+
+  const addAgentMessage = useCallback((text: string) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        role: 'assistant',
+        text,
+        timestamp: Date.now(),
+      },
+    ]);
+  }, []);
+
+  const addBorrowerMessage = useCallback((text: string) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `borrower-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        role: 'user',
+        text,
+        timestamp: Date.now(),
+      },
+    ]);
+  }, []);
+
+  const processBorrowerTurn = useCallback(
+    async (text: string) => {
+      const borrowerText = text.trim();
+      if (!borrowerText) {
+        return;
+      }
+
+      setLatestBorrowerText(borrowerText);
+      addBorrowerMessage(borrowerText);
+
+      const history = messages.map((item) => ({
+        role: item.role === 'assistant' ? 'agent' : 'borrower',
+        text: item.text,
+      }));
+      history.push({ role: 'borrower', text: borrowerText });
+
+      try {
+        const response = await requestAgentReply({
+          calleeName,
+          amountDue,
+          borrowerText,
+          history,
+        });
+        addAgentMessage(response.agentText);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : 'Reasoning failed';
+        setErrorMessage(detail);
+      }
+    },
+    [addAgentMessage, addBorrowerMessage, amountDue, calleeName, messages]
+  );
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -186,15 +248,7 @@ function App() {
         case 'final': {
           const text = (message.text || '').trim();
           if (text) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                role: 'assistant',
-                text,
-                timestamp: Date.now(),
-              },
-            ]);
+            void processBorrowerTurn(text);
           }
           setCurrentPartial('');
           if (phaseRef.current !== 'stopping') {
@@ -225,7 +279,7 @@ function App() {
     return () => {
       onMessage(null);
     };
-  }, [clearReadyTimeout, forceErrorState, onMessage, startAudioCapture]);
+  }, [clearReadyTimeout, forceErrorState, onMessage, processBorrowerTurn, startAudioCapture]);
 
   useEffect(() => {
     if (wsStatus === 'connected' && phaseRef.current === 'connecting') {
@@ -334,6 +388,23 @@ function App() {
     void handleStartListening();
   }, [handleStartListening]);
 
+  const handleCallStart = useCallback(() => {
+    if (!calleeName.trim() || !amountDue.trim()) {
+      setErrorMessage('Please provide callee name and EMI amount.');
+      return;
+    }
+    setErrorMessage('');
+    setHasStartedCall(true);
+    setMessages([
+      {
+        id: `agent-intro-${Date.now()}`,
+        role: 'assistant',
+        text: `नमस्ते। मैं SMFG से राधा बोल रही हूँ। क्या मैं ${calleeName.trim()} से बात कर रहा हूँ?`,
+        timestamp: Date.now(),
+      },
+    ]);
+  }, [amountDue, calleeName]);
+
   useEffect(() => {
     return () => {
       clearReadyTimeout();
@@ -373,6 +444,32 @@ function App() {
       <Header />
 
       <main className="flex-1 flex flex-col items-center justify-center overflow-auto">
+        {!hasStartedCall ? (
+          <div className="w-full max-w-xl px-4">
+            <div className="bg-white rounded-xl border border-purple-100 shadow-sm p-6 space-y-4">
+              <h2 className="text-xl font-semibold text-gray-800">Start Call Simulation</h2>
+              <label className="block text-sm text-gray-600">Callee Name</label>
+              <input
+                value={calleeName}
+                onChange={(event) => setCalleeName(event.target.value)}
+                className="w-full rounded-lg border border-purple-200 px-4 py-2"
+              />
+              <label className="block text-sm text-gray-600">EMI Amount (₹)</label>
+              <input
+                value={amountDue}
+                onChange={(event) => setAmountDue(event.target.value)}
+                className="w-full rounded-lg border border-purple-200 px-4 py-2"
+              />
+              <button
+                onClick={handleCallStart}
+                className="w-full rounded-lg bg-purple-600 text-white py-3 font-medium hover:bg-purple-700"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
         {errorMessage && (
           <div className="w-full max-w-2xl px-4 pt-2">
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -387,6 +484,17 @@ function App() {
           <TranscriptPanel messages={messages} currentPartial={currentPartial} />
         </div>
 
+        <div className="w-full max-w-2xl px-4">
+          <label className="text-xs text-gray-500">Latest borrower ASR text</label>
+          <input
+            value={latestBorrowerText}
+            readOnly
+            className="w-full rounded-lg border border-purple-200 px-4 py-2 bg-white text-sm"
+          />
+        </div>
+
+        <TextInput onSubmit={(text) => void processBorrowerTurn(text)} disabled={phase === 'stopping'} />
+
         <Controls
           phase={phase}
           isMuted={isMuted}
@@ -400,6 +508,8 @@ function App() {
           onLanguageChange={setLanguage}
           onReconnect={handleReconnect}
         />
+          </>
+        )}
       </main>
     </div>
   );
