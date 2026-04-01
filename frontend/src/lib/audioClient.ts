@@ -1,7 +1,10 @@
+import { debugLog, infoLog } from './debug';
+
 type AudioClientErrorCode =
   | 'permission_denied'
   | 'device_not_found'
   | 'device_busy'
+  | 'insecure_context'
   | 'not_supported'
   | 'unknown';
 
@@ -31,13 +34,29 @@ let pendingSamples = new Float32Array(0);
 let frameEmitter: ((frame: Uint8Array) => void) | null = null;
 let currentFrameSize = 320;
 let currentTargetRate = 16000;
+let emittedFrameCount = 0;
+const SCRIPT_PROCESSOR_BUFFER_SIZE = 1024;
 
 function getAudioContextCtor(): BrowserAudioContext | null {
   const candidate = window.AudioContext || (window as unknown as { webkitAudioContext?: BrowserAudioContext }).webkitAudioContext;
   return candidate ?? null;
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
+}
+
 function ensureSupported(): void {
+  const hostname = window.location.hostname;
+  const hasSecureMicContext = window.isSecureContext || isLoopbackHost(hostname);
+
+  if (!hasSecureMicContext) {
+    throw new AudioClientError(
+      'insecure_context',
+      'Microphone access requires HTTPS or a localhost URL'
+    );
+  }
+
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new AudioClientError('not_supported', 'Microphone API is not supported in this browser');
   }
@@ -126,6 +145,16 @@ function floatToPCM16(input: Float32Array): Uint8Array {
   return new Uint8Array(output.buffer);
 }
 
+export function bytesToBase64(input: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < input.length; offset += chunkSize) {
+    const chunk = input.subarray(offset, offset + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return window.btoa(binary);
+}
+
 function emitAvailableFrames(flushPartial: boolean): void {
   if (!frameEmitter) {
     return;
@@ -134,6 +163,7 @@ function emitAvailableFrames(flushPartial: boolean): void {
   while (pendingSamples.length >= currentFrameSize) {
     const frame = pendingSamples.slice(0, currentFrameSize);
     pendingSamples = pendingSamples.slice(currentFrameSize);
+    emittedFrameCount += 1;
     frameEmitter(floatToPCM16(frame));
   }
 
@@ -141,16 +171,19 @@ function emitAvailableFrames(flushPartial: boolean): void {
     const padded = new Float32Array(currentFrameSize);
     padded.set(pendingSamples, 0);
     pendingSamples = new Float32Array(0);
+    emittedFrameCount += 1;
     frameEmitter(floatToPCM16(padded));
   }
 }
 
 export async function ensurePermission(): Promise<void> {
   ensureSupported();
+  infoLog('audio', 'checking microphone permission');
 
   let testStream: MediaStream | null = null;
   try {
     testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    infoLog('audio', 'microphone permission granted');
   } catch (error) {
     throw mapMediaError(error);
   } finally {
@@ -168,6 +201,8 @@ export async function startMicStreaming(options: StartStreamingOptions): Promise
   currentTargetRate = targetSampleRate;
   frameEmitter = options.onFrame;
   pendingSamples = new Float32Array(0);
+  emittedFrameCount = 0;
+  infoLog('audio', `starting microphone streaming target_sample_rate=${targetSampleRate} frame_ms=${frameMs}`);
 
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -183,8 +218,10 @@ export async function startMicStreaming(options: StartStreamingOptions): Promise
     }
 
     audioContext = new AudioContextCtor();
+    debugLog('audio', `audio context created sample_rate=${audioContext.sampleRate}`);
     sourceNode = audioContext.createMediaStreamSource(mediaStream);
-    processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+    // Smaller buffers reduce mic-to-network latency at the cost of more callbacks.
+    processorNode = audioContext.createScriptProcessor(SCRIPT_PROCESSOR_BUFFER_SIZE, 1, 1);
     silentGainNode = audioContext.createGain();
     silentGainNode.gain.value = 0;
 
@@ -209,6 +246,7 @@ export async function startMicStreaming(options: StartStreamingOptions): Promise
 
 export async function stopMicStreaming(): Promise<void> {
   emitAvailableFrames(true);
+  infoLog('audio', `stopping microphone streaming emitted_frames=${emittedFrameCount}`);
 
   if (processorNode) {
     processorNode.disconnect();
@@ -238,6 +276,7 @@ export async function stopMicStreaming(): Promise<void> {
 
   frameEmitter = null;
   pendingSamples = new Float32Array(0);
+  emittedFrameCount = 0;
 }
 
 export function getAudioContext(): AudioContext | null {

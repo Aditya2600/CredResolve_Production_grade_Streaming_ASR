@@ -2,25 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ConnectionStatus, ServerMessage } from '../types/ws';
 import { WebSocketClient } from '../lib/wsClient';
 
-type StartPayloadFactory = (() => Record<string, unknown>) | undefined;
-
-export function useWebSocket(url: string, getStartPayload?: StartPayloadFactory) {
+export function useWebSocket(url: string, protocols?: string[]) {
   const wsRef = useRef<WebSocketClient | null>(null);
   const messageCallbackRef = useRef<((message: ServerMessage) => void) | null>(null);
-  const startPayloadFactoryRef = useRef<StartPayloadFactory>(getStartPayload);
+  const protocolsRef = useRef<string[] | undefined>(protocols);
 
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<Error | null>(null);
 
-  startPayloadFactoryRef.current = getStartPayload;
+  protocolsRef.current = protocols;
 
   const ensureClient = useCallback(() => {
     if (!wsRef.current) {
       const client = new WebSocketClient(url, {
-        getStartPayload: () => {
-          const factory = startPayloadFactoryRef.current;
-          return factory ? factory() : {};
-        },
+        protocols: protocolsRef.current,
         onError: (err) => {
           setError(err);
         },
@@ -57,20 +52,12 @@ export function useWebSocket(url: string, getStartPayload?: StartPayloadFactory)
     wsRef.current?.sendJSON(payload);
   }, []);
 
-  const sendBinary = useCallback((frame: ArrayBuffer | Uint8Array) => {
-    wsRef.current?.sendBinary(frame);
-  }, []);
-
   const isConnected = useCallback(() => {
     return wsRef.current?.isConnected() ?? false;
   }, []);
 
   const onMessage = useCallback((callback: ((message: ServerMessage) => void) | null) => {
     messageCallbackRef.current = callback;
-  }, []);
-
-  const getState = useCallback(() => {
-    return wsRef.current?.getState() ?? 'disconnected';
   }, []);
 
   useEffect(() => {
@@ -81,7 +68,7 @@ export function useWebSocket(url: string, getStartPayload?: StartPayloadFactory)
 
     setStatus('disconnected');
     setError(null);
-  }, [url]);
+  }, [url, protocols]);
 
   useEffect(() => {
     return () => {
@@ -97,9 +84,7 @@ export function useWebSocket(url: string, getStartPayload?: StartPayloadFactory)
     connect,
     disconnect,
     sendJSON,
-    sendBinary,
     isConnected,
     onMessage,
-    getState,
   };
 }

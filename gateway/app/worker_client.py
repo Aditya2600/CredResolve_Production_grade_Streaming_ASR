@@ -55,6 +55,17 @@ class WorkerClient:
         t0 = time.time()
         http_status = None
         try:
+            log.info(
+                "Calling worker mode=%s session_id=%s utterance_id=%s bytes=%s sample_rate=%s decoder=%s language=%s url=%s",
+                mode,
+                session_id or "-",
+                utterance_id or "-",
+                len(audio_bytes),
+                sample_rate,
+                decoder,
+                language,
+                url,
+            )
             r = await self.client.post(url, content=audio_bytes, headers=headers)
             http_status = r.status_code
             status = "ok" if r.status_code == 200 else "err"
@@ -63,6 +74,17 @@ class WorkerClient:
             r.raise_for_status()
             data = r.json()
             latency_ms = int((time.time() - t0) * 1000)
+            log.info(
+                "Worker call completed mode=%s session_id=%s utterance_id=%s status=%s latency_ms=%s text_chars=%s resolved_language=%s language_source=%s",
+                mode,
+                session_id or "-",
+                utterance_id or "-",
+                http_status,
+                latency_ms,
+                len((data.get("text") or "").strip()),
+                (data.get("language") or "").strip() or "-",
+                (data.get("language_source") or "").strip() or "-",
+            )
             emit_eval_event(
                 log,
                 "worker_call",
@@ -84,6 +106,15 @@ class WorkerClient:
             )
         except Exception as exc:
             latency_ms = int((time.time() - t0) * 1000)
+            log.warning(
+                "Worker call failed mode=%s session_id=%s utterance_id=%s status=%s latency_ms=%s error=%s",
+                mode,
+                session_id or "-",
+                utterance_id or "-",
+                http_status,
+                latency_ms,
+                exc,
+            )
             emit_eval_event(
                 log,
                 "worker_call_error",

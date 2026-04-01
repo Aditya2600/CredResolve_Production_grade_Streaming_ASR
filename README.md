@@ -1,12 +1,12 @@
 # CredResolve – Production-grade Streaming ASR (IndicConformer) over WebSocket
 
 This repo is a production-ready reference implementation for a **streaming-ish** STT service:
-- WebSocket (WSS) ingest of **audio bytes**
+- WebSocket (WSS) ingest of JSON `audio` messages with base64 payloads
 - VAD / endpointing (WebRTC VAD)
 - Rate limiting + connection quotas (Redis token bucket + active-conn tracking)
 - Traffic management (backpressure, GPU worker concurrency caps, load shedding, timeouts, circuit breaker)
 - Split architecture:
-  - `gateway` (CPU): WebSocket sessions + auth + VAD + partial/final events
+  - `gateway` (CPU): WebSocket sessions + auth + VAD + final-only `data` events
   - `worker` (GPU): IndicConformer ONNX/TorchScript transcription service
 
 ---
@@ -26,14 +26,47 @@ docker compose up --build -d
 docker compose logs -f gateway
 ```
 
-Test (put a 16kHz mono PCM16 wav at `sample_data/sample_16k_mono.wav`):
+Frontend UI:
+- Docker Compose now serves the frontend at `http://localhost:5173`
+- The UI connects to the gateway websocket on port `8000` using the current browser hostname
+
+Remote browser microphone access:
+- Browsers will block mic access on `http://<server-ip>` because it is not a secure origin
+- Create a local SSH tunnel: `ssh -L 8080:localhost:80 <user>@<server>`
+- Then open `http://localhost:8080` in your browser
+
+Logs:
+- All services: `docker compose logs -f`
+- Gateway only: `docker compose logs -f gateway`
+- Worker only: `docker compose logs -f worker`
+- Frontend only: `docker compose logs -f frontend`
+- Last 100 lines for a service: `docker compose logs --tail=100 -f gateway`
+- Browser logs: open DevTools Console for frontend WebSocket/audio tracing (`VITE_DEBUG_LOGS=true` in Docker build by default)
+- Increase backend verbosity with `LOG_LEVEL=DEBUG` in `.env` before `docker compose up --build -d`
+
+Smoke test (put a 16kHz mono PCM16 wav at `sample_data/sample_16k_mono.wav`):
 ```bash
-python3 tools/ws_client_send_wav.py --ws ws://localhost/ws/stt --wav sample_data/sample_16k_mono.wav --api-key dev --language hi
+python3 tools/ws_client_send_wav.py \
+  --ws ws://localhost/ws/stt \
+  --wav sample_data/sample_16k_mono.wav \
+  --api-key dev \
+  --language-code hi \
+  --model credresolve:v1 \
+  --mode transcribe \
+  --sample-rate 16000 \
+  --input-audio-codec pcm_s16le \
+  --vad-signals
 ```
 
 Supported languages include `hi`, `en`, `bn`, `ta`, etc. (Check model documentation for full list).
 
-`--language auto` enables runtime LID when worker env `ASR_ENABLE_LID=true`.
+The public STT contract is now Sarvam-like:
+- auth comes from `Api-Subscription-Key: <token>` or browser `Sec-WebSocket-Protocol: token,<token>`
+- session config comes from query params such as `language-code`, `model`, `mode`, `sample_rate`, and `input_audio_codec`
+- clients send JSON audio envelopes and `{"type":"flush"}`
+- the server emits final-only `type:"data"` transcript messages and optional `type:"vad"` signals
+
+See [docs/websocket_auth_migration.md](docs/websocket_auth_migration.md) for the full before/after contract and payload examples.
 
 ---
 
@@ -41,12 +74,18 @@ Supported languages include `hi`, `en`, `bn`, `ta`, etc. (Check model documentat
 
 - LID runs only when requested language is `auto` (or empty).
 - LID is CPU-only and feature-flagged (`ASR_ENABLE_LID=false` by default).
+- The worker can run a primary/fallback LID chain. By default for the new config surface:
+  - primary: `onecxi/vakgyata-small`
+  - fallback: `speechbrain/lang-id-voxlingua107-ecapa`
 - If LID is disabled/unavailable/unmappable, worker falls back to `ASR_DEFAULT_LANGUAGE`.
+- Backward compatibility: if the new chain env vars are unset, the legacy single-provider
+  `ASR_LID_MODEL_SOURCE` / `ASR_LID_MODEL_DIR` settings continue to work.
 - Worker `/v1/transcribe` responses include:
   - `text`
   - `language`
   - `language_source` (`client`, `auto_default`, `lid_detected`, `lid_cached`, `lid_fallback_default`)
-- Gateway websocket `partial` and `final` events forward `language` and `language_source`.
+- The public websocket contract does not expose language metadata on `type:"data"` messages.
+- The worker still resolves `language` and `language_source` internally for routing, logging, and evaluation.
 - **Language Metadata**:
   - `language`: Resolved language code (e.g. `hi`, `en`, `te`).
   - `language_source`: How the language was determined:
@@ -59,9 +98,11 @@ Supported languages include `hi`, `en`, `bn`, `ta`, etc. (Check model documentat
 
 ## Key knobs (traffic management)
 
+- `GATEWAY_DISABLE_RATE_LIMITING` (`true` disables both connection admission limiting and audio byte throttling)
 - `MAX_CONNS_PER_KEY`
 - `NEW_CONN_PER_MIN` + `CONN_BURST`
 - `MAX_BYTES_PER_SEC`
+- `WS_DISABLE_AUDIO_RATE_LIMIT` (`true` only for local/dev evaluation; keep `false` in production)
 - `GATEWAY_MAX_INFLIGHT_WORKER`
 - `WORKER_MAX_JOBS`
 - `WORKER_TIMEOUT_MS`
@@ -70,6 +111,13 @@ Supported languages include `hi`, `en`, `bn`, `ta`, etc. (Check model documentat
 - `PARTIAL_DECODE_INTERVAL_MS`
 - `CIRCUIT_BREAKER_FAILS` + `CIRCUIT_BREAKER_RESET_MS`
 - `ASR_ENABLE_LID`
+- `ASR_LID_PRIMARY_PROVIDER`
+- `ASR_LID_PRIMARY_SOURCE`
+- `ASR_LID_PRIMARY_MODEL_DIR`
+- `ASR_LID_FALLBACK_PROVIDER`
+- `ASR_LID_FALLBACK_SOURCE`
+- `ASR_LID_FALLBACK_MODEL_DIR`
+- `ASR_LID_CONFIDENCE_THRESHOLD`
 - `ASR_LID_MODEL_SOURCE`
 - `ASR_LID_MODEL_DIR`
 - `ASR_LID_CACHE_TTL_SEC`
@@ -104,7 +152,7 @@ This project includes a full monitoring stack (Prometheus + Grafana + Node Expor
 
 ### Troubleshooting
 *   **No Data in Grafana?** Check if Prometheus targets are UP.
-*   **Zero connections?** Connect a client! (e.g. Frontend or `wscat`).
+*   **Zero connections?** Connect a client! (e.g. Frontend or `tools/ws_client_send_wav.py`).
 *   **Disk Full?** Check Node Exporter dashboard.
 
 ## Development

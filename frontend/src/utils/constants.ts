@@ -1,6 +1,42 @@
 import type { AudioConfig } from '../types/ws';
 
-export const DEFAULT_WS_URL = 'ws://localhost:8000/ws/stt';
+function resolveDefaultWsUrl(): string {
+  if (typeof window === 'undefined') {
+    return 'ws://localhost:8000/ws/stt';
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host || 'localhost';
+
+  if (window.location.port === '5173') {
+    return `${protocol}//${window.location.hostname}:8000/ws/stt`;
+  }
+
+  return `${protocol}//${host}/ws/stt`;
+}
+
+function toWebSocketUrl(rawUrl: string): URL {
+  if (typeof window === 'undefined') {
+    return new URL(rawUrl);
+  }
+
+  if (/^wss?:\/\//.test(rawUrl) || /^https?:\/\//.test(rawUrl)) {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol === 'http:') {
+      parsed.protocol = 'ws:';
+    }
+    if (parsed.protocol === 'https:') {
+      parsed.protocol = 'wss:';
+    }
+    return parsed;
+  }
+
+  const parsed = new URL(rawUrl, window.location.origin);
+  parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+  return parsed;
+}
+
+export const DEFAULT_WS_URL = resolveDefaultWsUrl();
 
 export const AUDIO_CONFIG: AudioConfig = {
   sampleRate: 16000,
@@ -9,10 +45,10 @@ export const AUDIO_CONFIG: AudioConfig = {
 };
 
 export const API_KEY = 'dev';
-export const DEFAULT_DECODER = 'rnnt';
+export const DEFAULT_MODEL = 'credresolve:v1';
+export const DEFAULT_MODE = 'transcribe';
 export const DEFAULT_LANGUAGE = 'hi';
-export const READY_TIMEOUT_MS = 8000;
-export const STOP_DONE_TIMEOUT_MS = 1200;
+export const FLUSH_RESULT_TIMEOUT_MS = 1200;
 export const MAX_RETRIES = 3;
 
 export const SUPPORTED_LANGUAGES = [
@@ -41,6 +77,20 @@ export const SUPPORTED_LANGUAGES = [
   { value: 'ur', label: 'Urdu (ur)' },
 ] as const;
 
-export function generateCallId(): string {
-  return `c${Date.now().toString(36)}${Math.random().toString(36).substring(2, 8)}`;
+export function buildWsUrl(baseUrl: string, languageCode: string): string {
+  const url = toWebSocketUrl(baseUrl);
+  url.searchParams.set('language-code', languageCode || DEFAULT_LANGUAGE);
+  url.searchParams.set('model', DEFAULT_MODEL);
+  url.searchParams.set('mode', DEFAULT_MODE);
+  url.searchParams.set('sample_rate', String(AUDIO_CONFIG.sampleRate));
+  url.searchParams.set('high_vad_sensitivity', 'false');
+  url.searchParams.set('vad_signals', 'true');
+  url.searchParams.set('flush_signal', 'true');
+  url.searchParams.set('input_audio_codec', AUDIO_CONFIG.encoding);
+  return url.toString();
+}
+
+export function createBrowserWsProtocols(apiKey: string): string[] | undefined {
+  const token = apiKey.trim();
+  return token ? ['token', token] : undefined;
 }

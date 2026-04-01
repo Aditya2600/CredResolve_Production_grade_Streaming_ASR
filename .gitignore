@@ -1,58 +1,56 @@
 # Environment / secrets
 .env
+.env.*
+!.env.example
 
-# Python
-venv/
-.venv/
-env/
-__pycache__/
-*.pyc
-
-# Frontend build/cache (if frontend is inside this repo)
-frontend/node_modules/
-frontend/.vite/
-frontend/dist/
-frontend/logs
-frontend/**/*.log
-frontend/**/node_modules/
-frontend/**/dist/
-frontend/**/dist-ssr/
-frontend/**/*.local
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
 frontend/.vscode/*
 !frontend/.vscode/extensions.json
-frontend/.idea
-frontend/**/.DS_Store
-frontend/**/*.suo
-frontend/**/*.ntvs*
-frontend/**/*.njsproj
-frontend/**/*.sln
-frontend/**/*.sw?
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
 
-# Models and weights (large / generated)
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Node / frontend
+node_modules/
+.vite/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+
+# Logs / runtime
+.cache/
+logs/
+*.log
+*.pid
+*.pid.lock
+worker/hub/.locks/
+
+# Models / weights / checkpoints
 models/
 worker/models/
 worker/nemo_weights/
-*.nemo
-*.pth
-*.ckpt
-
-# Node
-node_modules/
-
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# Caches/logs
-.cache/
-.pytest_cache/
-logs/
-*.log
-
-# ML artifacts (adjust if you use these)
-models/
 checkpoints/
 weights/
 *.pt
@@ -62,10 +60,4 @@ weights/
 *.bin
 *.nemo
 
-# Secrets
-.env
-.env.*
-
-# Secrets
-.env
-.env.*
+worker/hub/

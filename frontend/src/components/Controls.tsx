@@ -5,7 +5,6 @@ type SessionPhase =
   | 'idle'
   | 'requesting_mic'
   | 'connecting'
-  | 'ready'
   | 'listening'
   | 'processing'
   | 'stopping'
@@ -25,7 +24,7 @@ interface ControlsProps {
   onReconnect: () => void;
 }
 
-const ACTIVE_PHASES: SessionPhase[] = ['ready', 'listening', 'processing'];
+const ACTIVE_PHASES: SessionPhase[] = ['listening', 'processing'];
 const BUSY_PHASES: SessionPhase[] = ['requesting_mic', 'connecting', 'stopping'];
 
 export function Controls({
@@ -73,9 +72,7 @@ export function Controls({
           onClick={onToggleMute}
           disabled={isBusy}
           className={`p-3 rounded-lg font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-            isMuted
-              ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            isMuted ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
           aria-label={isMuted ? 'Unmute microphone stream' : 'Mute microphone stream'}
         >

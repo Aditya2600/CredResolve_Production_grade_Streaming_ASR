@@ -2,72 +2,95 @@ import time
 from dataclasses import dataclass
 from redis.asyncio.client import Redis as RedisType
 
+
 @dataclass
 class AdmitResult:
     ok: bool
     reason: str
+
 
 class RedisLimiter:
     """Redis-backed limiter:
     - Active WS connections per api_key (INCR/DECR)
     - Token bucket for new connections per minute per key (Lua)
     """
+
     def __init__(self, redis: RedisType, max_conns_per_key: int, new_conn_per_min: int, burst: int):
         self.r = redis
         self.max_conns = max_conns_per_key
         self.rate = float(new_conn_per_min) / 60.0  # tokens/sec
         self.burst = float(burst)
 
-        self._lua = r'''
-local key = KEYS[1]
-local now = tonumber(ARGV[1])
-local rate = tonumber(ARGV[2])
-local burst = tonumber(ARGV[3])
-local cost = tonumber(ARGV[4])
+        self._admit_lua = r'''
+local active_key = KEYS[1]
+local tokens_key = KEYS[2]
+local ts_key = KEYS[3]
 
-local t_key = key .. ":t"
-local ts_key = key .. ":ts"
+local max_conns = tonumber(ARGV[1])
+local now = tonumber(ARGV[2])
+local rate = tonumber(ARGV[3])
+local burst = tonumber(ARGV[4])
+local cost = tonumber(ARGV[5])
 
-local tokens = tonumber(redis.call("GET", t_key) or burst)
+local active = tonumber(redis.call("GET", active_key) or "0")
+if active >= max_conns then
+  return "TOO_MANY_CONNECTIONS"
+end
+
+local tokens = tonumber(redis.call("GET", tokens_key) or burst)
 local last = tonumber(redis.call("GET", ts_key) or now)
-
 local delta = math.max(0, now - last)
 tokens = math.min(burst, tokens + delta * rate)
 
-local allowed = 0
-if tokens >= cost then
-  tokens = tokens - cost
-  allowed = 1
+if tokens < cost then
+  redis.call("SET", tokens_key, tokens, "PX", 600000)
+  redis.call("SET", ts_key, now, "PX", 600000)
+  return "RATE_LIMITED"
 end
 
-redis.call("SET", t_key, tokens, "PX", 600000)
+tokens = tokens - cost
+redis.call("SET", tokens_key, tokens, "PX", 600000)
 redis.call("SET", ts_key, now, "PX", 600000)
-return allowed
+redis.call("INCR", active_key)
+redis.call("PEXPIRE", active_key, 3600000)
+return "OK"
 '''
-    async def _token_allow(self, api_key: str, cost: float = 1.0) -> bool:
-        now_ms = int(time.time() * 1000)
-        allowed = await self.r.eval(self._lua, 1, f"tb:{api_key}", now_ms, self.rate/1000.0, self.burst, cost)
-        return bool(allowed)
+
+        self._release_lua = r'''
+local active_key = KEYS[1]
+local active = tonumber(redis.call("GET", active_key) or "0")
+
+if active <= 1 then
+  redis.call("DEL", active_key)
+  return 0
+end
+
+return redis.call("DECR", active_key)
+'''
 
     async def admit(self, api_key: str) -> AdmitResult:
         active_key = f"active:{api_key}"
-        active = int(await self.r.get(active_key) or 0)
-        if active >= self.max_conns:
-            return AdmitResult(False, "TOO_MANY_CONNECTIONS")
-
-        if not await self._token_allow(api_key, 1.0):
-            return AdmitResult(False, "RATE_LIMITED")
-
-        pipe = self.r.pipeline()
-        pipe.incr(active_key, 1)
-        pipe.pexpire(active_key, 3600000)
-        await pipe.execute()
-        return AdmitResult(True, "OK")
+        result = await self.r.eval(
+            self._admit_lua,
+            3,
+            active_key,
+            f"tb:{api_key}:t",
+            f"tb:{api_key}:ts",
+            self.max_conns,
+            int(time.time() * 1000),
+            self.rate / 1000.0,
+            self.burst,
+            1.0,
+        )
+        if isinstance(result, bytes):
+            result = result.decode("utf-8")
+        reason = str(result)
+        return AdmitResult(reason == "OK", reason)
 
     async def release(self, api_key: str) -> None:
         if not api_key:
             return
         try:
-            await self.r.decr(f"active:{api_key}", 1)
+            await self.r.eval(self._release_lua, 1, f"active:{api_key}")
         except Exception:
             pass

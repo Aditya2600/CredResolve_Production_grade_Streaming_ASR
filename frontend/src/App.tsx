@@ -6,6 +6,7 @@ import { TranscriptPanel } from './components/TranscriptPanel';
 import { useWebSocket } from './hooks/useWebSocket';
 import {
   AudioClientError,
+  bytesToBase64,
   ensurePermission,
   startMicStreaming,
   stopMicStreaming,
@@ -13,20 +14,21 @@ import {
 import type { AudioState } from './types/audio';
 import type { ServerMessage, TranscriptItem } from './types/ws';
 import {
+  API_KEY,
   AUDIO_CONFIG,
-  DEFAULT_DECODER,
+  buildWsUrl,
+  createBrowserWsProtocols,
   DEFAULT_LANGUAGE,
   DEFAULT_WS_URL,
-  READY_TIMEOUT_MS,
-  STOP_DONE_TIMEOUT_MS,
+  FLUSH_RESULT_TIMEOUT_MS,
   SUPPORTED_LANGUAGES,
 } from './utils/constants';
+import { debugLog, errorLog, infoLog, warnLog } from './lib/debug';
 
 type SessionPhase =
   | 'idle'
   | 'requesting_mic'
   | 'connecting'
-  | 'ready'
   | 'listening'
   | 'processing'
   | 'stopping'
@@ -36,7 +38,7 @@ function toAudioState(phase: SessionPhase): AudioState {
   if (phase === 'listening') {
     return 'listening';
   }
-  if (phase === 'connecting' || phase === 'ready' || phase === 'processing') {
+  if (phase === 'connecting' || phase === 'processing') {
     return 'processing';
   }
   return 'idle';
@@ -51,6 +53,8 @@ function toUserFacingAudioError(error: unknown): string {
         return 'No microphone device was found.';
       case 'device_busy':
         return 'Microphone is busy in another application.';
+      case 'insecure_context':
+        return 'Microphone access requires HTTPS or localhost. On a remote server, forward port 80 locally and open http://localhost:8080, for example: ssh -L 8080:localhost:80 <user>@<server>.';
       case 'not_supported':
         return 'This browser does not support microphone streaming.';
       default:
@@ -65,10 +69,10 @@ function toUserFacingAudioError(error: unknown): string {
 }
 
 function App() {
-  const wsUrl = import.meta.env.VITE_WS_URL || DEFAULT_WS_URL;
+  const baseWsUrl = import.meta.env.VITE_WS_URL || DEFAULT_WS_URL;
   const [language, setLanguage] = useState<string>(DEFAULT_LANGUAGE);
-  const languageRef = useRef(language);
-  languageRef.current = language;
+  const wsUrl = useMemo(() => buildWsUrl(baseWsUrl, language), [baseWsUrl, language]);
+  const wsProtocols = useMemo(() => createBrowserWsProtocols(API_KEY), []);
 
   const {
     status: wsStatus,
@@ -76,13 +80,9 @@ function App() {
     connect,
     disconnect,
     sendJSON,
-    sendBinary,
     isConnected,
     onMessage,
-  } = useWebSocket(wsUrl, () => ({
-    decoder: DEFAULT_DECODER,
-    language: languageRef.current,
-  }));
+  } = useWebSocket(wsUrl, wsProtocols);
 
   const [phase, setPhase] = useState<SessionPhase>('idle');
   const [messages, setMessages] = useState<TranscriptItem[]>([]);
@@ -91,25 +91,18 @@ function App() {
   const [isMuted, setIsMuted] = useState(false);
 
   const phaseRef = useRef<SessionPhase>('idle');
-  const readyTimeoutRef = useRef<number | null>(null);
-  const stopDoneResolverRef = useRef<(() => void) | null>(null);
+  const flushResultResolverRef = useRef<(() => void) | null>(null);
   const isMutedRef = useRef(false);
   const isStreamingRef = useRef(false);
 
   useEffect(() => {
     phaseRef.current = phase;
+    infoLog('app', `phase=${phase}`);
   }, [phase]);
 
   useEffect(() => {
     isMutedRef.current = isMuted;
   }, [isMuted]);
-
-  const clearReadyTimeout = useCallback(() => {
-    if (readyTimeoutRef.current !== null) {
-      window.clearTimeout(readyTimeoutRef.current);
-      readyTimeoutRef.current = null;
-    }
-  }, []);
 
   const stopAudioCapture = useCallback(async () => {
     if (!isStreamingRef.current) {
@@ -124,15 +117,15 @@ function App() {
 
   const forceErrorState = useCallback(
     async (message: string) => {
-      clearReadyTimeout();
-      stopDoneResolverRef.current = null;
+      warnLog('app', `forcing error state message=${message}`);
+      flushResultResolverRef.current = null;
       setCurrentPartial('');
       setErrorMessage(message);
       setPhase('error');
       await stopAudioCapture();
       disconnect();
     },
-    [clearReadyTimeout, disconnect, stopAudioCapture]
+    [disconnect, stopAudioCapture]
   );
 
   const startAudioCapture = useCallback(async () => {
@@ -148,7 +141,13 @@ function App() {
           if (isMutedRef.current) {
             return;
           }
-          sendBinary(frame);
+          sendJSON({
+            audio: {
+              data: bytesToBase64(frame),
+              sample_rate: String(AUDIO_CONFIG.sampleRate),
+              encoding: AUDIO_CONFIG.encoding,
+            },
+          });
         },
       });
       isStreamingRef.current = true;
@@ -156,35 +155,29 @@ function App() {
     } catch (error) {
       await forceErrorState(toUserFacingAudioError(error));
     }
-  }, [forceErrorState, sendBinary]);
+  }, [forceErrorState, sendJSON]);
 
   useEffect(() => {
     const handleMessage = (message: ServerMessage) => {
       switch (message.type) {
-        case 'ready': {
-          clearReadyTimeout();
-          setErrorMessage('');
-          setPhase('ready');
-          void startAudioCapture();
-          break;
-        }
         case 'vad': {
+          debugLog('app', `vad event state=${message.data.event}`);
           if (phaseRef.current === 'stopping') {
             return;
           }
-          if (message.state === 'speech_start') {
+          if (message.data.event === 'speech_start') {
             setPhase('listening');
           } else {
             setPhase('processing');
           }
           break;
         }
-        case 'partial': {
-          setCurrentPartial(message.text || '');
-          break;
-        }
-        case 'final': {
-          const text = (message.text || '').trim();
+        case 'data': {
+          const text = (message.data.transcript || '').trim();
+          infoLog(
+            'app',
+            `data received chars=${text.length} audio_duration=${message.data.metrics.audio_duration} processing_latency=${message.data.metrics.processing_latency}`
+          );
           if (text) {
             setMessages((prev) => [
               ...prev,
@@ -197,25 +190,18 @@ function App() {
             ]);
           }
           setCurrentPartial('');
+          if (phaseRef.current === 'stopping' && flushResultResolverRef.current) {
+            flushResultResolverRef.current();
+            flushResultResolverRef.current = null;
+          }
           if (phaseRef.current !== 'stopping') {
-            setPhase('ready');
-          }
-          break;
-        }
-        case 'done': {
-          setCurrentPartial('');
-          if (stopDoneResolverRef.current) {
-            stopDoneResolverRef.current();
-            stopDoneResolverRef.current = null;
-          }
-          if (phaseRef.current === 'stopping') {
-            setPhase('idle');
+            setPhase('listening');
           }
           break;
         }
         case 'error': {
-          const detail = message.detail ? `: ${message.detail}` : '';
-          void forceErrorState(`Server error (${message.code})${detail}`);
+          errorLog('app', `server error code=${message.code}: ${message.message}`);
+          void forceErrorState(`Server error (${message.code}): ${message.message}`);
           break;
         }
       }
@@ -225,15 +211,12 @@ function App() {
     return () => {
       onMessage(null);
     };
-  }, [clearReadyTimeout, forceErrorState, onMessage, startAudioCapture]);
+  }, [forceErrorState, onMessage]);
 
   useEffect(() => {
-    if (wsStatus === 'connected' && phaseRef.current === 'connecting') {
-      if (readyTimeoutRef.current === null) {
-        readyTimeoutRef.current = window.setTimeout(() => {
-          void forceErrorState('Timed out waiting for server ready response.');
-        }, READY_TIMEOUT_MS);
-      }
+    if (wsStatus === 'connected' && phaseRef.current === 'connecting' && !isStreamingRef.current) {
+      setErrorMessage('');
+      void startAudioCapture();
     }
 
     if (wsStatus === 'disconnected') {
@@ -249,14 +232,16 @@ function App() {
       void stopAudioCapture();
       setPhase('connecting');
       setErrorMessage('Socket disconnected. Reconnecting...');
+      warnLog('app', 'socket disconnected, reconnecting');
       return;
     }
 
     if (wsStatus === 'error' && phaseRef.current !== 'error') {
       const reconnectMessage = wsError?.message || 'Socket connection failed.';
+      errorLog('app', reconnectMessage);
       void forceErrorState(reconnectMessage);
     }
-  }, [forceErrorState, stopAudioCapture, wsError, wsStatus]);
+  }, [forceErrorState, startAudioCapture, stopAudioCapture, wsError, wsStatus]);
 
   const handleStartListening = useCallback(async () => {
     if (phaseRef.current !== 'idle' && phaseRef.current !== 'error') {
@@ -280,23 +265,20 @@ function App() {
     try {
       await connect();
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Initial connection attempt failed. Retrying...';
+      const message = error instanceof Error ? error.message : 'Initial connection attempt failed. Retrying...';
       setErrorMessage(message);
     }
   }, [connect]);
 
-  const waitForDoneOrTimeout = useCallback(() => {
+  const waitForFlushResultOrTimeout = useCallback(() => {
     return new Promise<void>((resolve) => {
-      stopDoneResolverRef.current = resolve;
+      flushResultResolverRef.current = resolve;
       window.setTimeout(() => {
-        if (stopDoneResolverRef.current === resolve) {
-          stopDoneResolverRef.current = null;
+        if (flushResultResolverRef.current === resolve) {
+          flushResultResolverRef.current = null;
           resolve();
         }
-      }, STOP_DONE_TIMEOUT_MS);
+      }, FLUSH_RESULT_TIMEOUT_MS);
     });
   }, []);
 
@@ -311,20 +293,19 @@ function App() {
     }
 
     setPhase('stopping');
-    clearReadyTimeout();
     await stopAudioCapture();
 
     if (isConnected()) {
-      sendJSON({ type: 'stop' });
-      await waitForDoneOrTimeout();
+      sendJSON({ type: 'flush' });
+      await waitForFlushResultOrTimeout();
     }
 
-    stopDoneResolverRef.current = null;
+    flushResultResolverRef.current = null;
     disconnect();
     setCurrentPartial('');
     setErrorMessage('');
     setPhase('idle');
-  }, [clearReadyTimeout, disconnect, isConnected, sendJSON, stopAudioCapture, waitForDoneOrTimeout]);
+  }, [disconnect, isConnected, sendJSON, stopAudioCapture, waitForFlushResultOrTimeout]);
 
   const handleToggleMute = useCallback(() => {
     setIsMuted((prev) => !prev);
@@ -336,12 +317,11 @@ function App() {
 
   useEffect(() => {
     return () => {
-      clearReadyTimeout();
-      stopDoneResolverRef.current = null;
+      flushResultResolverRef.current = null;
       void stopAudioCapture();
       disconnect();
     };
-  }, [clearReadyTimeout, disconnect, stopAudioCapture]);
+  }, [disconnect, stopAudioCapture]);
 
   const statusText = useMemo(() => {
     switch (phase) {
@@ -351,14 +331,12 @@ function App() {
         return 'Waiting for microphone permission';
       case 'connecting':
         return 'Connecting socket';
-      case 'ready':
-        return 'Starting audio stream';
       case 'listening':
         return 'Listening';
       case 'processing':
         return 'Processing audio';
       case 'stopping':
-        return 'Stopping session';
+        return 'Flushing session';
       case 'error':
         return 'Session error';
       default:

@@ -1,7 +1,16 @@
 import webrtcvad
 
+
 class VADSegmenter:
-    def __init__(self, sample_rate=16000, frame_ms=20, mode=2, end_silence_ms=700, max_utt_ms=12000):
+    def __init__(
+        self,
+        sample_rate=16000,
+        frame_ms=20,
+        mode=2,
+        end_silence_ms=320,
+        keep_silence_ms=120,
+        max_utt_ms=12000,
+    ):
         if frame_ms not in (10, 20, 30):
             raise ValueError("frame_ms must be 10/20/30 for WebRTC VAD")
         self.vad = webrtcvad.Vad(mode)
@@ -9,6 +18,7 @@ class VADSegmenter:
         self.frame_ms = frame_ms
         self.frame_bytes = int(sample_rate * (frame_ms / 1000.0) * 2)
         self.end_silence_frames = max(1, end_silence_ms // frame_ms)
+        self.keep_silence_frames = min(self.end_silence_frames, max(0, keep_silence_ms // frame_ms))
         self.max_frames = max(1, max_utt_ms // frame_ms)
         self.reset()
 
@@ -17,6 +27,18 @@ class VADSegmenter:
         self.silence_frames = 0
         self.frames = 0
         self.buffer = bytearray()
+
+    def _ready_audio_bytes(self) -> bytes:
+        if not self.buffer:
+            return b""
+
+        trailing_silence_frames = max(0, self.silence_frames - self.keep_silence_frames)
+        trailing_silence_bytes = trailing_silence_frames * self.frame_bytes
+        if trailing_silence_bytes <= 0:
+            return bytes(self.buffer)
+        if trailing_silence_bytes >= len(self.buffer):
+            return b""
+        return bytes(self.buffer[:-trailing_silence_bytes])
 
     def push(self, frame: bytes):
         if len(frame) != self.frame_bytes:
@@ -39,7 +61,7 @@ class VADSegmenter:
                 if self.silence_frames >= self.end_silence_frames:
                     self.in_speech = False
                     events.append("speech_end")
-                    audio_ready = bytes(self.buffer)
+                    audio_ready = self._ready_audio_bytes()
                     self.reset()
 
         if self.frames >= self.max_frames and self.in_speech and self.buffer:
@@ -48,3 +70,11 @@ class VADSegmenter:
             self.reset()
 
         return events, audio_ready
+
+    def flush(self):
+        if not self.buffer:
+            self.reset()
+            return None
+        audio_ready = self._ready_audio_bytes()
+        self.reset()
+        return audio_ready

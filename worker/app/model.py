@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import importlib.util
 import json
 import logging
@@ -12,10 +13,13 @@ from huggingface_hub import snapshot_download
 import numpy as np
 import torch
 
-from .lid import LanguageDetector
+from .lid import BaseLanguageDetector, build_language_detector
 from .metrics import LID_DETECTED, LID_LAT, LID_REQS
 
 log = logging.getLogger("worker.model")
+
+MODEL_SAMPLE_RATE = 16000
+SUPPORTED_INPUT_SAMPLE_RATES = frozenset({8000, MODEL_SAMPLE_RATE})
 
 
 class WorkerModelError(Exception):
@@ -57,8 +61,16 @@ class ONNXIndicASRWorker:
         enable_lid: bool = False,
         lid_model_source: str = "speechbrain/lang-id-voxlingua107-ecapa",
         lid_model_dir: str = "models/lid_model",
+        lid_primary_provider: str = "",
+        lid_primary_source: str = "",
+        lid_primary_model_dir: str = "",
+        lid_fallback_provider: str = "",
+        lid_fallback_source: str = "",
+        lid_fallback_model_dir: str = "",
+        lid_confidence_threshold: float = 0.70,
         lid_cache_ttl_sec: int = 600,
         lid_cache_max_entries: int = 10000,
+        max_jobs: int = 2,
     ):
         if not model_name:
             raise RuntimeError("ASR_MODEL_NAME is required")
@@ -73,8 +85,16 @@ class ONNXIndicASRWorker:
         self.enable_lid = bool(enable_lid)
         self.lid_model_source = (lid_model_source or "speechbrain/lang-id-voxlingua107-ecapa").strip()
         self.lid_model_dir = (lid_model_dir or "models/lid_model").strip()
+        self.lid_primary_provider = (lid_primary_provider or "").strip().lower()
+        self.lid_primary_source = (lid_primary_source or self.lid_model_source).strip()
+        self.lid_primary_model_dir = (lid_primary_model_dir or self.lid_model_dir).strip()
+        self.lid_fallback_provider = (lid_fallback_provider or "").strip().lower()
+        self.lid_fallback_source = (lid_fallback_source or "").strip()
+        self.lid_fallback_model_dir = (lid_fallback_model_dir or "").strip()
+        self.lid_confidence_threshold = min(1.0, max(0.0, float(lid_confidence_threshold)))
         self.lid_cache_ttl_sec = max(int(lid_cache_ttl_sec), 1)
         self.lid_cache_max_entries = max(int(lid_cache_max_entries), 1)
+        self.max_jobs = max(int(max_jobs), 1)
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = None
@@ -83,18 +103,28 @@ class ONNXIndicASRWorker:
         self.snapshot_path = ""
         self.supported_languages: set[str] = set()
 
-        self.lid_detector: Optional[LanguageDetector] = None
+        self.lid_detector: Optional[BaseLanguageDetector] = None
         self.lid_available = False
         self.lid_last_error = ""
+        self.lid_last_provider = ""
+        self.lid_last_confidence: Optional[float] = None
+        self.lid_last_fallback_from = ""
+        self.lid_last_fallback_reason = ""
 
-        self._lid_cache: dict[tuple[str, str], tuple[str, float]] = {}
+        self._lid_cache: dict[str, tuple[str, float]] = {}
         self._lid_cache_lock = threading.Lock()
+        self._inference_executor = ThreadPoolExecutor(
+            max_workers=self.max_jobs,
+            thread_name_prefix="asr-infer",
+        )
+        self._inference_slots = asyncio.BoundedSemaphore(self.max_jobs)
 
     def load(self) -> None:
         log.info("Loading ONNX model: %s on %s", self.model_name, self.device)
         try:
             snapshot_path = snapshot_download(repo_id=self.model_name, token=self.hf_token)
             self.snapshot_path = snapshot_path
+            log.info("Model snapshot downloaded model=%s snapshot=%s", self.model_name, self.snapshot_path)
 
             model_onnx_path = Path(snapshot_path) / "model_onnx.py"
             self._patch_model_onnx_for_cpu_preprocessor(model_onnx_path)
@@ -122,8 +152,9 @@ class ONNXIndicASRWorker:
             self.ready = True
             self.init_error = ""
             log.info(
-                "Model loaded from snapshot=%s languages=%s",
+                "Model loaded from snapshot=%s default_language=%s languages=%s",
                 self.snapshot_path,
+                self.default_language,
                 ",".join(sorted(self.supported_languages)),
             )
         except Exception as exc:
@@ -240,21 +271,42 @@ class ONNXIndicASRWorker:
     def _initialize_lid(self) -> None:
         self.lid_available = False
         self.lid_last_error = ""
+        self.lid_last_provider = ""
+        self.lid_last_confidence = None
+        self.lid_last_fallback_from = ""
+        self.lid_last_fallback_reason = ""
         self.lid_detector = None
 
         if not self.enable_lid:
             return
 
-        detector = LanguageDetector(
-            source=self.lid_model_source,
-            savedir=self.lid_model_dir,
+        detector = build_language_detector(
+            primary_provider=self.lid_primary_provider,
+            primary_source=self.lid_primary_source,
+            primary_savedir=self.lid_primary_model_dir,
+            fallback_provider=self.lid_fallback_provider,
+            fallback_source=self.lid_fallback_source,
+            fallback_savedir=self.lid_fallback_model_dir,
+            confidence_threshold=self.lid_confidence_threshold,
         )
+        if detector is None:
+            self.lid_last_error = "no_lid_detector_configured"
+            log.warning("LID requested but no detector configuration was provided")
+            return
+
         self.lid_detector = detector
         self.lid_available = detector.load_model()
         self.lid_last_error = detector.last_error
 
         if self.lid_available:
-            log.info("LID enabled (cpu) source=%s", self.lid_model_source)
+            log.info(
+                "LID enabled (cpu) primary_provider=%s primary_source=%s fallback_provider=%s fallback_source=%s threshold=%.2f",
+                self.lid_primary_provider or "-",
+                self.lid_primary_source or "-",
+                self.lid_fallback_provider or "-",
+                self.lid_fallback_source or "-",
+                self.lid_confidence_threshold,
+            )
         else:
             log.warning(
                 "LID requested but unavailable; falling back to ASR default language. error=%s",
@@ -269,10 +321,11 @@ class ONNXIndicASRWorker:
             dec = "rnnt"
         return dec
 
-    def _cache_key(self, session_id: Optional[str], utterance_id: Optional[str]) -> Optional[tuple[str, str]]:
-        if not session_id or not utterance_id:
+    def _cache_key(self, session_id: Optional[str], utterance_id: Optional[str]) -> Optional[str]:
+        del utterance_id
+        if not session_id:
             return None
-        return session_id, utterance_id
+        return session_id
 
     def _prune_lid_cache_locked(self, now: float) -> None:
         expired = [
@@ -287,7 +340,7 @@ class ONNXIndicASRWorker:
             oldest_key = min(self._lid_cache.items(), key=lambda item: item[1][1])[0]
             self._lid_cache.pop(oldest_key, None)
 
-    def _get_cached_lid_language(self, key: tuple[str, str]) -> Optional[str]:
+    def _get_cached_lid_language(self, key: str) -> Optional[str]:
         now = time.time()
         with self._lid_cache_lock:
             self._prune_lid_cache_locked(now)
@@ -300,17 +353,23 @@ class ONNXIndicASRWorker:
                 return None
             return language
 
-    def _set_cached_lid_language(self, key: tuple[str, str], language: str) -> None:
+    def _set_cached_lid_language(self, key: str, language: str) -> None:
         now = time.time()
         with self._lid_cache_lock:
             self._lid_cache[key] = (language, now)
             self._prune_lid_cache_locked(now)
 
-    def _clear_cached_lid_language(self, key: Optional[tuple[str, str]]) -> None:
+    def _clear_cached_lid_language(self, key: Optional[str]) -> None:
         if key is None:
             return
         with self._lid_cache_lock:
             self._lid_cache.pop(key, None)
+
+    def _reset_last_lid_details(self) -> None:
+        self.lid_last_provider = ""
+        self.lid_last_confidence = None
+        self.lid_last_fallback_from = ""
+        self.lid_last_fallback_reason = ""
 
     def _validate_explicit_language(self, language: str) -> Optional[str]:
         lang = (language or "").strip().lower()
@@ -322,6 +381,32 @@ class ONNXIndicASRWorker:
             )
         return lang
 
+    def _prepare_model_audio(self, pcm16le: bytes, sample_rate: int) -> tuple[bytes, int]:
+        if sample_rate not in SUPPORTED_INPUT_SAMPLE_RATES:
+            supported_rates = ", ".join(str(rate) for rate in sorted(SUPPORTED_INPUT_SAMPLE_RATES))
+            raise ValueError(f"Only {supported_rates} Hz supported.")
+        if sample_rate == MODEL_SAMPLE_RATE or not pcm16le:
+            return pcm16le, sample_rate
+
+        audio = np.frombuffer(pcm16le, dtype=np.int16)
+        if audio.size == 0:
+            return b"", MODEL_SAMPLE_RATE
+
+        target_samples = max(1, int(round(audio.size * (MODEL_SAMPLE_RATE / float(sample_rate)))))
+        source_positions = np.arange(audio.size, dtype=np.float32)
+        target_positions = np.arange(target_samples, dtype=np.float32) * (sample_rate / float(MODEL_SAMPLE_RATE))
+        target_positions = np.clip(target_positions, 0.0, max(0.0, float(audio.size - 1)))
+        resampled = np.interp(target_positions, source_positions, audio.astype(np.float32))
+        pcm16le_resampled = np.clip(np.rint(resampled), -32768, 32767).astype(np.int16).tobytes()
+        log.info(
+            "Resampled audio from %sHz to %sHz input_bytes=%s output_bytes=%s",
+            sample_rate,
+            MODEL_SAMPLE_RATE,
+            len(pcm16le),
+            len(pcm16le_resampled),
+        )
+        return pcm16le_resampled, MODEL_SAMPLE_RATE
+
     def _resolve_language_for_request(
         self,
         requested_language: str,
@@ -330,8 +415,11 @@ class ONNXIndicASRWorker:
         session_id: Optional[str],
         utterance_id: Optional[str],
     ) -> tuple[str, str, Optional[str]]:
+        self._reset_last_lid_details()
         explicit = self._validate_explicit_language(requested_language)
         if explicit is not None:
+            self.lid_last_error = ""
+            log.info("Language resolved source=client requested=%s resolved=%s", requested_language, explicit)
             return explicit, "client", None
 
         if not self.enable_lid or not self.lid_available or self.lid_detector is None:
@@ -339,6 +427,15 @@ class ONNXIndicASRWorker:
             lid_error = None
             if self.enable_lid and not self.lid_available:
                 lid_error = self.lid_last_error or "lid_unavailable"
+            self.lid_last_fallback_reason = lid_error or ""
+            log.info(
+                "Language resolved source=auto_default requested=%s resolved=%s lid_enabled=%s lid_available=%s lid_error=%s",
+                requested_language,
+                self.default_language,
+                self.enable_lid,
+                self.lid_available,
+                lid_error or "-",
+            )
             return self.default_language, "auto_default", lid_error
 
         cache_key = self._cache_key(session_id, utterance_id)
@@ -346,6 +443,9 @@ class ONNXIndicASRWorker:
             cached = self._get_cached_lid_language(cache_key)
             if cached is not None:
                 LID_REQS.labels(status="cache_hit").inc()
+                self.lid_last_error = ""
+                self.lid_last_provider = "cache"
+                log.info("Language resolved source=lid_cached resolved=%s cache_key=%s", cached, cache_key)
                 return cached, "lid_cached", None
 
         t0 = time.time()
@@ -360,18 +460,54 @@ class ONNXIndicASRWorker:
             LID_LAT.observe(time.time() - t0)
             LID_REQS.labels(status="error").inc()
             self.lid_last_error = str(exc)
+            self.lid_last_fallback_reason = self.lid_last_error
+            log.warning(
+                "LID failed requested=%s fallback=%s error=%s",
+                requested_language,
+                self.default_language,
+                self.lid_last_error,
+            )
             return self.default_language, "lid_fallback_default", self.lid_last_error
+
+        self.lid_last_provider = detection.provider
+        self.lid_last_confidence = detection.confidence
+        self.lid_last_fallback_from = detection.fallback_from or ""
+        self.lid_last_fallback_reason = detection.fallback_reason or ""
+        self.lid_last_error = ""
 
         if detection.language and detection.language in self.supported_languages:
             LID_REQS.labels(status="used").inc()
             LID_DETECTED.labels(language=detection.language).inc()
-            self.lid_last_error = ""
             if cache_key is not None:
                 self._set_cached_lid_language(cache_key, detection.language)
+            log.info(
+                "Language resolved source=lid_detected resolved=%s provider=%s confidence=%s fallback_from=%s fallback_reason=%s raw_label=%s normalized_label=%s",
+                detection.language,
+                detection.provider,
+                f"{detection.confidence:.4f}" if detection.confidence is not None else "-",
+                detection.fallback_from or "-",
+                detection.fallback_reason or "-",
+                detection.raw_label,
+                detection.normalized_label,
+            )
             return detection.language, "lid_detected", None
 
         LID_REQS.labels(status="fallback").inc()
         fallback_reason = f"unmappable_label:{detection.normalized_label or detection.raw_label}"
+        if detection.fallback_reason:
+            fallback_reason = f"{detection.fallback_reason}; {fallback_reason}"
+        self.lid_last_fallback_reason = fallback_reason
+        log.warning(
+            "LID unmappable requested=%s fallback=%s provider=%s confidence=%s fallback_from=%s fallback_reason=%s raw_label=%s normalized_label=%s",
+            requested_language,
+            self.default_language,
+            detection.provider,
+            f"{detection.confidence:.4f}" if detection.confidence is not None else "-",
+            detection.fallback_from or "-",
+            fallback_reason,
+            detection.raw_label,
+            detection.normalized_label,
+        )
         return self.default_language, "lid_fallback_default", fallback_reason
 
     def transcribe_pcm16(
@@ -386,37 +522,56 @@ class ONNXIndicASRWorker:
     ) -> TranscribeResult:
         if not self.ready or self.model is None:
             raise ModelNotReadyError(self.init_error or "Model not initialized")
-        if sample_rate != 16000:
-            raise ValueError("Only 16kHz supported. Resample before sending.")
+
+        pcm16le_model, model_sample_rate = self._prepare_model_audio(pcm16le, sample_rate)
 
         dec = self._resolve_decoder(decoder)
         resolved_language, language_source, _ = self._resolve_language_for_request(
             requested_language=language,
-            pcm16le=pcm16le,
-            sample_rate=sample_rate,
+            pcm16le=pcm16le_model,
+            sample_rate=model_sample_rate,
             session_id=session_id,
             utterance_id=utterance_id,
         )
 
-        cache_key = self._cache_key(session_id, utterance_id)
         normalized_mode = (mode or "final").strip().lower()
 
-        if not pcm16le:
-            if normalized_mode == "final":
-                self._clear_cached_lid_language(cache_key)
+        if not pcm16le_model:
+            log.info(
+                "Transcribe skipped empty audio mode=%s session_id=%s utterance_id=%s language=%s source=%s",
+                normalized_mode,
+                session_id or "-",
+                utterance_id or "-",
+                resolved_language,
+                language_source,
+            )
             return TranscribeResult(text="", language=resolved_language, language_source=language_source)
 
-        wav = np.frombuffer(pcm16le, dtype=np.int16).astype(np.float32) / 32768.0
+        wav = np.frombuffer(pcm16le_model, dtype=np.int16).astype(np.float32) / 32768.0
         wav_t = torch.from_numpy(wav).unsqueeze(0)
+        audio_ms = int((len(pcm16le_model) / 2 / model_sample_rate) * 1000)
+        t0 = time.time()
+        log.info(
+            "Transcribe starting mode=%s session_id=%s utterance_id=%s bytes=%s model_bytes=%s sample_rate=%s model_sample_rate=%s audio_ms=%s decoder=%s requested_language=%s resolved_language=%s language_source=%s",
+            normalized_mode,
+            session_id or "-",
+            utterance_id or "-",
+            len(pcm16le),
+            len(pcm16le_model),
+            sample_rate,
+            model_sample_rate,
+            audio_ms,
+            dec,
+            language,
+            resolved_language,
+            language_source,
+        )
 
         try:
             with torch.inference_mode():
                 out = self.model(wav_t, resolved_language, decoding=dec)
         except Exception as exc:
             raise InferenceError(str(exc)) from exc
-        finally:
-            if normalized_mode == "final":
-                self._clear_cached_lid_language(cache_key)
 
         if isinstance(out, tuple):
             out = out[0]
@@ -424,6 +579,16 @@ class ONNXIndicASRWorker:
             out = out[0] if out else ""
 
         text = str(out or "").strip()
+        log.info(
+            "Transcribe finished mode=%s session_id=%s utterance_id=%s latency_ms=%s text_chars=%s resolved_language=%s language_source=%s",
+            normalized_mode,
+            session_id or "-",
+            utterance_id or "-",
+            int((time.time() - t0) * 1000),
+            len(text),
+            resolved_language,
+            language_source,
+        )
         return TranscribeResult(text=text, language=resolved_language, language_source=language_source)
 
     async def transcribe_with_timeout(
@@ -437,19 +602,36 @@ class ONNXIndicASRWorker:
         mode: str,
     ) -> TranscribeResult:
         timeout_s = self.inference_timeout_ms / 1000.0
+        loop = asyncio.get_running_loop()
         try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(
-                    self.transcribe_pcm16,
-                    pcm16le,
-                    sample_rate,
-                    decoder,
-                    language,
-                    session_id,
-                    utterance_id,
-                    mode,
-                ),
-                timeout=timeout_s,
+            await asyncio.wait_for(self._inference_slots.acquire(), timeout=timeout_s)
+        except asyncio.TimeoutError as exc:
+            raise InferenceTimeoutError(f"No inference slot available after {timeout_s}s") from exc
+
+        try:
+            future = self._inference_executor.submit(
+                self.transcribe_pcm16,
+                pcm16le,
+                sample_rate,
+                decoder,
+                language,
+                session_id,
+                utterance_id,
+                mode,
             )
+        except Exception:
+            self._inference_slots.release()
+            raise
+
+        def _release_slot(_future) -> None:
+            try:
+                loop.call_soon_threadsafe(self._inference_slots.release)
+            except RuntimeError:
+                pass
+
+        future.add_done_callback(_release_slot)
+
+        try:
+            return await asyncio.wait_for(asyncio.wrap_future(future), timeout=timeout_s)
         except asyncio.TimeoutError as exc:
             raise InferenceTimeoutError(f"Inference timed out after {timeout_s}s") from exc
