@@ -38,3 +38,18 @@ LID_LAT = Histogram(
 # Legacy/Unused (kept if needed or remove if safe)
 FALLBACKS = Counter("asr_worker_fallback_total", "Worker fallback count", ["reason"])
 MODEL_INIT = Counter("asr_worker_model_init_total", "Model initialization count", ["status"])
+CONTEXT_BIASING_REQUESTS = Counter(
+    "asr_worker_context_biasing_requests_total",
+    "Context-biasing requests by mode and status",
+    ["mode", "status"],
+)
+CONTEXT_BIASING_LATENCY = Histogram(
+    "asr_worker_context_biasing_latency_seconds",
+    "Context-biasing decode latency",
+    buckets=(0.02, 0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1, 1.5, 2, 3, 5, 8, 12),
+)
+CONTEXT_BIASING_FALLBACKS = Counter(
+    "asr_worker_context_biasing_fallback_total",
+    "Context-biasing fallback count",
+    ["reason"],
+)

@@ -165,13 +165,22 @@ export class WebSocketClient {
   }
 
   sendJSON(obj: JsonObject): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      debugLog('ws', 'sending json', obj);
-      this.ws.send(JSON.stringify(obj));
+    if (this.sendJSONIfConnected(obj)) {
       return;
     }
     debugLog('ws', 'queueing json while socket is not open', obj);
     this.jsonQueue.push(obj);
+  }
+
+  sendJSONIfConnected(obj: JsonObject): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      debugLog('ws', 'dropping json because socket is not open', obj);
+      return false;
+    }
+
+    debugLog('ws', 'sending json', obj);
+    this.ws.send(JSON.stringify(obj));
+    return true;
   }
 
   onMessage(cb: MessageHandler): void {

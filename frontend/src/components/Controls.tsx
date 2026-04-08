@@ -1,5 +1,7 @@
-import { Mic, RotateCcw, Square, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
+import { useRef } from 'react';
+import { Mic, RotateCcw, Square, Upload, Volume2, VolumeX, Wifi, WifiOff } from 'lucide-react';
 import type { ConnectionStatus } from '../types/ws';
+import { FILE_UPLOAD_ACCEPT } from '../utils/constants';
 
 type SessionPhase =
   | 'idle'
@@ -13,15 +15,19 @@ type SessionPhase =
 interface ControlsProps {
   phase: SessionPhase;
   isMuted: boolean;
+  isMuteDisabled?: boolean;
   language: string;
   languages: ReadonlyArray<Readonly<{ value: string; label: string }>>;
   connectionStatus: ConnectionStatus;
   statusText: string;
+  selectedFileName: string;
   onStartListening: () => void;
   onStopListening: () => void;
   onToggleMute: () => void;
   onLanguageChange: (language: string) => void;
   onReconnect: () => void;
+  onFileSelected: (file: File | null) => void;
+  onStartFileTranscription: () => void;
 }
 
 const ACTIVE_PHASES: SessionPhase[] = ['listening', 'processing'];
@@ -30,23 +36,40 @@ const BUSY_PHASES: SessionPhase[] = ['requesting_mic', 'connecting', 'stopping']
 export function Controls({
   phase,
   isMuted,
+  isMuteDisabled = false,
   language,
   languages,
   connectionStatus,
   statusText,
+  selectedFileName,
   onStartListening,
   onStopListening,
   onToggleMute,
   onLanguageChange,
   onReconnect,
+  onFileSelected,
+  onStartFileTranscription,
 }: ControlsProps) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isActiveSession = ACTIVE_PHASES.includes(phase);
   const isBusy = BUSY_PHASES.includes(phase);
   const showReconnect = phase === 'error' || connectionStatus === 'error';
   const isConnected = connectionStatus === 'connected';
+  const canUseFileControls = !isActiveSession && !isBusy && phase !== 'stopping';
 
   return (
     <div className="flex flex-col gap-4 items-center py-6">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={FILE_UPLOAD_ACCEPT}
+        className="hidden"
+        onChange={(event) => {
+          onFileSelected(event.target.files?.[0] ?? null);
+          event.target.value = '';
+        }}
+      />
+
       <div className="flex gap-3 flex-wrap justify-center">
         {!isActiveSession && phase !== 'stopping' ? (
           <button
@@ -70,7 +93,7 @@ export function Controls({
 
         <button
           onClick={onToggleMute}
-          disabled={isBusy}
+          disabled={isBusy || isMuteDisabled}
           className={`p-3 rounded-lg font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
             isMuted ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
@@ -89,6 +112,29 @@ export function Controls({
             Reconnect
           </button>
         )}
+      </div>
+
+      <div className="flex gap-3 flex-wrap justify-center">
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!canUseFileControls}
+          className="flex items-center gap-2 px-4 py-3 bg-white text-purple-700 border border-purple-300 rounded-lg font-medium hover:bg-purple-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed transition-colors"
+        >
+          <Upload className="w-4 h-4" />
+          Choose WAV
+        </button>
+
+        <button
+          onClick={onStartFileTranscription}
+          disabled={!selectedFileName || !canUseFileControls}
+          className="px-4 py-3 bg-purple-100 text-purple-700 rounded-lg font-medium hover:bg-purple-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+        >
+          Transcribe WAV
+        </button>
+      </div>
+
+      <div className="text-xs text-gray-500">
+        {selectedFileName ? `Selected WAV: ${selectedFileName}` : 'Choose a .wav recording to test transcription'}
       </div>
 
       <div className="flex items-center gap-2 text-sm">

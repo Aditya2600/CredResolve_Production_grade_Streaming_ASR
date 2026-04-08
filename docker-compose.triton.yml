@@ -1,0 +1,41 @@
+services:
+  worker:
+    environment:
+      - ASR_BACKEND=${ASR_BACKEND:-triton}
+      - ASR_SUPPORTED_LANGS=${ASR_SUPPORTED_LANGS:-hi,en,bn,ta,te}
+      - TRITON_URL=${TRITON_URL:-triton:8000}
+      - TRITON_MODEL_NAME=${TRITON_MODEL_NAME:-indic_asr}
+      - TRITON_MODEL_VERSION=${TRITON_MODEL_VERSION:-}
+    depends_on:
+      triton:
+        condition: service_healthy
+
+  triton:
+    build:
+      context: .
+      dockerfile: triton/Dockerfile
+      args:
+        TRITON_SERVER_IMAGE: ${TRITON_SERVER_IMAGE:-nvcr.io/nvidia/tritonserver:24.09-py3}
+    restart: unless-stopped
+    environment:
+      - ASR_MODEL_NAME=${ASR_MODEL_NAME}
+      - HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN}
+      - HF_TOKEN=${HUGGINGFACE_HUB_TOKEN}
+      - HF_HOME=${HF_HOME}
+      - TRITON_FRAME_DURATION_MS=${TRITON_FRAME_DURATION_MS:-0.08}
+    ports:
+      - "8100:8000"
+      - "8101:8001"
+      - "8102:8002"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import sys, urllib.request; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/v2/health/ready').getcode() == 200 else sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: ["gpu"]

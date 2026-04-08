@@ -47,21 +47,24 @@ services:
       - '--path.sysfs=/host/sys'
       - '--path.rootfs=/rootfs'
 
-  # Optional DCGM Exporter for GPU metrics
-  # dcgm-exporter:
-  #   image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.5-3.2.0
-  #   ports:
-  #     - "9400:9400"
-  #   environment:
-  #     - DCGM_EXPORTER_LISTEN=:9400
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: all
-  #             capabilities: [gpu]
-  #   restart: unless-stopped
+
+  dcgm-exporter:
+    image: nvidia/dcgm-exporter:4.5.2-4.8.1-distroless
+    user: "0:0"
+    cap_add:
+      - SYS_ADMIN
+    ports:
+      - "9400:9400"
+    environment:
+      - DCGM_EXPORTER_LISTEN=:9400
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
 
 
   worker:
@@ -80,6 +83,17 @@ services:
       - ASR_LID_MODEL_DIR=${ASR_LID_MODEL_DIR}
       - ASR_LID_CACHE_TTL_SEC=${ASR_LID_CACHE_TTL_SEC}
       - ASR_LID_CACHE_MAX_ENTRIES=${ASR_LID_CACHE_MAX_ENTRIES}
+      - ASR_CONTEXT_BIASING_MODE=${ASR_CONTEXT_BIASING_MODE:-disabled}
+      - ASR_CONTEXT_BIASING_METHOD=${ASR_CONTEXT_BIASING_METHOD:-ctc_ws}
+      - ASR_CONTEXT_BIASING_NEMO_SOURCE=${ASR_CONTEXT_BIASING_NEMO_SOURCE:-}
+      - ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS=${ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS:-}
+      - ASR_CONTEXT_BIASING_PHRASES_DIR=${ASR_CONTEXT_BIASING_PHRASES_DIR:-}
+      - ASR_CONTEXT_BIASING_TIMEOUT_MS=${ASR_CONTEXT_BIASING_TIMEOUT_MS:-4000}
+      - ASR_CONTEXT_BIASING_DEVICE=${ASR_CONTEXT_BIASING_DEVICE:-cuda}
+      - ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE=${ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE:-1.0}
+      - ASR_CONTEXT_BIASING_BEAM_THRESHOLD=${ASR_CONTEXT_BIASING_BEAM_THRESHOLD:-8.0}
+      - ASR_CONTEXT_BIASING_CONTEXT_SCORE=${ASR_CONTEXT_BIASING_CONTEXT_SCORE:-3.0}
+      - ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT=${ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT:-0.6}
       - WORKER_MAX_JOBS=${WORKER_MAX_JOBS}
       - HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN}
       - HF_TOKEN=${HUGGINGFACE_HUB_TOKEN}

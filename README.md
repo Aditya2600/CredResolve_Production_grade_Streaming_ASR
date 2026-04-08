@@ -17,6 +17,32 @@ Client/Telephony → Nginx (TLS + basic limits) → gateway (WS) → worker (HTT
 
 ---
 
+## Triton Production Serving
+
+For production-style serving, this repo now supports running the HTTP worker as a thin adapter in front of NVIDIA Triton Inference Server.
+
+Bring up the Triton-backed stack with the compose overlay:
+
+```bash
+cp .env.example .env
+# Required in Triton mode so the worker can validate explicit language requests.
+export ASR_SUPPORTED_LANGS=hi,en,bn,ta,te
+docker compose -f docker-compose.yml -f docker-compose.triton.yml up --build -d
+```
+
+What changes in this mode:
+- Triton serves the ASR model from `triton/model_repository/indic_asr/config.pbtxt`.
+- The worker keeps the existing `/v1/transcribe` contract, LID flow, and fallback behavior.
+- The worker forwards normalized audio plus `language` and `decoder` to Triton over HTTP.
+- Triton listens on host ports `8100` (HTTP), `8101` (gRPC), and `8102` (metrics).
+
+Important constraints:
+- `ASR_SUPPORTED_LANGS` must be set in Triton mode because the remote model does not expose vocab metadata back to the worker.
+- The Triton image is pinned via `TRITON_SERVER_IMAGE` in `.env.example`; adjust it if your fleet standard differs.
+- The Triton backend currently uses a Python backend model that wraps the existing Hugging Face ONNX bundle, so this is operationally cleaner than the old single-process worker but not yet a pure TensorRT/ensemble deployment.
+
+---
+
 ## Quickstart (Docker Compose on EC2)
 
 ```bash
@@ -94,6 +120,88 @@ See [docs/websocket_auth_migration.md](docs/websocket_auth_migration.md) for the
     - `lid_cached`: Used cached result from previous utterance in session.
     - `auto_default` / `lid_fallback_*`: Fallback to default language.
 
+Quick offline LID benchmark:
+
+1. Create a manifest with one labeled clip per row, for example:
+
+```json
+{"audio_path":"recordings/clip_001.wav","language":"hi"}
+{"audio_path":"recordings/clip_002.wav","language":"te"}
+```
+
+2. Run the worker with `ASR_ENABLE_LID=true`.
+3. Evaluate against the worker directly:
+
+```bash
+python tools/eval_lid.py \
+  --manifest artifacts/lid_eval_manifest.jsonl \
+  --worker-url http://localhost:8001/v1/transcribe \
+  --target-sample-rate 16000 \
+  --out-summary-json artifacts/lid_eval_summary.json \
+  --out-results-jsonl artifacts/lid_eval_results.jsonl
+```
+
+The tool sends every row with `x-language: auto`, generates unique session IDs by default so cache reuse does not skew the benchmark, and reports accuracy, macro precision/recall/F1, confusion counts, fallback rate, and latency percentiles.
+
+---
+
+## Experimental Context Biasing
+
+This repo now includes a feature-flagged, worker-side NeMo context-biasing path for domain terms.
+
+Important behavior:
+
+- the public websocket contract does not change
+- the existing Triton/ONNX baseline stays the default path
+- context biasing applies only when the request language is explicit and a matching phrase file exists
+- `language-code=auto` stays on the baseline path in v1
+
+Modes:
+
+- `ASR_CONTEXT_BIASING_MODE=disabled`: baseline only
+- `ASR_CONTEXT_BIASING_MODE=shadow`: return baseline transcript, but run NeMo context biasing in the worker for evaluation/logging
+- `ASR_CONTEXT_BIASING_MODE=active`: return the context-biased transcript when the second decode succeeds; otherwise fall back to baseline
+
+Phrase file format:
+
+- one file per language, for example `context_biasing/phrases/hi.txt`
+- underscore-delimited variants per line
+- first token is the canonical term
+- remaining tokens are accepted variants or spellings
+
+Example `hi.txt`:
+
+```text
+loan id_loan id_लोन आईडी
+cred resolve_credresolve_क्रेड रिजॉल्व
+```
+
+To run the NeMo-enabled worker image without changing the default stack:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.triton.yml \
+  -f docker-compose.context_biasing.yml \
+  up --build -d
+```
+
+Typical envs:
+
+- `ASR_CONTEXT_BIASING_MODE=shadow`
+- `ASR_CONTEXT_BIASING_METHOD=ctc_ws`
+- `ASR_CONTEXT_BIASING_NEMO_SOURCE=<your .nemo path or pretrained model name>`
+- `ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS=<EncDecCTCModelBPE|EncDecRNNTBPEModel|...>`
+- `ASR_CONTEXT_BIASING_PHRASES_DIR=/srv/context_biasing/phrases`
+
+Evaluation workflow:
+
+1. Run a baseline IndicVoices evaluation and save `--out-summary-json` plus `--out-errors-jsonl`.
+2. Restart with the candidate configuration and rerun the same evaluation.
+3. Compare the two iterations with `tools/compare_indicvoices_iterations.py`.
+4. Add `--phrases-file context_biasing/phrases/hi.txt` to score keyword precision/recall/F1 for the same domain lexicon used at decode time.
+5. Use the comparison summary JSON to check WER deltas plus client/server latency deltas.
+
 ---
 
 ## Key knobs (traffic management)
@@ -122,7 +230,22 @@ See [docs/websocket_auth_migration.md](docs/websocket_auth_migration.md) for the
 - `ASR_LID_MODEL_DIR`
 - `ASR_LID_CACHE_TTL_SEC`
 - `ASR_LID_CACHE_MAX_ENTRIES`
+- `ASR_CONTEXT_BIASING_MODE`
+- `ASR_CONTEXT_BIASING_METHOD`
+- `ASR_CONTEXT_BIASING_NEMO_SOURCE`
+- `ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS`
+- `ASR_CONTEXT_BIASING_PHRASES_DIR`
+- `ASR_CONTEXT_BIASING_TIMEOUT_MS`
+- `ASR_CONTEXT_BIASING_DEVICE`
+- `ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE`
+- `ASR_CONTEXT_BIASING_BEAM_THRESHOLD`
+- `ASR_CONTEXT_BIASING_CONTEXT_SCORE`
+- `ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT`
 - `ASR_SUPPORTED_LANGS`
+- `ASR_BACKEND`
+- `TRITON_URL`
+- `TRITON_MODEL_NAME`
+- `TRITON_MODEL_VERSION`
 
 ---
 
@@ -175,6 +298,54 @@ monitor with:
 ./tools/prom_query.sh 'sum(asr_ws_connections)'
 ```
 
+### Example Benchmark Observation
+
+Observed on April 2, 2026 with:
+- `ASR_BACKEND=local`
+- `GATEWAY_MAX_INFLIGHT_WORKER=2`
+- `WORKER_MAX_JOBS=2`
+- `recordings/new_test_recording_16_28_mono_8k.wav` (12s, 8kHz, mono PCM16)
+
+Important: `tools/load_ws.py` reports session duration, which includes:
+- real-time audio streaming time
+- the configured `--timeout-sec` silence wait after `flush`
+
+| Test Scenario | Clients | `--timeout-sec` | Sessions Established | Successful Completions | Failures | Avg Session Duration | P95 Session Duration | Observation |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Single-user baseline | 1 | 2 | 1 | 1 | 0 | 14.47s | - | End-to-end path works reliably for one client |
+| Burst concurrency, short post-flush wait | 50 | 2 | 50 | 8 | 42 | 15.50s | 16.16s | All 50 clients connected, but most timed out waiting for a final transcript |
+| Burst concurrency, extended post-flush wait | 50 | 15 | 50 | 50 | 0 | 38.45s | 38.82s | All 50 clients completed when enough queue time was allowed |
+
+Takeaways:
+- The system supported `50` simultaneous WebSocket client sessions in this test.
+- The system did not process `50` transcriptions in parallel under this configuration.
+- With gateway and worker concurrency both capped at `2`, most requests were queued before transcription.
+
+### IndicVoices WER Benchmark Tiers
+
+For `ai4bharat/IndicVoices`, config `hindi`:
+- `train`: `383004` rows
+- `valid`: `4740` rows
+- average words per row: `15.47`
+- average audio duration per row: `5.55s`
+- total audio in `valid`: `7.31` hours
+
+Recommended benchmark sizes:
+
+| Tier | Rows | Approx. Audio | Best Use |
+|---|---:|---:|---|
+| Smoke | 5 | 28s | Validate setup and websocket path |
+| Development | 500 | 46.3 min | Fast iteration and error analysis |
+| Confirmation | 1000 | 92.6 min | Compare close changes with more confidence |
+| Full valid | 4740 | 7.31 h | Final reporting |
+
+Why `500` first:
+- It is already about `10.5%` of the Hindi `valid` split.
+- It is usually enough to expose the main failure modes and provide a stable directional WER.
+- `1000` nearly doubles runtime and serving cost for much less added debugging value when iterating through websocket + gateway + Triton.
+
+See [docs/indicvoices_eval.md](/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/docs/indicvoices_eval.md) for the full runbook, monitoring queries, and output interpretation.
+
 ```bash
 # Gateway
 cd gateway
@@ -186,3 +357,36 @@ python -m app.main
 ```
 
 #sample
+
+## Export A NeMo ASR Checkpoint To ONNX
+
+The serving worker already consumes an ONNX bundle, but this repo can now export a NeMo ASR checkpoint into a standard `.onnx` artifact for offline conversion and deployment workflows.
+
+Install the export-only dependencies:
+
+```bash
+pip install -r worker/requirements-export.txt
+```
+
+Export from a local `.nemo` checkpoint:
+
+```bash
+python tools/export_nemo_asr_to_onnx.py \
+  --source /path/to/model.nemo \
+  --output artifacts/nemo_asr/model.onnx
+```
+
+Export from a named NeMo pretrained model:
+
+```bash
+python tools/export_nemo_asr_to_onnx.py \
+  --source nvidia/parakeet-ctc-1.1b \
+  --model-class EncDecCTCModelBPE \
+  --output artifacts/nemo_asr/model.onnx
+```
+
+Notes:
+- The exporter writes a sibling metadata file at `<output>.metadata.json`.
+- Validation runs by default through `onnx.checker`. Use `--no-validate` to skip it.
+- `--use-dynamo` is optional. The default path prefers the legacy exporter because it is generally steadier for ASR ONNX export.
+- If you install NeMo on a fresh machine, NVIDIA recommends system audio deps such as `ffmpeg` and `libsndfile1`.

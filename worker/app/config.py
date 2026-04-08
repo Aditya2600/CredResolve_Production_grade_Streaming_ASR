@@ -1,5 +1,7 @@
 import os
 
+from .context_biasing import normalize_context_biasing_method, normalize_context_biasing_mode
+
 
 def getenv_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
@@ -62,10 +64,14 @@ def infer_lid_provider(source: str, default: str = "speechbrain") -> str:
 
 
 ASR_MODEL_NAME = getenv_str("ASR_MODEL_NAME", "")
+ASR_BACKEND = getenv_str("ASR_BACKEND", "local").lower()
 ASR_DECODER = getenv_str("ASR_DECODER", "rnnt")
 ASR_INFERENCE_TIMEOUT_MS = getenv_int("ASR_INFERENCE_TIMEOUT_MS", 4000)
 ASR_DEFAULT_LANGUAGE = getenv_str("ASR_DEFAULT_LANGUAGE", "hi")
 ASR_SUPPORTED_LANGS = getenv_csv("ASR_SUPPORTED_LANGS")
+TRITON_URL = getenv_str("TRITON_URL", "triton:8000")
+TRITON_MODEL_NAME = getenv_str("TRITON_MODEL_NAME", "indic_asr")
+TRITON_MODEL_VERSION = getenv_str("TRITON_MODEL_VERSION", "")
 ASR_ENABLE_LID = getenv_bool("ASR_ENABLE_LID", False)
 ASR_LID_MODEL_SOURCE = getenv_str("ASR_LID_MODEL_SOURCE", "speechbrain/lang-id-voxlingua107-ecapa")
 ASR_LID_MODEL_DIR = getenv_str("ASR_LID_MODEL_DIR", "models/lid_model")
@@ -114,6 +120,26 @@ ASR_LID_FALLBACK_MODEL_DIR = (
 ASR_LID_CONFIDENCE_THRESHOLD = min(1.0, max(0.0, getenv_float("ASR_LID_CONFIDENCE_THRESHOLD", 0.70)))
 ASR_LID_CACHE_TTL_SEC = max(1, getenv_int("ASR_LID_CACHE_TTL_SEC", 600))
 ASR_LID_CACHE_MAX_ENTRIES = max(1, getenv_int("ASR_LID_CACHE_MAX_ENTRIES", 10000))
+ASR_CONTEXT_BIASING_MODE = normalize_context_biasing_mode(getenv_str("ASR_CONTEXT_BIASING_MODE", "disabled"))
+ASR_CONTEXT_BIASING_METHOD = normalize_context_biasing_method(getenv_str("ASR_CONTEXT_BIASING_METHOD", "ctc_ws"))
+ASR_CONTEXT_BIASING_NEMO_SOURCE = getenv_str("ASR_CONTEXT_BIASING_NEMO_SOURCE", "")
+ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS = getenv_str("ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS", "")
+ASR_CONTEXT_BIASING_PHRASES_DIR = getenv_str("ASR_CONTEXT_BIASING_PHRASES_DIR", "")
+ASR_CONTEXT_BIASING_TIMEOUT_MS = max(
+    1,
+    getenv_int("ASR_CONTEXT_BIASING_TIMEOUT_MS", ASR_INFERENCE_TIMEOUT_MS),
+)
+ASR_CONTEXT_BIASING_DEVICE = getenv_str("ASR_CONTEXT_BIASING_DEVICE", "cuda")
+ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE = min(
+    1.0,
+    max(0.0, getenv_float("ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE", 1.0)),
+)
+ASR_CONTEXT_BIASING_BEAM_THRESHOLD = max(0.0, getenv_float("ASR_CONTEXT_BIASING_BEAM_THRESHOLD", 8.0))
+ASR_CONTEXT_BIASING_CONTEXT_SCORE = max(0.0, getenv_float("ASR_CONTEXT_BIASING_CONTEXT_SCORE", 3.0))
+ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT = max(
+    0.0,
+    getenv_float("ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT", 0.6),
+)
 HUGGINGFACE_HUB_TOKEN = getenv_str("HUGGINGFACE_HUB_TOKEN", getenv_str("HF_TOKEN", ""))
 WORKER_MAX_JOBS = getenv_int("WORKER_MAX_JOBS", 2)
 LOG_LEVEL = getenv_str("LOG_LEVEL", "INFO")

@@ -60,4 +60,9 @@ weights/
 *.bin
 *.nemo
 
+# Local datasets / experiment outputs
+artifacts/
+data/
+recordings/
+
 worker/hub/

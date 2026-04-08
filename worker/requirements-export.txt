@@ -1,0 +1,4 @@
+-r requirements.txt
+Cython==3.0.11
+onnx==1.16.2
+nemo_toolkit[asr]==2.4.1

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import re
+import unicodedata
 from pathlib import Path
 
 
@@ -56,7 +58,10 @@ def edit_distance(a: list[str], b: list[str]) -> tuple[int, int, int]:
 
 
 def normalize(text: str) -> list[str]:
-    return text.strip().split()
+    text = unicodedata.normalize("NFKC", text or "")
+    text = "".join(" " if unicodedata.category(ch).startswith("P") else ch for ch in text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text.split() if text else []
 
 
 def load_pairs_from_tsv(path: Path) -> list[tuple[str, str]]:

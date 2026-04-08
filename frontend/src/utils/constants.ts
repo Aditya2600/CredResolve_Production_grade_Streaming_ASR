@@ -49,6 +49,10 @@ export const DEFAULT_MODEL = 'credresolve:v1';
 export const DEFAULT_MODE = 'transcribe';
 export const DEFAULT_LANGUAGE = 'hi';
 export const FLUSH_RESULT_TIMEOUT_MS = 1200;
+export const FILE_UPLOAD_FRAME_INTERVAL_MS = 10;
+export const FILE_RESULT_IDLE_TIMEOUT_MS = 900;
+export const FILE_RESULT_TOTAL_TIMEOUT_MS = 4000;
+export const FILE_UPLOAD_ACCEPT = '.wav,audio/wav,audio/x-wav,audio/wave';
 export const MAX_RETRIES = 3;
 
 export const SUPPORTED_LANGUAGES = [

@@ -33,8 +33,10 @@ Supporting services:
 - `redis` for connection admission and rate limiting
 - `prometheus` + `grafana` + `node-exporter` for monitoring
 - `frontend` for browser-based testing and demo usage
+- optional `triton` for production-style ASR model serving behind the worker API
 
 Primary deployment wiring lives in `docker-compose.yml`.
+Triton-specific production overlay wiring lives in `docker-compose.triton.yml`.
 
 ## 3. Service Responsibilities
 
@@ -78,15 +80,20 @@ Responsibilities:
 - ASR model download/load on startup
 - supported-language resolution
 - optional LID when requested language is `auto`
+- optional NeMo context biasing for explicit-language requests with deployment-managed phrase files
 - audio preparation and resampling
 - inference timeout handling
 - threadpool-based inference execution
 - soft fallback responses instead of hard process failures
+- offline NeMo-to-ONNX export through `tools/export_nemo_asr_to_onnx.py`
 
 Important files:
 
 - `worker/app/main.py`: `/v1/transcribe`, worker concurrency, fallback behavior
 - `worker/app/model.py`: model load, language resolution, inference execution
+- `worker/app/context_biasing.py`: phrase-file parsing, keyword accounting, and optional NeMo context-biasing runtime
+- `worker/app/nemo_export.py`: reusable NeMo ASR export helpers and CLI entrypoint logic
+- `worker/app/triton.py`: Triton client-backed worker mode
 - `worker/app/lid.py`: language ID providers and fallback chain
 - `worker/app/config.py`: worker runtime knobs
 
@@ -155,6 +162,7 @@ Top-level directories you will touch most often:
 
 - `gateway/`: public WebSocket service
 - `worker/`: GPU inference service
+- `triton/`: Triton image and model repository for production serving
 - `frontend/`: browser demo/test UI
 - `docs/`: project docs
 - `tools/`: smoke-test and evaluation helpers
@@ -171,6 +179,8 @@ Recommended first-read order for a new engineer:
 5. `worker/app/main.py`
 6. `worker/app/model.py`
 7. `docker-compose.yml`
+
+If you need to produce a standalone ONNX file from a NeMo checkpoint, install `worker/requirements-export.txt` and run `python tools/export_nemo_asr_to_onnx.py --help`.
 
 ## 7. Environment and Key Runtime Knobs
 
@@ -210,6 +220,17 @@ Most important worker knobs:
 - `ASR_LID_FALLBACK_SOURCE`
 - `ASR_LID_FALLBACK_MODEL_DIR`
 - `ASR_LID_CONFIDENCE_THRESHOLD`
+- `ASR_CONTEXT_BIASING_MODE`
+- `ASR_CONTEXT_BIASING_METHOD`
+- `ASR_CONTEXT_BIASING_NEMO_SOURCE`
+- `ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS`
+- `ASR_CONTEXT_BIASING_PHRASES_DIR`
+- `ASR_CONTEXT_BIASING_TIMEOUT_MS`
+- `ASR_CONTEXT_BIASING_DEVICE`
+- `ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE`
+- `ASR_CONTEXT_BIASING_BEAM_THRESHOLD`
+- `ASR_CONTEXT_BIASING_CONTEXT_SCORE`
+- `ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT`
 - `ASR_LID_CACHE_TTL_SEC`
 - `ASR_LID_CACHE_MAX_ENTRIES`
 - `WORKER_MAX_JOBS`
@@ -231,6 +252,17 @@ cp .env.example .env
 docker compose up --build -d
 docker compose logs -f gateway
 docker compose logs -f worker
+```
+
+Triton-backed startup:
+
+```bash
+cp .env.example .env
+# In Triton mode the worker needs an explicit language allowlist.
+ASR_SUPPORTED_LANGS=hi,en,bn,ta,te \
+docker compose -f docker-compose.yml -f docker-compose.triton.yml up --build -d
+docker compose -f docker-compose.yml -f docker-compose.triton.yml logs -f triton
+docker compose -f docker-compose.yml -f docker-compose.triton.yml logs -f worker
 ```
 
 Service ports:
@@ -492,6 +524,16 @@ Start in:
 - `.env.example`
 - worker tests under `worker/tests/`
 
+### Change context biasing behavior
+
+Start in:
+
+- `worker/app/context_biasing.py`
+- `worker/app/main.py`
+- `.env.example`
+- `docker-compose.context_biasing.yml`
+- `docs/indicvoices_eval.md`
+
 ### Add TTS or voice-agent behavior
 
 Current status:
@@ -515,7 +557,114 @@ If TTS is added later, decide clearly whether it belongs:
 
 These constraints are important when setting expectations with product or operations teams.
 
-## 17. Suggested Day-1 KT Walkthrough
+## 17. IndicVoices Evaluation Baseline and Iteration Comparison
+
+Current saved full-run Hindi baseline artifact:
+
+- summary: `artifacts/indicvoices_hindi_valid_full_summary.json`
+- artifact: `artifacts/indicvoices_hindi_valid_full_errors.jsonl`
+- split: `ai4bharat/IndicVoices`, config `hindi`, split `valid`
+- samples: `4740`
+- processed: `4740`
+- failures: `0`
+- reference words: `73343`
+- substitutions: `8656`
+- deletions: `1801`
+- insertions: `1423`
+- WER: `0.1620`
+- WER percent: `16.20`
+
+Important interpretation note:
+
+- The raw baseline above includes `dataset-noise` rows where the reference contains `<unintelligible>`.
+- It also includes `infra-failure` rows where the returned hypothesis contains `worker-fallback`.
+- The evaluator now reports these separately and also emits a `clean_wer` / `clean_wer_percent` that excludes both buckets from ASR-only model-quality reporting.
+
+This baseline is now available as both a compact summary JSON and the original per-sample JSONL, so it remains usable even if the original console log is unavailable.
+
+To rerun the full benchmark against the current stack and save a structured summary:
+
+```bash
+python tools/eval_indicvoices_wer.py \
+  --ws ws://localhost/ws/stt \
+  --api-key dev \
+  --dataset-config hindi \
+  --split valid \
+  --language hi \
+  --limit 4740 \
+  --out-tsv artifacts/indicvoices_hindi_valid_full_iter2.tsv \
+  --out-summary-json artifacts/indicvoices_hindi_valid_full_iter2_summary.json \
+  --out-errors-jsonl artifacts/indicvoices_hindi_valid_full_iter2_errors.jsonl \
+  --top-errors 20
+```
+
+To mine trainable examples from the saved `valid` error profile without contaminating the benchmark split:
+
+```bash
+python tools/mine_indicvoices_train_examples.py \
+  --errors-jsonl artifacts/indicvoices_hindi_valid_full_errors.jsonl \
+  --dataset-config hindi \
+  --split train \
+  --scan-limit 50000 \
+  --per-bucket-limit 300 \
+  --normal-limit 300 \
+  --export-dir artifacts/indicvoices_hindi_train_mined
+```
+
+This exports:
+
+- a `summary.json` with bucket counts and anchor phrases
+- a `manifest.jsonl` for fine-tuning prep
+- local `audio/` wavs for the mined IndicVoices train samples
+
+Optional:
+
+- pass `--phrases-file context_biasing/phrases/hi.txt` to mine entity/domain terms
+- pass `--call-manifest-jsonl <path>` to merge labeled call-recording examples into the same manifest
+
+To compare the first and second iterations and mark which samples were wrong in both:
+
+```bash
+python tools/compare_indicvoices_iterations.py \
+  --first-errors-jsonl artifacts/indicvoices_hindi_valid_full_errors.jsonl \
+  --second-errors-jsonl artifacts/indicvoices_hindi_valid_full_iter2_errors.jsonl \
+  --out-summary-json artifacts/indicvoices_hindi_valid_comparison_summary.json \
+  --out-comparison-jsonl artifacts/indicvoices_hindi_valid_comparison.jsonl \
+  --out-repeated-error-indices artifacts/indicvoices_hindi_valid_repeated_error_indices.txt \
+  --top-persistent 20
+```
+
+The comparison output classifies each sample as one of:
+
+- `error_both`: wrong in first and second iteration
+- `fixed_in_second`: wrong in first, clean in second
+- `regressed_in_second`: clean in first, wrong in second
+- `clean_both`: clean in both
+- `missing_in_first` / `missing_in_second`: one iteration artifact is incomplete
+
+To export the repeated-error subset as wavs plus a JSONL manifest:
+
+```bash
+python tools/compare_indicvoices_iterations.py \
+  --first-errors-jsonl artifacts/indicvoices_hindi_valid_full_errors.jsonl \
+  --second-errors-jsonl artifacts/indicvoices_hindi_valid_full_iter2_errors.jsonl \
+  --export-repeated-errors-dir artifacts/indicvoices_hindi_valid_repeated_errors \
+  --dataset-config hindi \
+  --split valid
+```
+
+This creates:
+
+- `artifacts/indicvoices_hindi_valid_repeated_errors/manifest.jsonl`
+- `artifacts/indicvoices_hindi_valid_repeated_errors/audio/*.wav`
+
+Important training caution:
+
+- the repeated-error export comes from the `valid` split, so using it directly for final training will leak evaluation data
+- use it for error analysis, phrase mining, and hard-example discovery
+- for a clean training loop, map the repeated-error patterns back to similar samples from `train` and keep `valid` untouched for reporting
+
+## 18. Suggested Day-1 KT Walkthrough
 
 For a handoff session, the most useful order is:
 
@@ -529,7 +678,7 @@ For a handoff session, the most useful order is:
 8. inspect logs in gateway and worker side-by-side
 9. open Grafana and Prometheus to show where operational visibility lives
 
-## 18. Suggested Next Documentation Improvements
+## 19. Suggested Next Documentation Improvements
 
 Good follow-up docs to add later:
 
@@ -539,7 +688,7 @@ Good follow-up docs to add later:
 - deployment notes for EC2/NVIDIA driver setup
 - performance tuning guide for concurrency and latency tradeoffs
 
-## 19. Summary
+## 20. Summary
 
 If you remember only three things:
 
