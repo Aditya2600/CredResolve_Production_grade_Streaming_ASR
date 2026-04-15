@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tools.indicvoices_dataset import load_indicvoices_stream
 from worker.app.context_biasing import PhraseLexicon, compare_phrase_counts
 
 try:
@@ -348,17 +349,12 @@ def export_repeated_errors(
         return
 
     datasets_cache = resolve_cache_dir(cache_dir)
-    from datasets import load_dataset
-
-    dataset = load_dataset(
-        "ai4bharat/IndicVoices",
-        dataset_config,
+    dataset = load_indicvoices_stream(
+        dataset_config=dataset_config,
         split=split,
         token=hf_token,
-        streaming=True,
-        cache_dir=str(datasets_cache),
+        cache_dir=datasets_cache,
     )
-    dataset = dataset.decode(False)
     iterator = iter(dataset)
 
     target_indices = set(indices)

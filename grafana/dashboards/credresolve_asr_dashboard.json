@@ -604,6 +604,69 @@
           "sort": "none"
         }
       }
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU: VRAM Used",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "id": 12,
+      "targets": [
+        {
+          "expr": "max by (gpu) (DCGM_FI_DEV_FB_USED{job=\"gpu\"})",
+          "legendFormat": "GPU {{gpu}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "showPoints": "auto",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10000
+              },
+              {
+                "color": "red",
+                "value": 14000
+              }
+            ]
+          },
+          "min": 0,
+          "unit": "decmbytes",
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
     }
   ],
   "refresh": "5s",
@@ -621,6 +684,6 @@
   "timezone": "",
   "title": "CredResolve ASR Dashboard",
   "uid": "credresolve_asr",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

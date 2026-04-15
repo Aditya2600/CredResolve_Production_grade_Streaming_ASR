@@ -15,6 +15,8 @@ import numpy as np
 import soundfile as sf
 import websockets
 
+from tools.indicvoices_dataset import load_indicvoices_stream
+
 try:
     from compute_wer import edit_distance, normalize
 except ImportError:  # pragma: no cover - allows package-style imports from tests
@@ -393,17 +395,12 @@ async def run() -> None:
     token = resolve_hf_token(args.hf_token)
     language = resolve_language_code(args.dataset_config, args.language)
     cache_dir = resolve_cache_dir(args.cache_dir)
-    from datasets import load_dataset
-
-    dataset = load_dataset(
-        "ai4bharat/IndicVoices",
-        args.dataset_config,
+    dataset = load_indicvoices_stream(
+        dataset_config=args.dataset_config,
         split=args.split,
         token=token,
-        streaming=True,
-        cache_dir=str(cache_dir),
+        cache_dir=cache_dir,
     )
-    dataset = dataset.decode(False)
 
     iterator = iter(dataset)
     try:

@@ -293,3 +293,248 @@ Ignored at mining time:
 
 - `dataset_noise`: references containing `<unintelligible>`
 - `infra_failure`: hypotheses containing `worker-fallback`
+
+## Fine-Tune On Mined Data
+
+The repo prepares the mined training set, but the actual ASR fine-tuning runs through NeMo.
+
+Recommended workflow:
+
+1. Keep `valid` as the held-out benchmark.
+2. Mine similar `train` examples from the `valid` error profile.
+3. Split the mined manifest into combined `train`/`dev` manifests.
+4. Fine-tune the same production model family on the mined manifests.
+5. Re-run the untouched `valid` benchmark and compare again.
+
+Prepare the combined manifests:
+
+```bash
+python3 tools/prepare_bucket_training_manifests.py \
+  --input-manifest artifacts/indicvoices_hindi_train_mined/manifest.jsonl \
+  --output-dir artifacts/indicvoices_hindi_train_mined/bucket_manifests \
+  --val-ratio 0.1 \
+  --seed 42
+```
+
+Key outputs:
+
+- `artifacts/indicvoices_hindi_train_mined/bucket_manifests/all_train.jsonl`
+- `artifacts/indicvoices_hindi_train_mined/bucket_manifests/all_dev.jsonl`
+- `artifacts/indicvoices_hindi_train_mined/bucket_manifests/summary.json`
+
+### Use The Same Production Model Family
+
+For production WER improvement, fine-tune the same IndicConformer family used by the serving stack rather than a different Hindi-only side model.
+
+Current production inference path in this repo:
+
+- `ASR_MODEL_NAME=ai4bharat/indic-conformer-600m-multilingual`
+
+Recommended trainable checkpoint for the same family:
+
+- `ai4bharat/IndicConformer` -> `IndicConformer.nemo`
+
+### Environment Notes
+
+Use a dedicated NeMo environment and stop GPU-serving services before training so the T4 is fully free:
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.triton.yml \
+  -f docker-compose.context_biasing.yml \
+  stop triton worker
+```
+
+Why:
+
+- the worker and Triton can hold several GB of GPU memory
+- the full IndicConformer 600M fine-tune is close to the memory limits of a T4
+
+### Memory-Constrained Training Guidance
+
+Observed on a `g4dn.xlarge`-class host:
+
+- GPU: Tesla T4, `16 GiB` VRAM
+- system RAM: about `15 GiB`
+- swap: `0`
+
+Important practical findings:
+
+- `batch_size=1` is the safe default
+- `num_workers=0` is preferred on low-RAM hosts
+- `pin_memory=false` reduces host RAM pressure
+- `trainer.accumulate_grad_batches=4` gives a larger effective batch without the VRAM cost of true batch size `4`
+- `model.joint.preserve_memory=true` can help with RNNT joint-step memory spikes, but `examples/asr/speech_to_text_finetune.py` does not expose `model.joint` in its Hydra schema, so that flag is not valid on the generic finetune wrapper
+- if you need `preserve_memory`, use an architecture-specific RNNT or hybrid-transducer training config that includes `model.joint`, or set `asr_model.joint.preserve_memory = True` in code after restoring the `.nemo` model
+
+Useful environment variables:
+
+```bash
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# Only enable this path when cuda-python is installed in the active env.
+if python -c "from cuda import cuda" >/dev/null 2>&1; then
+  export NUMBA_CUDA_USE_NVIDIA_BINDING=1
+else
+  unset NUMBA_CUDA_USE_NVIDIA_BINDING
+fi
+```
+
+Why:
+
+- `NUMBA_CUDA_USE_NVIDIA_BINDING=1` can help the RNNT loss use the more memory-efficient CUDA path, but only when `cuda-python` is installed
+- if `cuda-python` is missing, forcing that variable makes `numba` import `from cuda import cuda` and training fails before NeMo finishes importing
+- `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` reduces CUDA allocator fragmentation; it does not create more memory, but it can reduce avoidable OOMs
+
+### Step-Based Validation And Best-Checkpoint Saving
+
+For this setup, step-based validation is preferable to waiting until epoch end. It catches regressions earlier, supports early stopping sooner, and is safer on long runs.
+
+This command:
+
+- starts from an existing `.nemo` checkpoint
+- trains on the mined combined train manifest
+- validates every `400` train batches
+- early-stops on `val_wer`
+- saves the best checkpoint automatically
+- also saves a `.nemo` artifact for deployment/export workflows
+
+```bash
+conda activate nemo_asr
+cd /home/ubuntu/AI4Bharat-NeMo
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+if python -c "from cuda import cuda" >/dev/null 2>&1; then
+  export NUMBA_CUDA_USE_NVIDIA_BINDING=1
+else
+  unset NUMBA_CUDA_USE_NVIDIA_BINDING
+fi
+
+/usr/bin/time -v python examples/asr/speech_to_text_finetune.py \
+  --config-path=conf/asr_finetune \
+  --config-name=speech_to_text_finetune \
+  init_from_nemo_model=/home/ubuntu/models/indicconformer/IndicConformer.nemo \
+  model.train_ds.manifest_filepath=/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/artifacts/indicvoices_hindi_train_mined/bucket_manifests/all_train.jsonl \
+  model.validation_ds.manifest_filepath=/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/artifacts/indicvoices_hindi_train_mined/bucket_manifests/all_dev.jsonl \
+  +model.train_ds.return_language_id=true \
+  +model.validation_ds.return_language_id=true \
+  model.tokenizer.update_tokenizer=false \
+  trainer.accelerator=gpu \
+  trainer.devices=1 \
+  trainer.strategy=auto \
+  trainer.precision=16-mixed \
+  trainer.max_steps=2000 \
+  trainer.max_epochs=50 \
+  trainer.val_check_interval=400 \
+  trainer.log_every_n_steps=25 \
+  trainer.num_sanity_val_steps=0 \
+  trainer.accumulate_grad_batches=4 \
+  model.train_ds.batch_size=1 \
+  model.validation_ds.batch_size=1 \
+  model.train_ds.num_workers=0 \
+  model.validation_ds.num_workers=0 \
+  model.train_ds.pin_memory=false \
+  model.validation_ds.pin_memory=false \
+  model.optim.name=adamw \
+  model.optim.lr=1e-5 \
+  model.optim.weight_decay=0.001 \
+  model.optim.sched.warmup_steps=200 \
+  exp_manager.create_early_stopping_callback=true \
+  exp_manager.early_stopping_callback_params.monitor=val_wer \
+  exp_manager.early_stopping_callback_params.mode=min \
+  exp_manager.early_stopping_callback_params.patience=4 \
+  exp_manager.early_stopping_callback_params.min_delta=0.001 \
+  exp_manager.early_stopping_callback_params.strict=false \
+  exp_manager.checkpoint_callback_params.monitor=val_wer \
+  exp_manager.checkpoint_callback_params.mode=min \
+  exp_manager.checkpoint_callback_params.save_top_k=1 \
+  exp_manager.checkpoint_callback_params.save_last=true \
+  exp_manager.checkpoint_callback_params.always_save_nemo=true \
+  exp_manager.checkpoint_callback_params.save_on_train_epoch_end=false \
+  exp_manager.exp_dir=/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/artifacts/ft_runs/prod_same_model_stepval \
+  exp_manager.name=indicconformer_prod_mined_ft_stepval
+```
+
+Output location:
+
+- `artifacts/ft_runs/prod_same_model_stepval/.../checkpoints/`
+
+The best checkpoint is chosen by `val_wer` automatically.
+
+### TensorBoard Layout And How To Read It
+
+For NeMo fine-tuning runs, a grouped TensorBoard layout makes the Scalars tab much easier to read.
+
+Apply the layout to an existing run:
+
+```bash
+conda activate nemo_asr
+cd /home/ubuntu/CredResolve_Production_grade_Streaming_ASR
+
+python tools/apply_tensorboard_layout.py \
+  artifacts/ft_runs/prod_same_model_full/indicconformer_prod_mined_ft_full/2026-04-08_13-23-58 \
+  --list-tags
+```
+
+Then start TensorBoard:
+
+```bash
+tensorboard --logdir artifacts/ft_runs --bind_all
+```
+
+Recommended graph reading order:
+
+1. `Validation WER`: your real model-quality signal. Lower is better.
+2. `Loss Comparison`: confirms whether optimization is still making progress.
+3. `Training Batch WER`: useful for fast feedback, but noisier than validation.
+4. `Learning Rate`: tells you whether schedule changes line up with quality changes.
+5. `Train Timing` and `Validation Timing`: operational health and bottleneck checks.
+
+What to notice:
+
+- if `train_loss` falls but `val_wer` does not, the run is not improving where it matters
+- if `val_wer` improves and then regresses, checkpointing and early stopping should protect you
+- if batch WER is extremely noisy with `batch_size=1`, focus more on the validation trend
+- if timing graphs spike, check host RAM pressure, dataloader workers, and other GPU users
+
+See [docs/tensorboard_finetune_guide.md](/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/docs/tensorboard_finetune_guide.md) for the full per-graph interpretation guide.
+
+### Recommended First Pass
+
+Do not start with a long unconstrained run.
+
+Recommended order:
+
+1. Run a small pilot on a `100`-row subset to confirm the environment is stable.
+2. Run the full mined dataset with step-based validation and early stopping.
+3. Re-enable `worker` and `triton`.
+4. Re-run `tools/eval_indicvoices_wer.py` on the same untouched `valid` split.
+5. Compare with `tools/compare_indicvoices_iterations.py`.
+
+### Troubleshooting
+
+If training is killed with no Python traceback:
+
+- check `journalctl -k` for `Out of memory: Killed process`
+- check `nvidia-smi` for leftover GPU users such as the worker service
+- reduce `num_workers` to `0`
+- keep `batch_size=1`
+- keep inference services stopped during training
+
+If the host is RAM-constrained:
+
+- add swap
+- run inside `tmux`
+- prefer step-based validation over very long epoch-only runs
+
+### After Training
+
+Re-evaluate the trained model on the untouched benchmark. If you need deployment in the ONNX-based serving stack, export from the resulting NeMo checkpoint:
+
+```bash
+python tools/export_nemo_asr_to_onnx.py \
+  --source /path/to/finetuned/model.nemo \
+  --output artifacts/nemo_asr/model.onnx
+```
