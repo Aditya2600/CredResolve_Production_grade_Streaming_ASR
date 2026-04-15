@@ -64,5 +64,7 @@ weights/
 artifacts/
 data/
 recordings/
+outputs/
+query_result_*.csv
 
 worker/hub/

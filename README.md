@@ -390,3 +390,130 @@ Notes:
 - Validation runs by default through `onnx.checker`. Use `--no-validate` to skip it.
 - `--use-dynamo` is optional. The default path prefers the legacy exporter because it is generally steadier for ASR ONNX export.
 - If you install NeMo on a fresh machine, NVIDIA recommends system audio deps such as `ffmpeg` and `libsndfile1`.
+
+## ASR Inventory Builder
+
+`build_asr_inventory.py` turns a raw call-export CSV into a normalized ASR inventory table while preserving the original source columns.
+
+### Expected input
+
+- Input is a call registry CSV, not a transcript manifest.
+- Pass the file with `--input`, for example:
+
+```bash
+python build_asr_inventory.py --input query_result_2026-04-07T05_59_50.851541136Z.csv
+```
+
+- The script reads the CSV with string-safe parsing so IDs, codes, and phone-like fields are not silently retyped.
+
+### How schema mapping works
+
+- The script prepends a normalized schema with:
+  `row_id`, `call_id`, `audio_url`, `local_audio_path`, `wav_audio_path`, `channel_0_path`, `channel_1_path`, `borrower_channel`, `channel_assignment_method`, `channel_assignment_confidence`, `channels`, `sample_rate`, `duration_sec`, `audio_structure`, `recommended_next_step`, `lender`, `portfolio`, `borrower_name`, `event_date`, `amount_1`, `amount_2`, `amount_3`, `transcript_source`, `raw_transcript`, `normalized_transcript`, `download_status`, `audio_convert_status`, `segmentation_status`, `alignment_status`, `quality_tier`, `split`, `slice_tags`.
+- It auto-maps common call-center columns by heuristic matching, for example:
+  - `call_id` from columns such as `call_sid`, `call_id`, `session_id`
+  - `audio_url` from columns such as `cr_recording_url`, `recording_url`, `audio_url`
+  - `lender` from `lender` or client-style columns
+  - `portfolio` from campaign, dialer, group, or portfolio-style columns
+  - `borrower_name` from borrower, customer, or name-style columns
+  - `event_date` from call time, start time, or date/timestamp columns
+  - `amount_1` / `amount_2` / `amount_3` from principal, EMI, due, balance, or other amount-style columns
+- If a normalized source-derived field cannot be inferred, it is left null and logged clearly in the run summary.
+- If a source column name collides with the normalized schema, the source column is preserved with a `source__...` export name so the Parquet schema stays valid.
+
+### What the script does
+
+- Preserves all source CSV columns in the exported inventory.
+- Downloads audio from `audio_url` to `data/raw/{call_id}.mp3`.
+- Inspects each downloaded source recording with `ffprobe` and stores:
+  - `channels`
+  - `sample_rate`
+  - `duration_sec`
+  - `audio_structure`: `mono`, `stereo`, `multi_channel`, or `unknown`
+  - `recommended_next_step`: `split_channels_first`, `diarization_or_role_filter_first`, or `manual_review`
+- When a call is stereo, splits it into:
+  - `data/channels/{call_id}_ch0.wav`
+  - `data/channels/{call_id}_ch1.wav`
+- Writes those paths into:
+  - `channel_0_path`
+  - `channel_1_path`
+- Writes borrower-audit metadata into:
+  - `borrower_channel`
+  - `channel_assignment_method`
+  - `channel_assignment_confidence`
+- Converts downloaded audio to mono 8 kHz WAV at `data/wav/{call_id}.wav`.
+- Initializes transcript fields as null.
+- Sets:
+  - `download_status`: `pending` before processing, then `done` or `failed`
+  - `audio_convert_status`: `pending` before processing, then `done` or `failed`
+  - `segmentation_status`: `pending`
+  - `alignment_status`: `pending`
+  - `quality_tier`: `unreviewed`
+  - `split`: `unset`
+  - `slice_tags`: `[]`
+
+### Setup and run
+
+Install Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Make sure `ffmpeg` and `ffprobe` are installed and available on `PATH`, then run:
+
+```bash
+python build_asr_inventory.py --input query_result_2026-04-07T05_59_50.851541136Z.csv
+```
+
+Useful options:
+
+```bash
+python build_asr_inventory.py \
+  --input query_result_2026-04-07T05_59_50.851541136Z.csv \
+  --audit-sample-size 25 \
+  --channel-map outputs/borrower_channel_audit_filled.csv \
+  --default-borrower-channel ch1 \
+  --max-rows 100 \
+  --timeout 90 \
+  --retries 5 \
+  --retry-backoff-seconds 3 \
+  --overwrite \
+  --log-level DEBUG
+```
+
+### Borrower channel audit
+
+- Every run now writes `outputs/borrower_channel_audit.csv` by default.
+- The audit CSV contains the split channel paths plus borrower assignment columns that are easy to review manually.
+- To audit a sample instead of the full eligible set, pass `--audit-sample-size <N>`.
+- To apply reviewed assignments back into the inventory on the next run, pass a CSV with `call_id,borrower_channel` through `--channel-map`.
+- Once you confirm a stable pattern, you can apply a global fallback with `--default-borrower-channel ch0` or `--default-borrower-channel ch1`.
+
+### Output files
+
+- `outputs/data_inventory.csv`
+- `outputs/data_inventory.parquet`
+- `outputs/borrower_channel_audit.csv`
+- `data/raw/{call_id}.mp3`
+- `data/wav/{call_id}.wav`
+- `data/channels/{call_id}_ch0.wav`
+- `data/channels/{call_id}_ch1.wav`
+
+Generated inventory artifacts under `outputs/` and raw input exports matching `query_result_*.csv` are intended to stay local working files and are now ignored by git.
+
+The logs also emit a summary with total rows, download success/failure counts, WAV conversion success/failure counts, auto-mapped columns, and normalized fields that could not be inferred.
+
+### Assumptions
+
+- Audio URLs are reachable over HTTP or HTTPS.
+- Output file names are derived from `call_id`; if a `call_id` contains filesystem-hostile characters, the path component is sanitized while the `call_id` column keeps the original value.
+- `event_date` is normalized to ISO-like text when the source value parses cleanly as a date/time; otherwise the original text is preserved.
+- Segmentation, alignment, and transcript generation are intentionally not run in this step.
+
+### Next steps
+
+- Add segmentation to split long calls into utterance-level or pause-bounded chunks.
+- Generate ASR manifests from the normalized inventory and segmentation outputs.
+- Attach transcript source metadata and normalized text after ASR inference.
+- Add alignment once transcript supervision is available.
