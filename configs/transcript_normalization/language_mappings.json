@@ -1,0 +1,931 @@
+{
+  "languages": {
+    "hi": {
+      "aliases": ["hi", "hin", "hindi"],
+      "generic_acronym_min_length": 2,
+      "generic_acronym_max_length": 4,
+      "letter_spellings": {
+        "A": "ए",
+        "B": "बी",
+        "C": "सी",
+        "D": "डी",
+        "E": "ई",
+        "F": "एफ",
+        "G": "जी",
+        "H": "एच",
+        "I": "आई",
+        "J": "जे",
+        "K": "के",
+        "L": "एल",
+        "M": "एम",
+        "N": "एन",
+        "O": "ओ",
+        "P": "पी",
+        "Q": "क्यू",
+        "R": "आर",
+        "S": "एस",
+        "T": "टी",
+        "U": "यू",
+        "V": "वी",
+        "W": "डब्ल्यू",
+        "X": "एक्स",
+        "Y": "वाय",
+        "Z": "जेड"
+      },
+      "entities": [
+        {
+          "id": "smfg_india_credit_company",
+          "kind": "organization",
+          "normalized": "SMFG इंडिया क्रेडिट कंपनी",
+          "asr": "एस एम एफ जी इंडिया क्रेडिट कंपनी",
+          "patterns": [
+            "SMFG INDIA CREDIT COMPANY",
+            "SMFG इंडिया क्रेडिट कंपनी",
+            "एसएमएफजी इंडिया क्रेडिट कंपनी",
+            "एस एम एफ जी इंडिया क्रेडिट कंपनी"
+          ]
+        },
+        {
+          "id": "smfg",
+          "kind": "acronym",
+          "normalized": "SMFG",
+          "asr": "एस एम एफ जी",
+          "patterns": ["SMFG", "smfg", "एसएमएफजी", "एस एम एफ जी"]
+        },
+        {
+          "id": "emi",
+          "kind": "finance_term",
+          "normalized": "EMI",
+          "asr": "ईएमआई",
+          "patterns": ["EMI", "ईएमआई", "ई एम आई"]
+        },
+        {
+          "id": "upi",
+          "kind": "finance_term",
+          "normalized": "UPI",
+          "asr": "यूपीआई",
+          "patterns": ["UPI", "यूपीआई", "यू पी आई"]
+        },
+        {
+          "id": "kyc",
+          "kind": "finance_term",
+          "normalized": "KYC",
+          "asr": "केवाईसी",
+          "patterns": ["KYC", "केवाईसी", "के वाई सी"]
+        },
+        {
+          "id": "cibil",
+          "kind": "finance_term",
+          "normalized": "CIBIL",
+          "asr": "सिबिल",
+          "patterns": ["CIBIL", "cibil", "सिबिल"]
+        },
+        {
+          "id": "otp",
+          "kind": "finance_term",
+          "normalized": "OTP",
+          "asr": "ओटीपी",
+          "patterns": ["OTP", "ओटीपी", "ओ टी पी"]
+        },
+        {
+          "id": "sms",
+          "kind": "communication_term",
+          "normalized": "SMS",
+          "asr": "एसएमएस",
+          "patterns": ["SMS", "एसएमएस", "एस एम एस"]
+        },
+        {
+          "id": "loan_id",
+          "kind": "finance_term",
+          "normalized": "loan ID",
+          "asr": "लोन आईडी",
+          "patterns": ["loan ID", "loan id", "लोन आईडी"]
+        }
+      ]
+    },
+    "mr": {
+      "aliases": ["mr", "mar", "marathi"],
+      "generic_acronym_min_length": 2,
+      "generic_acronym_max_length": 4,
+      "letter_spellings": {
+        "A": "ए",
+        "B": "बी",
+        "C": "सी",
+        "D": "डी",
+        "E": "ई",
+        "F": "एफ",
+        "G": "जी",
+        "H": "एच",
+        "I": "आय",
+        "J": "जे",
+        "K": "के",
+        "L": "एल",
+        "M": "एम",
+        "N": "एन",
+        "O": "ओ",
+        "P": "पी",
+        "Q": "क्यू",
+        "R": "आर",
+        "S": "एस",
+        "T": "टी",
+        "U": "यू",
+        "V": "व्ही",
+        "W": "डब्ल्यू",
+        "X": "एक्स",
+        "Y": "वाय",
+        "Z": "झेड"
+      },
+      "entities": [
+        {
+          "id": "smfg_india_credit_company",
+          "kind": "organization",
+          "normalized": "SMFG इंडिया क्रेडिट कंपनी",
+          "asr": "एस एम एफ जी इंडिया क्रेडिट कंपनी",
+          "patterns": [
+            "SMFG INDIA CREDIT COMPANY",
+            "SMFG इंडिया क्रेडिट कंपनी",
+            "एसएमएफजी इंडिया क्रेडिट कंपनी",
+            "एस एम एफ जी इंडिया क्रेडिट कंपनी"
+          ]
+        },
+        {
+          "id": "smfg",
+          "kind": "acronym",
+          "normalized": "SMFG",
+          "asr": "एस एम एफ जी",
+          "patterns": ["SMFG", "smfg", "एसएमएफजी", "एस एम एफ जी"]
+        },
+        {
+          "id": "emi",
+          "kind": "finance_term",
+          "normalized": "EMI",
+          "asr": "ईएमआय",
+          "patterns": ["EMI", "ईएमआय", "ई एम आय"]
+        },
+        {
+          "id": "upi",
+          "kind": "finance_term",
+          "normalized": "UPI",
+          "asr": "यूपीआय",
+          "patterns": ["UPI", "यूपीआय", "यू पी आय"]
+        },
+        {
+          "id": "kyc",
+          "kind": "finance_term",
+          "normalized": "KYC",
+          "asr": "केवायसी",
+          "patterns": ["KYC", "केवायसी", "के वाय सी"]
+        },
+        {
+          "id": "cibil",
+          "kind": "finance_term",
+          "normalized": "CIBIL",
+          "asr": "सिबिल",
+          "patterns": ["CIBIL", "cibil", "सिबिल"]
+        },
+        {
+          "id": "otp",
+          "kind": "finance_term",
+          "normalized": "OTP",
+          "asr": "ओटीपी",
+          "patterns": ["OTP", "ओटीपी", "ओ टी पी"]
+        },
+        {
+          "id": "sms",
+          "kind": "communication_term",
+          "normalized": "SMS",
+          "asr": "एसएमएस",
+          "patterns": ["SMS", "एसएमएस", "एस एम एस"]
+        },
+        {
+          "id": "loan_id",
+          "kind": "finance_term",
+          "normalized": "loan ID",
+          "asr": "लोन आयडी",
+          "patterns": ["loan ID", "loan id", "लोन आयडी", "लोन आईडी"]
+        }
+      ]
+    },
+    "bn": {
+      "aliases": ["bn", "ben", "bengali", "bangla"],
+      "generic_acronym_min_length": 2,
+      "generic_acronym_max_length": 4,
+      "letter_spellings": {
+        "A": "এ",
+        "B": "বি",
+        "C": "সি",
+        "D": "ডি",
+        "E": "ই",
+        "F": "এফ",
+        "G": "জি",
+        "H": "এইচ",
+        "I": "আই",
+        "J": "জে",
+        "K": "কে",
+        "L": "এল",
+        "M": "এম",
+        "N": "এন",
+        "O": "ও",
+        "P": "পি",
+        "Q": "কিউ",
+        "R": "আর",
+        "S": "এস",
+        "T": "টি",
+        "U": "ইউ",
+        "V": "ভি",
+        "W": "ডাব্লিউ",
+        "X": "এক্স",
+        "Y": "ওয়াই",
+        "Z": "জেড"
+      },
+      "entities": [
+        {
+          "id": "smfg_india_credit_company",
+          "kind": "organization",
+          "normalized": "SMFG ইন্ডিয়া ক্রেডিট কোম্পানি",
+          "asr": "এস এম এফ জি ইন্ডিয়া ক্রেডিট কোম্পানি",
+          "patterns": [
+            "SMFG INDIA CREDIT COMPANY",
+            "SMFG ইন্ডিয়া ক্রেডিট কোম্পানি",
+            "এসএমএফজি ইন্ডিয়া ক্রেডিট কোম্পানি",
+            "এসএমএফজি ইন্ডিয়া ক্রেডিট কোম্পানি",
+            "এস এম এফ জি ইন্ডিয়া ক্রেডিট কোম্পানি"
+          ]
+        },
+        {
+          "id": "smfg",
+          "kind": "acronym",
+          "normalized": "SMFG",
+          "asr": "এস এম এফ জি",
+          "patterns": ["SMFG", "smfg", "এসএমএফজি", "এস এম এফ জি"]
+        },
+        {
+          "id": "emi",
+          "kind": "finance_term",
+          "normalized": "EMI",
+          "asr": "ইএমআই",
+          "patterns": ["EMI", "ইএমআই", "ই এম আই"]
+        },
+        {
+          "id": "upi",
+          "kind": "finance_term",
+          "normalized": "UPI",
+          "asr": "ইউপিআই",
+          "patterns": ["UPI", "ইউপিআই", "ইউ পি আই"]
+        },
+        {
+          "id": "kyc",
+          "kind": "finance_term",
+          "normalized": "KYC",
+          "asr": "কেওয়াইসি",
+          "patterns": ["KYC", "কেওয়াইসি", "কেওয়াইসি", "কে ওয়াই সি", "কে ওয়াই সি"]
+        },
+        {
+          "id": "cibil",
+          "kind": "finance_term",
+          "normalized": "CIBIL",
+          "asr": "সিবিল",
+          "patterns": ["CIBIL", "cibil", "সিবিল"]
+        },
+        {
+          "id": "otp",
+          "kind": "finance_term",
+          "normalized": "OTP",
+          "asr": "ওটিপি",
+          "patterns": ["OTP", "ওটিপি", "ও টি পি"]
+        },
+        {
+          "id": "sms",
+          "kind": "communication_term",
+          "normalized": "SMS",
+          "asr": "এসএমএস",
+          "patterns": ["SMS", "এসএমএস", "এস এম এস"]
+        },
+        {
+          "id": "loan_id",
+          "kind": "finance_term",
+          "normalized": "loan ID",
+          "asr": "লোন আইডি",
+          "patterns": ["loan ID", "loan id", "লোন আইডি"]
+        }
+      ]
+    },
+    "gu": {
+      "aliases": ["gu", "guj", "gujarati"],
+      "generic_acronym_min_length": 2,
+      "generic_acronym_max_length": 4,
+      "letter_spellings": {
+        "A": "એ",
+        "B": "બી",
+        "C": "સી",
+        "D": "ડી",
+        "E": "ઈ",
+        "F": "એફ",
+        "G": "જી",
+        "H": "એચ",
+        "I": "આઈ",
+        "J": "જે",
+        "K": "કે",
+        "L": "એલ",
+        "M": "એમ",
+        "N": "એન",
+        "O": "ઓ",
+        "P": "પી",
+        "Q": "ક્યુ",
+        "R": "આર",
+        "S": "એસ",
+        "T": "ટી",
+        "U": "યુ",
+        "V": "વી",
+        "W": "ડબ્લ્યુ",
+        "X": "એક્સ",
+        "Y": "વાય",
+        "Z": "ઝેડ"
+      },
+      "entities": [
+        {
+          "id": "smfg_india_credit_company",
+          "kind": "organization",
+          "normalized": "SMFG ઇન્ડિયા ક્રેડિટ કંપની",
+          "asr": "એસ એમ એફ જી ઇન્ડિયા ક્રેડિટ કંપની",
+          "patterns": [
+            "SMFG INDIA CREDIT COMPANY",
+            "SMFG ઇન્ડિયા ક્રેડિટ કંપની",
+            "એસએમએફજી ઇન્ડિયા ક્રેડિટ કંપની",
+            "એસ એમ એફ જી ઇન્ડિયા ક્રેડિટ કંપની"
+          ]
+        },
+        {
+          "id": "smfg",
+          "kind": "acronym",
+          "normalized": "SMFG",
+          "asr": "એસ એમ એફ જી",
+          "patterns": ["SMFG", "smfg", "એસએમએફજી", "એસ એમ એફ જી"]
+        },
+        {
+          "id": "emi",
+          "kind": "finance_term",
+          "normalized": "EMI",
+          "asr": "ઇએમઆઇ",
+          "patterns": ["EMI", "ઇએમઆઇ", "ઈએમઆઈ", "ઈ એમ આઈ"]
+        },
+        {
+          "id": "upi",
+          "kind": "finance_term",
+          "normalized": "UPI",
+          "asr": "યુપીઆઇ",
+          "patterns": ["UPI", "યુપીઆઇ", "યુ પી આઈ"]
+        },
+        {
+          "id": "kyc",
+          "kind": "finance_term",
+          "normalized": "KYC",
+          "asr": "કેવાયસી",
+          "patterns": ["KYC", "કેવાયસી", "કે વાય સી"]
+        },
+        {
+          "id": "cibil",
+          "kind": "finance_term",
+          "normalized": "CIBIL",
+          "asr": "સિબિલ",
+          "patterns": ["CIBIL", "cibil", "સિબિલ"]
+        },
+        {
+          "id": "otp",
+          "kind": "finance_term",
+          "normalized": "OTP",
+          "asr": "ઓટીપી",
+          "patterns": ["OTP", "ઓટીપી", "ઓ ટી પી"]
+        },
+        {
+          "id": "sms",
+          "kind": "communication_term",
+          "normalized": "SMS",
+          "asr": "એસએમએસ",
+          "patterns": ["SMS", "એસએમએસ", "એસ એમ એસ"]
+        },
+        {
+          "id": "loan_id",
+          "kind": "finance_term",
+          "normalized": "loan ID",
+          "asr": "લોન આઈડી",
+          "patterns": ["loan ID", "loan id", "લોન આઈડી"]
+        }
+      ]
+    },
+    "kn": {
+      "aliases": ["kn", "kan", "kannada"],
+      "generic_acronym_min_length": 2,
+      "generic_acronym_max_length": 4,
+      "letter_spellings": {
+        "A": "ಎ",
+        "B": "ಬಿ",
+        "C": "ಸಿ",
+        "D": "ಡಿ",
+        "E": "ಈ",
+        "F": "ಎಫ್",
+        "G": "ಜಿ",
+        "H": "ಎಚ್",
+        "I": "ಐ",
+        "J": "ಜೆ",
+        "K": "ಕೆ",
+        "L": "ಎಲ್",
+        "M": "ಎಂ",
+        "N": "ಎನ್",
+        "O": "ಓ",
+        "P": "ಪಿ",
+        "Q": "ಕ್ಯೂ",
+        "R": "ಆರ್",
+        "S": "ಎಸ್",
+        "T": "ಟಿ",
+        "U": "ಯು",
+        "V": "ವಿ",
+        "W": "ಡಬ್ಲ್ಯೂ",
+        "X": "ಎಕ್ಸ್",
+        "Y": "ವೈ",
+        "Z": "ಜೆಡ್"
+      },
+      "entities": [
+        {
+          "id": "smfg_india_credit_company",
+          "kind": "organization",
+          "normalized": "SMFG ಇಂಡಿಯಾ ಕ್ರೆಡಿಟ್ ಕಂಪನಿ",
+          "asr": "ಎಸ್ ಎಂ ಎಫ್ ಜಿ ಇಂಡಿಯಾ ಕ್ರೆಡಿಟ್ ಕಂಪನಿ",
+          "patterns": [
+            "SMFG INDIA CREDIT COMPANY",
+            "SMFG ಇಂಡಿಯಾ ಕ್ರೆಡಿಟ್ ಕಂಪನಿ",
+            "ಎಸ್‌ಎಂಎಫ್‌ಜಿ ಇಂಡಿಯಾ ಕ್ರೆಡಿಟ್ ಕಂಪನಿ",
+            "ಎಸ್ ಎಂ ಎಫ್ ಜಿ ಇಂಡಿಯಾ ಕ್ರೆಡಿಟ್ ಕಂಪನಿ"
+          ]
+        },
+        {
+          "id": "smfg",
+          "kind": "acronym",
+          "normalized": "SMFG",
+          "asr": "ಎಸ್ ಎಂ ಎಫ್ ಜಿ",
+          "patterns": ["SMFG", "smfg", "ಎಸ್‌ಎಂಎಫ್‌ಜಿ", "ಎಸ್ ಎಂ ಎಫ್ ಜಿ"]
+        },
+        {
+          "id": "emi",
+          "kind": "finance_term",
+          "normalized": "EMI",
+          "asr": "ಇಎಂಐ",
+          "patterns": ["EMI", "ಇಎಂಐ", "ಈಎಂಐ", "ಇ ಎಂ ಐ"]
+        },
+        {
+          "id": "upi",
+          "kind": "finance_term",
+          "normalized": "UPI",
+          "asr": "ಯುಪಿಐ",
+          "patterns": ["UPI", "ಯುಪಿಐ", "ಯು ಪಿ ಐ"]
+        },
+        {
+          "id": "kyc",
+          "kind": "finance_term",
+          "normalized": "KYC",
+          "asr": "ಕೆವೈಸಿ",
+          "patterns": ["KYC", "ಕೆವೈಸಿ", "ಕೆ ವೈ ಸಿ"]
+        },
+        {
+          "id": "cibil",
+          "kind": "finance_term",
+          "normalized": "CIBIL",
+          "asr": "ಸಿಬಿಲ್",
+          "patterns": ["CIBIL", "cibil", "ಸಿಬಿಲ್"]
+        },
+        {
+          "id": "otp",
+          "kind": "finance_term",
+          "normalized": "OTP",
+          "asr": "ಒಟಿಪಿ",
+          "patterns": ["OTP", "ಒಟಿಪಿ", "ಒ ಟಿ ಪಿ"]
+        },
+        {
+          "id": "sms",
+          "kind": "communication_term",
+          "normalized": "SMS",
+          "asr": "ಎಸ್‌ಎಂಎಸ್",
+          "patterns": ["SMS", "ಎಸ್‌ಎಂಎಸ್", "ಎಸ್ ಎಂ ಎಸ್"]
+        },
+        {
+          "id": "loan_id",
+          "kind": "finance_term",
+          "normalized": "loan ID",
+          "asr": "ಲೋನ್ ಐಡಿ",
+          "patterns": ["loan ID", "loan id", "ಲೋನ್ ಐಡಿ"]
+        }
+      ]
+    },
+    "ta": {
+      "aliases": ["ta", "tam", "tamil"],
+      "generic_acronym_min_length": 2,
+      "generic_acronym_max_length": 4,
+      "letter_spellings": {
+        "A": "ஏ",
+        "B": "பி",
+        "C": "சி",
+        "D": "டி",
+        "E": "ஈ",
+        "F": "எஃப்",
+        "G": "ஜி",
+        "H": "எச்",
+        "I": "ஐ",
+        "J": "ஜே",
+        "K": "கே",
+        "L": "எல்",
+        "M": "எம்",
+        "N": "என்",
+        "O": "ஓ",
+        "P": "பி",
+        "Q": "க்யூ",
+        "R": "ஆர்",
+        "S": "எஸ்",
+        "T": "டி",
+        "U": "யூ",
+        "V": "வி",
+        "W": "டபிள்யூ",
+        "X": "எக்ஸ்",
+        "Y": "வை",
+        "Z": "ஜெட்"
+      },
+      "entities": [
+        {
+          "id": "smfg_india_credit_company",
+          "kind": "organization",
+          "normalized": "SMFG இந்தியா கிரெடிட் நிறுவனம்",
+          "asr": "எஸ் எம் எஃப் ஜி இந்தியா கிரெடிட் நிறுவனம்",
+          "patterns": [
+            "SMFG INDIA CREDIT COMPANY",
+            "SMFG இந்தியா கிரெடிட் நிறுவனம்",
+            "எஸ்எம்எஃப்ஜி இந்தியா கிரெடிட் நிறுவனம்",
+            "எஸ் எம் எஃப் ஜி இந்தியா கிரெடிட் நிறுவனம்"
+          ]
+        },
+        {
+          "id": "smfg",
+          "kind": "acronym",
+          "normalized": "SMFG",
+          "asr": "எஸ் எம் எஃப் ஜி",
+          "patterns": ["SMFG", "smfg", "எஸ்எம்எஃப்ஜி", "எஸ் எம் எஃப் ஜி"]
+        },
+        {
+          "id": "emi",
+          "kind": "finance_term",
+          "normalized": "EMI",
+          "asr": "இஎம்ஐ",
+          "patterns": ["EMI", "இஎம்ஐ", "ஈஎம்ஐ", "இ எம் ஐ"]
+        },
+        {
+          "id": "upi",
+          "kind": "finance_term",
+          "normalized": "UPI",
+          "asr": "யுபிஐ",
+          "patterns": ["UPI", "யுபிஐ", "யு பி ஐ"]
+        },
+        {
+          "id": "kyc",
+          "kind": "finance_term",
+          "normalized": "KYC",
+          "asr": "கேஒய்சி",
+          "patterns": ["KYC", "கேஒய்சி", "கே ஓய் சி"]
+        },
+        {
+          "id": "cibil",
+          "kind": "finance_term",
+          "normalized": "CIBIL",
+          "asr": "சிபில்",
+          "patterns": ["CIBIL", "cibil", "சிபில்"]
+        },
+        {
+          "id": "otp",
+          "kind": "finance_term",
+          "normalized": "OTP",
+          "asr": "ஓடிபி",
+          "patterns": ["OTP", "ஓடிபி", "ஓ டி பி"]
+        },
+        {
+          "id": "sms",
+          "kind": "communication_term",
+          "normalized": "SMS",
+          "asr": "எஸ்எம்எஸ்",
+          "patterns": ["SMS", "எஸ்எம்எஸ்", "எஸ் எம் எஸ்"]
+        },
+        {
+          "id": "loan_id",
+          "kind": "finance_term",
+          "normalized": "loan ID",
+          "asr": "லோன் ஐடி",
+          "patterns": ["loan ID", "loan id", "லோன் ஐடி"]
+        }
+      ]
+    },
+    "te": {
+      "aliases": ["te", "tel", "telugu"],
+      "generic_acronym_min_length": 2,
+      "generic_acronym_max_length": 4,
+      "letter_spellings": {
+        "A": "ఎ",
+        "B": "బి",
+        "C": "సి",
+        "D": "డి",
+        "E": "ఈ",
+        "F": "ఎఫ్",
+        "G": "జి",
+        "H": "హెచ్",
+        "I": "ఐ",
+        "J": "జే",
+        "K": "కే",
+        "L": "ఎల్",
+        "M": "ఎం",
+        "N": "ఎన్",
+        "O": "ఓ",
+        "P": "పి",
+        "Q": "క్యూ",
+        "R": "ఆర్",
+        "S": "ఎస్",
+        "T": "టి",
+        "U": "యు",
+        "V": "వి",
+        "W": "డబ్ల్యూ",
+        "X": "ఎక్స్",
+        "Y": "వై",
+        "Z": "జెడ్"
+      },
+      "entities": [
+        {
+          "id": "smfg_india_credit_company",
+          "kind": "organization",
+          "normalized": "SMFG ఇండియా క్రెడిట్ కంపెనీ",
+          "asr": "ఎస్ ఎం ఎఫ్ జి ఇండియా క్రెడిట్ కంపెనీ",
+          "patterns": [
+            "SMFG INDIA CREDIT COMPANY",
+            "SMFG ఇండియా క్రెడిట్ కంపెనీ",
+            "ఎస్ ఎం ఎఫ్ జి ఇండియా క్రెడిట్ కంపెనీ"
+          ]
+        },
+        {
+          "id": "smfg",
+          "kind": "acronym",
+          "normalized": "SMFG",
+          "asr": "ఎస్ ఎం ఎఫ్ జి",
+          "patterns": ["SMFG", "smfg", "ఎస్ ఎం ఎఫ్ జి"]
+        },
+        {
+          "id": "emi",
+          "kind": "finance_term",
+          "normalized": "EMI",
+          "asr": "ఇఎంఐ",
+          "patterns": ["EMI", "ఇఎంఐ", "ఈఎంఐ", "ఇ ఎం ఐ"]
+        },
+        {
+          "id": "upi",
+          "kind": "finance_term",
+          "normalized": "UPI",
+          "asr": "యూపీఐ",
+          "patterns": ["UPI", "యూపీఐ", "యు పి ఐ"]
+        },
+        {
+          "id": "kyc",
+          "kind": "finance_term",
+          "normalized": "KYC",
+          "asr": "కేవైసీ",
+          "patterns": ["KYC", "కేవైసీ", "కే వై సీ"]
+        },
+        {
+          "id": "cibil",
+          "kind": "finance_term",
+          "normalized": "CIBIL",
+          "asr": "సిబిల్",
+          "patterns": ["CIBIL", "cibil", "సిబిల్"]
+        },
+        {
+          "id": "otp",
+          "kind": "finance_term",
+          "normalized": "OTP",
+          "asr": "ఓటీపీ",
+          "patterns": ["OTP", "ఓటీపీ", "ఓ టి పి"]
+        },
+        {
+          "id": "sms",
+          "kind": "communication_term",
+          "normalized": "SMS",
+          "asr": "ఎస్ఎంఎస్",
+          "patterns": ["SMS", "ఎస్ఎంఎస్", "ఎస్ ఎం ఎస్"]
+        },
+        {
+          "id": "loan_id",
+          "kind": "finance_term",
+          "normalized": "loan ID",
+          "asr": "లోన్ ఐడి",
+          "patterns": ["loan ID", "loan id", "లోన్ ఐడి"]
+        }
+      ]
+    },
+    "ml": {
+      "aliases": ["ml", "mal", "malayalam"],
+      "generic_acronym_min_length": 2,
+      "generic_acronym_max_length": 4,
+      "letter_spellings": {
+        "A": "എ",
+        "B": "ബി",
+        "C": "സി",
+        "D": "ഡി",
+        "E": "ഇ",
+        "F": "എഫ്",
+        "G": "ജി",
+        "H": "എച്ച്",
+        "I": "ഐ",
+        "J": "ജെ",
+        "K": "കെ",
+        "L": "എൽ",
+        "M": "എം",
+        "N": "എൻ",
+        "O": "ഒ",
+        "P": "പി",
+        "Q": "ക്യൂ",
+        "R": "ആർ",
+        "S": "എസ്",
+        "T": "ടി",
+        "U": "യു",
+        "V": "വി",
+        "W": "ഡബ്ല്യു",
+        "X": "എക്സ്",
+        "Y": "വൈ",
+        "Z": "സെഡ്"
+      },
+      "entities": [
+        {
+          "id": "smfg_india_credit_company",
+          "kind": "organization",
+          "normalized": "SMFG ഇന്ത്യ ക്രെഡിറ്റ് കമ്പനി",
+          "asr": "എസ് എം എഫ് ജി ഇന്ത്യ ക്രെഡിറ്റ് കമ്പനി",
+          "patterns": [
+            "SMFG INDIA CREDIT COMPANY",
+            "SMFG ഇന്ത്യ ക്രെഡിറ്റ് കമ്പനി",
+            "എസ്എംഎഫ്ജി ഇന്ത്യ ക്രെഡിറ്റ് കമ്പനി",
+            "എസ് എം എഫ് ജി ഇന്ത്യ ക്രെഡിറ്റ് കമ്പനി"
+          ]
+        },
+        {
+          "id": "smfg",
+          "kind": "acronym",
+          "normalized": "SMFG",
+          "asr": "എസ് എം എഫ് ജി",
+          "patterns": ["SMFG", "smfg", "എസ്എംഎഫ്ജി", "എസ് എം എഫ് ജി"]
+        },
+        {
+          "id": "emi",
+          "kind": "finance_term",
+          "normalized": "EMI",
+          "asr": "ഇഎംഐ",
+          "patterns": ["EMI", "ഇഎംഐ", "ഇ എം ഐ"]
+        },
+        {
+          "id": "upi",
+          "kind": "finance_term",
+          "normalized": "UPI",
+          "asr": "യുപിഐ",
+          "patterns": ["UPI", "യുപിഐ", "യു പി ഐ"]
+        },
+        {
+          "id": "kyc",
+          "kind": "finance_term",
+          "normalized": "KYC",
+          "asr": "കെവൈസി",
+          "patterns": ["KYC", "കെവൈസി", "കെ വൈ സി"]
+        },
+        {
+          "id": "cibil",
+          "kind": "finance_term",
+          "normalized": "CIBIL",
+          "asr": "സിബിൽ",
+          "patterns": ["CIBIL", "cibil", "സിബിൽ"]
+        },
+        {
+          "id": "otp",
+          "kind": "finance_term",
+          "normalized": "OTP",
+          "asr": "ഒടിപി",
+          "patterns": ["OTP", "ഒടിപി", "ഒ ടി പി"]
+        },
+        {
+          "id": "sms",
+          "kind": "communication_term",
+          "normalized": "SMS",
+          "asr": "എസ്എംഎസ്",
+          "patterns": ["SMS", "എസ്എംഎസ്", "എസ് എം എസ്"]
+        },
+        {
+          "id": "loan_id",
+          "kind": "finance_term",
+          "normalized": "loan ID",
+          "asr": "ലോൺ ഐഡി",
+          "patterns": ["loan ID", "loan id", "ലോൺ ഐഡി"]
+        }
+      ]
+    },
+    "or": {
+      "aliases": ["or", "ori", "odia", "oriya"],
+      "generic_acronym_min_length": 2,
+      "generic_acronym_max_length": 4,
+      "letter_spellings": {
+        "A": "ଏ",
+        "B": "ବି",
+        "C": "ସି",
+        "D": "ଡି",
+        "E": "ଇ",
+        "F": "ଏଫ",
+        "G": "ଜି",
+        "H": "ଏଚ",
+        "I": "ଆଇ",
+        "J": "ଜେ",
+        "K": "କେ",
+        "L": "ଏଲ",
+        "M": "ଏମ",
+        "N": "ଏନ",
+        "O": "ଓ",
+        "P": "ପି",
+        "Q": "କ୍ୟୁ",
+        "R": "ଆର",
+        "S": "ଏସ",
+        "T": "ଟି",
+        "U": "ୟୁ",
+        "V": "ଭି",
+        "W": "ଡବ୍ଲ୍ୟୁ",
+        "X": "ଏକ୍ସ",
+        "Y": "ୱାଇ",
+        "Z": "ଜେଡ"
+      },
+      "entities": [
+        {
+          "id": "smfg_india_credit_company",
+          "kind": "organization",
+          "normalized": "SMFG ଇଣ୍ଡିଆ କ୍ରେଡିଟ୍ କମ୍ପାନୀ",
+          "asr": "ଏସ ଏମ ଏଫ ଜି ଇଣ୍ଡିଆ କ୍ରେଡିଟ୍ କମ୍ପାନୀ",
+          "patterns": [
+            "SMFG INDIA CREDIT COMPANY",
+            "SMFG ଇଣ୍ଡିଆ କ୍ରେଡିଟ୍ କମ୍ପାନୀ",
+            "ଏସଏମଏଫଜି ଇଣ୍ଡିଆ କ୍ରେଡିଟ୍ କମ୍ପାନୀ",
+            "ଏସ ଏମ ଏଫ ଜି ଇଣ୍ଡିଆ କ୍ରେଡିଟ୍ କମ୍ପାନୀ"
+          ]
+        },
+        {
+          "id": "smfg",
+          "kind": "acronym",
+          "normalized": "SMFG",
+          "asr": "ଏସ ଏମ ଏଫ ଜି",
+          "patterns": ["SMFG", "smfg", "ଏସଏମଏଫଜି", "ଏସ ଏମ ଏଫ ଜି"]
+        },
+        {
+          "id": "emi",
+          "kind": "finance_term",
+          "normalized": "EMI",
+          "asr": "ଇଏମଆଇ",
+          "patterns": ["EMI", "ଇଏମଆଇ", "ଇ ଏମ ଆଇ"]
+        },
+        {
+          "id": "upi",
+          "kind": "finance_term",
+          "normalized": "UPI",
+          "asr": "ୟୁପିଆଇ",
+          "patterns": ["UPI", "ୟୁପିଆଇ", "ୟୁ ପି ଆଇ"]
+        },
+        {
+          "id": "kyc",
+          "kind": "finance_term",
+          "normalized": "KYC",
+          "asr": "କେୱାଇସି",
+          "patterns": ["KYC", "କେୱାଇସି", "କେ ୱାଇ ସି"]
+        },
+        {
+          "id": "cibil",
+          "kind": "finance_term",
+          "normalized": "CIBIL",
+          "asr": "ସିବିଲ",
+          "patterns": ["CIBIL", "cibil", "ସିବିଲ"]
+        },
+        {
+          "id": "otp",
+          "kind": "finance_term",
+          "normalized": "OTP",
+          "asr": "ଓଟିପି",
+          "patterns": ["OTP", "ଓଟିପି", "ଓ ଟି ପି"]
+        },
+        {
+          "id": "sms",
+          "kind": "communication_term",
+          "normalized": "SMS",
+          "asr": "ଏସଏମଏସ",
+          "patterns": ["SMS", "ଏସଏମଏସ", "ଏସ ଏମ ଏସ"]
+        },
+        {
+          "id": "loan_id",
+          "kind": "finance_term",
+          "normalized": "loan ID",
+          "asr": "ଲୋନ ଆଇଡି",
+          "patterns": ["loan ID", "loan id", "ଲୋନ ଆଇଡି"]
+        }
+      ]
+    }
+  }
+}

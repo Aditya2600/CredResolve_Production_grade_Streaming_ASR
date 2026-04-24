@@ -6,16 +6,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from gateway.app import main as gateway_main
-from gateway.app.redis_limiter import AdmitResult
 from gateway.app.worker_client import WorkerResponse
-
-
-class _NoopLimiter:
-    def admit(self, _api_key: str) -> tuple[bool, str]:
-        return True, "OK"
-
-    def release(self, _api_key: str) -> None:
-        return None
 
 
 class _FlushOnlyVAD:
@@ -64,20 +55,6 @@ class _EventingVAD:
         return data
 
 
-class _RejectingRedisLimiter:
-    def __init__(self, reason: str = "RATE_LIMITED"):
-        self.reason = reason
-        self.admit_calls = 0
-        self.released = False
-
-    async def admit(self, _api_key: str) -> AdmitResult:
-        self.admit_calls += 1
-        return AdmitResult(False, self.reason)
-
-    async def release(self, _api_key: str) -> None:
-        self.released = True
-
-
 def _auth_headers(token: str = "dev") -> dict[str, str]:
     return {"api-subscription-key": token}
 
@@ -103,11 +80,8 @@ def _audio_message(raw_audio: bytes, *, sample_rate: int, encoding: str) -> dict
     }
 
 
-def _prepare_common(monkeypatch) -> None:
-    monkeypatch.setattr(gateway_main, "GATEWAY_DISABLE_RATE_LIMITING", False)
-    monkeypatch.setattr(gateway_main, "WS_DISABLE_AUDIO_RATE_LIMIT", False)
-    gateway_main.redis_limiter = None
-    gateway_main.fallback_limiter = _NoopLimiter()
+def _prepare_common(_monkeypatch) -> None:
+    return None
 
 
 def test_valid_handshake_and_flush_finalizes_transcript(monkeypatch):
@@ -238,6 +212,86 @@ def test_flush_with_no_audio_is_a_no_op(monkeypatch):
             ws.close()
 
 
+def test_session_config_message_is_forwarded_to_worker(monkeypatch):
+    _prepare_common(monkeypatch)
+    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
+    captured: dict[str, Any] = {}
+
+    async def _ok_transcribe(
+        audio_bytes,
+        sample_rate,
+        decoder,
+        language,
+        mode,
+        *,
+        context_biasing_mode=None,
+        biasing_context=None,
+        **_kwargs,
+    ):
+        captured["audio_bytes"] = audio_bytes
+        captured["sample_rate"] = sample_rate
+        captured["decoder"] = decoder
+        captured["language"] = language
+        captured["mode"] = mode
+        captured["context_biasing_mode"] = context_biasing_mode
+        captured["biasing_context"] = biasing_context
+        return WorkerResponse(
+            text="hello sarvam",
+            language="hi",
+            language_source="client",
+            context_biasing={
+                "mode": "shadow",
+                "dynamic_context_attached": True,
+                "phrase_count_after_pruning": 2,
+                "top_phrases": ["Ravi Kumar", "loan id"],
+            },
+        )
+
+    monkeypatch.setattr(gateway_main.worker, "transcribe", _ok_transcribe)
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
+            ws.send_json(
+                {
+                    "type": "session_config",
+                    "context_biasing": {"enabled": True, "mode": "shadow"},
+                    "biasing_context": {
+                        "debtor_name": "Ravi Kumar",
+                        "account_terms": ["loan id", "payment link"],
+                    },
+                }
+            )
+            ws.send_json(_audio_message(b"\x00" * 640, sample_rate=16000, encoding="pcm_s16le"))
+            ws.send_json({"type": "flush"})
+            message = ws.receive_json()
+
+    assert captured["sample_rate"] == 16000
+    assert captured["decoder"] == "rnnt"
+    assert captured["language"] == "hi"
+    assert captured["mode"] == "final"
+    assert captured["context_biasing_mode"] == "shadow"
+    assert captured["biasing_context"] == {
+        "debtor_name": "Ravi Kumar",
+        "account_terms": ["loan id", "payment link"],
+    }
+    assert message["type"] == "data"
+    assert message["data"]["context_biasing"]["mode"] == "shadow"
+    assert message["data"]["context_biasing"]["dynamic_context_attached"] is True
+
+
+def test_invalid_session_config_message_returns_bad_message(monkeypatch):
+    _prepare_common(monkeypatch)
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
+            ws.send_json({"type": "session_config", "context_biasing": {"mode": "definitely-invalid"}})
+            error = ws.receive_json()
+
+    assert error["type"] == "error"
+    assert error["code"] == "BAD_MESSAGE"
+    assert "context_biasing.mode" in error["message"]
+
+
 def test_vad_signals_emit_clean_schema(monkeypatch):
     _prepare_common(monkeypatch)
     monkeypatch.setattr(gateway_main, "VADSegmenter", _EventingVAD)
@@ -304,91 +358,3 @@ def test_supported_sample_rates_forward_to_worker(monkeypatch):
 
     assert observed_sample_rates == [8000, 16000]
 
-
-def test_audio_rate_limit_returns_too_much_data_when_enabled(monkeypatch):
-    _prepare_common(monkeypatch)
-    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
-    monkeypatch.setattr(gateway_main, "MAX_BYTES_PER_SEC", 10)
-    monkeypatch.setattr(gateway_main, "WS_DISABLE_AUDIO_RATE_LIMIT", False)
-
-    with TestClient(gateway_main.app) as client:
-        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
-            ws.send_json(_audio_message(b"\x00" * 640, sample_rate=16000, encoding="pcm_s16le"))
-            error = ws.receive_json()
-
-    assert error["type"] == "error"
-    assert error["code"] == "TOO_MUCH_DATA"
-    assert error["message"] == "audio rate limit exceeded"
-
-
-def test_audio_rate_limit_can_be_disabled_for_dev(monkeypatch):
-    _prepare_common(monkeypatch)
-    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
-    monkeypatch.setattr(gateway_main, "MAX_BYTES_PER_SEC", 10)
-    monkeypatch.setattr(gateway_main, "WS_DISABLE_AUDIO_RATE_LIMIT", True)
-
-    async def _ok_transcribe(audio_bytes, sample_rate, decoder, language, mode, **_kwargs):
-        assert audio_bytes
-        assert sample_rate == 16000
-        assert decoder == "rnnt"
-        assert language == "hi"
-        assert mode == "final"
-        return WorkerResponse(text="bypass active", language="hi", language_source="client")
-
-    monkeypatch.setattr(gateway_main.worker, "transcribe", _ok_transcribe)
-
-    with TestClient(gateway_main.app) as client:
-        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
-            ws.send_json(_audio_message(b"\x00" * 640, sample_rate=16000, encoding="pcm_s16le"))
-            ws.send_json({"type": "flush"})
-            message = ws.receive_json()
-
-    assert message["type"] == "data"
-    assert message["data"]["transcript"] == "bypass active"
-    assert message["data"]["language_code"] == "hi"
-    assert message["data"]["language_source"] == "client"
-
-
-def test_global_rate_limit_disable_bypasses_admission_and_audio_guard(monkeypatch):
-    _prepare_common(monkeypatch)
-    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
-    monkeypatch.setattr(gateway_main, "GATEWAY_DISABLE_RATE_LIMITING", True)
-    monkeypatch.setattr(gateway_main, "MAX_BYTES_PER_SEC", 10)
-    limiter = _RejectingRedisLimiter()
-    gateway_main.redis_limiter = limiter
-
-    async def _ok_transcribe(audio_bytes, sample_rate, decoder, language, mode, **_kwargs):
-        assert audio_bytes
-        assert sample_rate == 16000
-        assert decoder == "rnnt"
-        assert language == "hi"
-        assert mode == "final"
-        return WorkerResponse(text="all limits off", language="hi", language_source="client")
-
-    monkeypatch.setattr(gateway_main.worker, "transcribe", _ok_transcribe)
-
-    with TestClient(gateway_main.app) as client:
-        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
-            ws.send_json(_audio_message(b"\x00" * 640, sample_rate=16000, encoding="pcm_s16le"))
-            ws.send_json({"type": "flush"})
-            message = ws.receive_json()
-
-    assert message["type"] == "data"
-    assert message["data"]["transcript"] == "all limits off"
-    assert limiter.admit_calls == 0
-    assert limiter.released is False
-
-
-def test_rejected_admission_does_not_release_limiter_slot(monkeypatch):
-    _prepare_common(monkeypatch)
-    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
-    limiter = _RejectingRedisLimiter()
-    gateway_main.redis_limiter = limiter
-
-    with TestClient(gateway_main.app) as client:
-        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
-            error = ws.receive_json()
-
-    assert error["type"] == "error"
-    assert error["code"] == "RATE_LIMITED"
-    assert limiter.released is False

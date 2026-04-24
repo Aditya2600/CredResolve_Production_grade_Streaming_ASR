@@ -10,9 +10,29 @@ log = logging.getLogger("worker.lid")
 
 
 _ALIAS_MAP = {
+    "assamese": "as",
+    "asm": "as",
+    "as-in": "as",
+    "bangla": "bn",
+    "bengali": "bn",
+    "ben": "bn",
+    "bn-in": "bn",
+    "english": "en",
+    "eng": "en",
+    "en-in": "en",
+    "en-us": "en",
+    "gujarati": "gu",
+    "guj": "gu",
+    "gu-in": "gu",
     "hindi": "hi",
     "hin": "hi",
     "hi-in": "hi",
+    "kannada": "kn",
+    "kan": "kn",
+    "kn-in": "kn",
+    "malayalam": "ml",
+    "mal": "ml",
+    "ml-in": "ml",
     "telugu": "te",
     "tel": "te",
     "te-in": "te",
@@ -22,6 +42,17 @@ _ALIAS_MAP = {
     "marathi": "mr",
     "mar": "mr",
     "mr-in": "mr",
+    "odia": "or",
+    "oriya": "or",
+    "ori": "or",
+    "or-in": "or",
+    "punjabi": "pa",
+    "pan": "pa",
+    "pa-in": "pa",
+    "urdu": "ur",
+    "urd": "ur",
+    "ur-in": "ur",
+    "ur-pk": "ur",
 }
 
 
@@ -34,6 +65,28 @@ class DetectionResult:
     confidence: Optional[float] = None
     fallback_from: Optional[str] = None
     fallback_reason: Optional[str] = None
+    primary_language: Optional[str] = None
+    primary_raw_label: str = ""
+    primary_normalized_label: str = ""
+    primary_provider: Optional[str] = None
+    primary_confidence: Optional[float] = None
+
+
+def ensure_primary_detection_metadata(
+    result: DetectionResult,
+    *,
+    primary_provider: Optional[str] = None,
+) -> DetectionResult:
+    return replace(
+        result,
+        primary_language=result.primary_language if result.primary_language is not None else result.language,
+        primary_raw_label=result.primary_raw_label or result.raw_label,
+        primary_normalized_label=result.primary_normalized_label or result.normalized_label,
+        primary_provider=result.primary_provider or primary_provider or result.provider,
+        primary_confidence=(
+            result.primary_confidence if result.primary_confidence is not None else result.confidence
+        ),
+    )
 
 
 class BaseLanguageDetector:
@@ -143,6 +196,10 @@ class SpeechBrainLanguageDetector(BaseLanguageDetector):
             raw_label=raw_label,
             normalized_label=normalized_label,
             provider=self.name,
+            primary_language=language,
+            primary_raw_label=raw_label,
+            primary_normalized_label=normalized_label,
+            primary_provider=self.name,
         )
 
 
@@ -215,6 +272,11 @@ class VakgyataLanguageDetector(BaseLanguageDetector):
             normalized_label=normalized_label,
             provider=self.name,
             confidence=confidence,
+            primary_language=language,
+            primary_raw_label=raw_label,
+            primary_normalized_label=normalized_label,
+            primary_provider=self.name,
+            primary_confidence=confidence,
         )
 
 
@@ -268,6 +330,7 @@ class FallbackLanguageDetector(BaseLanguageDetector):
         primary_error: Optional[str] = None
         fallback_from: Optional[str] = None
         fallback_reason: Optional[str] = None
+        primary_result: Optional[DetectionResult] = None
 
         if self.primary is not None:
             fallback_from = self.primary.name
@@ -287,6 +350,10 @@ class FallbackLanguageDetector(BaseLanguageDetector):
                         exc,
                     )
                 else:
+                    primary_result = ensure_primary_detection_metadata(
+                        primary_result,
+                        primary_provider=fallback_from,
+                    )
                     if primary_result.language is None:
                         fallback_reason = (
                             f"unmappable_label:{primary_result.normalized_label or primary_result.raw_label}"
@@ -330,6 +397,15 @@ class FallbackLanguageDetector(BaseLanguageDetector):
                 fallback_result,
                 fallback_from=fallback_from,
                 fallback_reason=fallback_reason,
+                primary_language=primary_result.language if primary_result is not None else None,
+                primary_raw_label=primary_result.raw_label if primary_result is not None else "",
+                primary_normalized_label=(
+                    primary_result.normalized_label if primary_result is not None else ""
+                ),
+                primary_provider=(
+                    primary_result.provider if primary_result is not None else fallback_from
+                ),
+                primary_confidence=primary_result.confidence if primary_result is not None else None,
             )
 
         if primary_error:

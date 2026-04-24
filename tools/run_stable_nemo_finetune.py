@@ -25,6 +25,67 @@ except ImportError:  # pragma: no cover - optional for host-memory logging
     psutil = None
 
 
+def resolve_encoder_blocks(model: Any) -> tuple[Any | None, list[Any], str]:
+    encoder = getattr(model, "encoder", None)
+    if encoder is None:
+        return None, [], "missing_encoder"
+
+    for attr in (
+        "layers",
+        "encoder_layers",
+        "conformer_layers",
+        "subsampling_layers",
+        "transformer_layers",
+    ):
+        blocks = getattr(encoder, attr, None)
+        if blocks is None:
+            continue
+        try:
+            block_list = list(blocks)
+        except TypeError:
+            continue
+        if block_list:
+            return encoder, block_list, attr
+
+    return encoder, [], "unsupported_encoder_layout"
+
+
+def freeze_lower_encoder_layers(model: Any, fraction: float) -> dict[str, Any]:
+    requested_fraction = max(0.0, min(float(fraction), 0.95))
+    summary: dict[str, Any] = {
+        "requested_fraction": requested_fraction,
+        "status": "disabled" if requested_fraction <= 0.0 else "unsupported",
+        "layer_attr": None,
+        "total_layers": 0,
+        "frozen_layers": 0,
+        "trainable_layers": 0,
+    }
+    if requested_fraction <= 0.0:
+        return summary
+
+    _encoder, blocks, layer_attr = resolve_encoder_blocks(model)
+    summary["layer_attr"] = layer_attr
+    summary["total_layers"] = len(blocks)
+    if not blocks:
+        return summary
+
+    frozen_layers = int(round(len(blocks) * requested_fraction))
+    frozen_layers = max(0, min(frozen_layers, len(blocks) - 1))
+    for index, block in enumerate(blocks):
+        requires_grad = index >= frozen_layers
+        for parameter in block.parameters():
+            parameter.requires_grad = requires_grad
+
+    summary.update(
+        {
+            "status": "enabled",
+            "frozen_layers": frozen_layers,
+            "trainable_layers": len(blocks) - frozen_layers,
+        }
+    )
+    return summary
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -43,13 +104,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", default="indicconformer_t4_safe", help="Experiment name. Default: indicconformer_t4_safe")
     parser.add_argument("--monitor", default="val_wer", help="Checkpoint and early-stop metric. Default: val_wer")
     parser.add_argument("--sample-rate", type=int, default=16000, help="Audio sample rate. Default: 16000")
-    parser.add_argument("--batch-size", type=int, default=1, help="Training batch size. Default: 1")
+    parser.add_argument("--batch-size", type=int, default=2, help="Training batch size. Default: 2")
     parser.add_argument("--val-batch-size", type=int, default=1, help="Validation batch size. Default: 1")
     parser.add_argument(
         "--use-duration-bucketing",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Enable duration-aware batch sampling for the train dataloader. Default: disabled",
+        default=True,
+        help="Enable duration-aware batch sampling for the train dataloader. Default: enabled",
     )
     parser.add_argument(
         "--bucket-edges",
@@ -99,18 +160,33 @@ def parse_args() -> argparse.Namespace:
         help="Base seed for duration bucket shuffling. Default: 1234",
     )
     parser.add_argument("--accumulate-grad-batches", type=int, default=4, help="Gradient accumulation steps. Default: 4")
-    parser.add_argument("--max-duration", type=float, default=8.0, help="Train max_duration. Default: 8.0")
-    parser.add_argument("--val-max-duration", type=float, default=10.0, help="Validation max_duration. Default: 10.0")
+    parser.add_argument(
+        "--max-duration",
+        type=float,
+        default=None,
+        help="Train max_duration. Default: disabled/no cap",
+    )
+    parser.add_argument(
+        "--val-max-duration",
+        type=float,
+        default=None,
+        help="Validation max_duration. Default: disabled/no cap",
+    )
     parser.add_argument("--min-duration", type=float, default=0.3, help="Train/val min_duration. Default: 0.3")
     parser.add_argument("--num-workers", type=int, default=0, help="Data loader workers. Default: 0")
     parser.add_argument("--precision", default="16-mixed", help="Lightning precision. Default: 16-mixed")
     parser.add_argument("--gradient-clip-val", type=float, default=1.0, help="Gradient clip norm. Default: 1.0")
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate. Default: 5e-6")
     parser.add_argument("--weight-decay", type=float, default=1e-3, help="Weight decay. Default: 1e-3")
-    parser.add_argument("--warmup-steps", type=int, default=100, help="Warmup steps. Default: 100")
-    parser.add_argument("--max-steps", type=int, default=1800, help="Max optimizer steps. Default: 1800")
-    parser.add_argument("--max-epochs", type=int, default=6, help="Max epochs. Default: 6")
-    parser.add_argument("--val-check-interval", type=int, default=200, help="Validate every N optimizer steps. Default: 200")
+    parser.add_argument("--warmup-steps", type=int, default=500, help="Warmup steps. Default: 500")
+    parser.add_argument("--max-steps", type=int, default=8000, help="Max optimizer steps. Default: 8000")
+    parser.add_argument(
+        "--max-epochs",
+        type=int,
+        default=-1,
+        help="Max epochs. Default: -1, so --max-steps controls run length",
+    )
+    parser.add_argument("--val-check-interval", type=int, default=500, help="Validate every N optimizer steps. Default: 500")
     parser.add_argument("--log-every-n-steps", type=int, default=10, help="Log every N steps. Default: 10")
     parser.add_argument("--patience", type=int, default=4, help="Early stopping patience. Default: 4")
     parser.add_argument(
@@ -123,6 +199,15 @@ def parse_args() -> argparse.Namespace:
         "--return-language-id",
         action="store_true",
         help="Enable multilingual language-id return in train/val datasets.",
+    )
+    parser.add_argument(
+        "--freeze-encoder-fraction",
+        type=float,
+        default=0.5,
+        help=(
+            "Freeze the lower fraction of encoder layers when the model exposes a layer list. "
+            "Use 0 to disable. Default: 0.5"
+        ),
     )
     parser.add_argument(
         "--disable-preserve-memory",
@@ -399,7 +484,7 @@ def main() -> int:
         manifest: Path,
         batch_size: int,
         shuffle: bool,
-        max_duration: float,
+        max_duration: float | None,
         min_duration: float,
         is_train: bool,
     ) -> None:
@@ -410,7 +495,7 @@ def main() -> int:
             cfg.shuffle = shuffle
             cfg.num_workers = args.num_workers
             cfg.pin_memory = False
-            cfg.max_duration = float(max_duration)
+            cfg.max_duration = float(max_duration) if max_duration is not None else None
             cfg.min_duration = float(min_duration)
             # The restored IndicConformer checkpoint carries a multilingual
             # pretraining dataloader config with is_concat=true and a manifest list.
@@ -538,6 +623,9 @@ def main() -> int:
     # after we have manually updated the config.
     if hasattr(model, "setup_optimization_flags"):
         model.setup_optimization_flags()
+
+    encoder_freeze_summary = freeze_lower_encoder_layers(model, args.freeze_encoder_fraction)
+    print(json.dumps({"encoder_freeze": encoder_freeze_summary}, ensure_ascii=True, indent=2))
 
     update_dataset_cfg(
         cfg.train_ds,
@@ -693,6 +781,7 @@ def main() -> int:
         "val_check_interval": args.val_check_interval if validation_enabled else None,
         "log_every_n_steps": args.log_every_n_steps,
         "return_language_id": args.return_language_id,
+        "encoder_freeze": encoder_freeze_summary,
         "preserve_memory_enabled": bool(
             hasattr(cfg, "joint") and cfg.joint is not None and bool(cfg.joint.get("preserve_memory", False))
         ),

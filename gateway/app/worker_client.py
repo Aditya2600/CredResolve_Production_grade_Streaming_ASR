@@ -1,3 +1,4 @@
+import json
 import time
 import logging
 import httpx
@@ -5,13 +6,13 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .metrics import WORKER_CALLS, WORKER_LATENCY
-from .eval_logging import emit_eval_event
 
 @dataclass
 class WorkerResponse:
     text: str
     language: str = ""
     language_source: str = ""
+    context_biasing: dict[str, object] | None = None
 
 
 log = logging.getLogger("gateway.worker_client")
@@ -37,7 +38,10 @@ class WorkerClient:
         mode: str,
         session_id: Optional[str] = None,
         utterance_id: Optional[str] = None,
-        sampled: Optional[bool] = None,
+        context_biasing_mode: Optional[str] = None,
+        biasing_context: Optional[dict[str, object]] = None,
+        vad_enabled: bool = False,
+        denoise_enabled: bool = False,
     ) -> WorkerResponse:
         url = f"{self.base_url}/v1/transcribe"
         headers = {
@@ -46,17 +50,26 @@ class WorkerClient:
             "X-Decoder": decoder,
             "X-Language": language,
             "X-Mode": mode,
+            "X-VAD-Enabled": "true" if vad_enabled else "false",
+            "X-Denoise-Enabled": "true" if denoise_enabled else "false",
         }
         if session_id:
             headers["X-Session-Id"] = session_id
         if utterance_id:
             headers["X-Utterance-Id"] = utterance_id
+        if context_biasing_mode or biasing_context:
+            payload: dict[str, object] = {}
+            if context_biasing_mode:
+                payload["context_biasing"] = {"mode": context_biasing_mode}
+            if biasing_context:
+                payload["biasing_context"] = biasing_context
+            headers["X-Context-Biasing-Request"] = json.dumps(payload, separators=(",", ":"))
 
         t0 = time.time()
         http_status = None
         try:
             log.info(
-                "Calling worker mode=%s session_id=%s utterance_id=%s bytes=%s sample_rate=%s decoder=%s language=%s url=%s",
+                "Calling worker mode=%s session_id=%s utterance_id=%s bytes=%s sample_rate=%s decoder=%s language=%s biasing_mode=%s dynamic_context_present=%s url=%s",
                 mode,
                 session_id or "-",
                 utterance_id or "-",
@@ -64,6 +77,8 @@ class WorkerClient:
                 sample_rate,
                 decoder,
                 language,
+                context_biasing_mode or "-",
+                bool(biasing_context),
                 url,
             )
             r = await self.client.post(url, content=audio_bytes, headers=headers)
@@ -75,7 +90,7 @@ class WorkerClient:
             data = r.json()
             latency_ms = int((time.time() - t0) * 1000)
             log.info(
-                "Worker call completed mode=%s session_id=%s utterance_id=%s status=%s latency_ms=%s text_chars=%s resolved_language=%s language_source=%s",
+                "Worker call completed mode=%s session_id=%s utterance_id=%s status=%s latency_ms=%s text_chars=%s resolved_language=%s language_source=%s context_biasing_mode=%s",
                 mode,
                 session_id or "-",
                 utterance_id or "-",
@@ -84,25 +99,13 @@ class WorkerClient:
                 len((data.get("text") or "").strip()),
                 (data.get("language") or "").strip() or "-",
                 (data.get("language_source") or "").strip() or "-",
-            )
-            emit_eval_event(
-                log,
-                "worker_call",
-                session_id=session_id,
-                utterance_id=utterance_id,
-                sampled=sampled,
-                mode=mode,
-                status="ok",
-                http_status=http_status,
-                latency_ms=latency_ms,
-                request_bytes=len(audio_bytes),
-                resolved_language=(data.get("language") or "").strip() or None,
-                language_source=(data.get("language_source") or "").strip() or None,
+                ((data.get("context_biasing") or {}).get("mode") if isinstance(data.get("context_biasing"), dict) else "-"),
             )
             return WorkerResponse(
                 text=(data.get("text") or "").strip(),
                 language=(data.get("language") or "").strip(),
                 language_source=(data.get("language_source") or "").strip(),
+                context_biasing=(data.get("context_biasing") if isinstance(data.get("context_biasing"), dict) else None),
             )
         except Exception as exc:
             latency_ms = int((time.time() - t0) * 1000)
@@ -114,18 +117,5 @@ class WorkerClient:
                 http_status,
                 latency_ms,
                 exc,
-            )
-            emit_eval_event(
-                log,
-                "worker_call_error",
-                session_id=session_id,
-                utterance_id=utterance_id,
-                sampled=sampled,
-                mode=mode,
-                status="err",
-                http_status=http_status,
-                latency_ms=latency_ms,
-                request_bytes=len(audio_bytes),
-                error=str(exc),
             )
             raise

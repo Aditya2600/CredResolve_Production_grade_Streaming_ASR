@@ -36,6 +36,20 @@ class _FakeModel:
         return "ok"
 
 
+class _FakeTimestampModel:
+    def __call__(self, wav_t, resolved_language: str, decoding: str, compute_timestamps: str | None = None):
+        del wav_t, resolved_language
+        assert decoding == "ctc"
+        assert compute_timestamps == "w"
+        return (
+            "hello world",
+            [
+                ("hello", 0.0, 0.42),
+                ("world", 0.42, 0.91),
+            ],
+        )
+
+
 class _SlowModel:
     def __init__(self, delay_s: float) -> None:
         self.delay_s = delay_s
@@ -156,6 +170,36 @@ def test_explicit_language_bypasses_lid_detection():
     assert result.language == "hi"
     assert result.language_source == "client"
     assert detector.calls == 0
+
+
+def test_word_timestamps_are_returned_for_ctc_requests():
+    worker = _make_worker(enable_lid=False, timeout_ms=200)
+    worker.model = _FakeTimestampModel()
+
+    result = worker.transcribe_pcm16(
+        pcm16le=b"\x00\x00" * 1600,
+        sample_rate=16000,
+        decoder="ctc",
+        language="hi",
+        session_id="session-ts",
+        utterance_id="utt-0001",
+        mode="final",
+        timestamp_type="word",
+    )
+
+    assert result.text == "hello world"
+    assert result.word_timestamps == [
+        {"word": "hello", "start_sec": 0.0, "end_sec": 0.42, "word_index": 0},
+        {"word": "world", "start_sec": 0.42, "end_sec": 0.91, "word_index": 1},
+    ]
+    assert result.segment_timestamps == [
+        {
+            "segment_index": 0,
+            "text": "hello world",
+            "start_sec": 0.0,
+            "end_sec": 0.91,
+        }
+    ]
 
 
 def test_timeout_keeps_inference_slot_occupied_until_background_work_finishes():

@@ -1,11 +1,22 @@
 import type { AudioConfig } from '../types/ws';
 
+export interface WsAudioProcessingOptions {
+  apmEnabled: boolean;
+  vadEnabled: boolean;
+  denoiseEnabled: boolean;
+}
+
 function resolveDefaultWsUrl(): string {
+  if (import.meta.env && import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL;
+  }
+
   if (typeof window === 'undefined') {
     return 'ws://localhost:8000/ws/stt';
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
   const host = window.location.host || 'localhost';
 
   if (window.location.port === '5173') {
@@ -81,7 +92,11 @@ export const SUPPORTED_LANGUAGES = [
   { value: 'ur', label: 'Urdu (ur)' },
 ] as const;
 
-export function buildWsUrl(baseUrl: string, languageCode: string): string {
+export function buildWsUrl(
+  baseUrl: string,
+  languageCode: string,
+  audioProcessing?: WsAudioProcessingOptions
+): string {
   const url = toWebSocketUrl(baseUrl);
   url.searchParams.set('language-code', languageCode || DEFAULT_LANGUAGE);
   url.searchParams.set('model', DEFAULT_MODEL);
@@ -91,6 +106,11 @@ export function buildWsUrl(baseUrl: string, languageCode: string): string {
   url.searchParams.set('vad_signals', 'true');
   url.searchParams.set('flush_signal', 'true');
   url.searchParams.set('input_audio_codec', AUDIO_CONFIG.encoding);
+  if (audioProcessing) {
+    url.searchParams.set('apm_enabled', String(audioProcessing.apmEnabled));
+    url.searchParams.set('vad_enabled', String(audioProcessing.vadEnabled));
+    url.searchParams.set('denoise_enabled', String(audioProcessing.denoiseEnabled));
+  }
   return url.toString();
 }
 

@@ -1,12 +1,14 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 numpy==1.26.4
+pandas
 torch==2.4.1
 torchaudio==2.4.1
 onnxruntime-gpu==1.20.1
 huggingface_hub==0.24.6
 transformers==4.41.2
 speechbrain==0.5.16
+tqdm==4.66.5
 prometheus-client==0.20.0
 orjson==3.10.7
 tritonclient[http]>=2.54,<2.67

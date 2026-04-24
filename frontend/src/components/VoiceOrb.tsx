@@ -1,14 +1,15 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { AudioState } from '../types/audio';
 
 interface VoiceOrbProps {
   state: AudioState;
+  volume?: number;
 }
 
-export function VoiceOrb({ state }: VoiceOrbProps) {
+export const VoiceOrb: React.FC<VoiceOrbProps> = ({ state, volume = 0 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
-  const pulseRef = useRef(0);
+  const animationFrameRef = useRef<number>();
+  const rotationRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -17,135 +18,93 @@ export function VoiceOrb({ state }: VoiceOrbProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const animate = () => {
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const baseRadius = 80;
+    const dpr = window.devicePixelRatio || 1;
+    const size = 320;
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    ctx.scale(dpr, dpr);
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const render = () => {
+      ctx.clearRect(0, 0, size, size);
+      const centerX = size / 2;
+      const centerY = size / 2;
+      
+      rotationRef.current += 0.01;
+      const pulse = Math.sin(Date.now() / 1000) * 0.1 + 1;
+      const scale = state === 'listening' ? 1 + volume * 1.5 : pulse;
 
-      if (state === 'idle') {
-        ctx.fillStyle = 'rgba(147, 51, 234, 0.15)';
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
-        ctx.fill();
+      // Outer Glow
+      const outerGlow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 120 * scale);
+      outerGlow.addColorStop(0, state === 'listening' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.05)');
+      outerGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = outerGlow;
+      ctx.fillRect(0, 0, size, size);
 
-        ctx.strokeStyle = 'rgba(147, 51, 234, 0.3)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, baseRadius);
-        gradient.addColorStop(0, 'rgba(168, 85, 247, 0.4)');
-        gradient.addColorStop(1, 'rgba(147, 51, 234, 0.2)');
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius - 4, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (state === 'listening') {
-        pulseRef.current = (pulseRef.current + 0.08) % (Math.PI * 2);
-
-        const pulse = Math.sin(pulseRef.current);
-        const pulseRadius = baseRadius + pulse * 15;
-
-        ctx.fillStyle = `rgba(147, 51, 234, ${0.2 - pulse * 0.1})`;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, pulseRadius, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = `rgba(147, 51, 234, ${0.4 + pulse * 0.1})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, baseRadius);
-        gradient.addColorStop(0, 'rgba(168, 85, 247, 0.6)');
-        gradient.addColorStop(1, 'rgba(147, 51, 234, 0.3)');
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius - 4, 0, Math.PI * 2);
-        ctx.fill();
-
-        drawWaveform(ctx, centerX, centerY, baseRadius, pulseRef.current);
+      // Inner Core
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(rotationRef.current);
+      
+      const coreGradient = ctx.createLinearGradient(-80, -80, 80, 80);
+      if (state === 'listening') {
+        coreGradient.addColorStop(0, '#6366f1');
+        coreGradient.addColorStop(0.5, '#a855f7');
+        coreGradient.addColorStop(1, '#ec4899');
       } else if (state === 'processing') {
-        pulseRef.current = (pulseRef.current + 0.12) % (Math.PI * 2);
-
-        const rotation = pulseRef.current;
-
-        ctx.strokeStyle = 'rgba(147, 51, 234, 0.4)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.strokeStyle = 'rgba(168, 85, 247, 0.8)';
-        ctx.lineWidth = 3;
-        const sweepAngle = Math.PI * 0.8;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius, rotation, rotation + sweepAngle);
-        ctx.stroke();
-
-        const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, baseRadius);
-        gradient.addColorStop(0, 'rgba(168, 85, 247, 0.5)');
-        gradient.addColorStop(1, 'rgba(147, 51, 234, 0.25)');
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, baseRadius - 4, 0, Math.PI * 2);
-        ctx.fill();
+        coreGradient.addColorStop(0, '#6366f1');
+        coreGradient.addColorStop(0.5, '#818cf8');
+        coreGradient.addColorStop(1, '#6366f1');
+      } else {
+        coreGradient.addColorStop(0, '#e2e8f0');
+        coreGradient.addColorStop(0.5, '#f1f5f9');
+        coreGradient.addColorStop(1, '#e2e8f0');
       }
 
-      animationRef.current = requestAnimationFrame(animate);
+      ctx.beginPath();
+      ctx.arc(0, 0, 80 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = coreGradient;
+      ctx.shadowBlur = state === 'listening' ? 30 : 15;
+      ctx.shadowColor = state === 'listening' ? 'rgba(99, 102, 241, 0.5)' : 'rgba(0,0,0,0.05)';
+      ctx.fill();
+      
+      // Highlight layer
+      const highlight = ctx.createRadialGradient(-30, -30, 0, -30, -30, 100);
+      highlight.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+      highlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = highlight;
+      ctx.fill();
+      
+      ctx.restore();
+
+      animationFrameRef.current = requestAnimationFrame(render);
     };
 
-    animate();
-
+    render();
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [state]);
+  }, [state, volume]);
 
   return (
-    <div className="flex justify-center py-8">
+    <div className="relative flex items-center justify-center">
       <canvas
         ref={canvasRef}
-        width={400}
-        height={400}
-        className="w-full max-w-md h-auto"
+        style={{ width: '320px', height: '320px' }}
+        className="drop-shadow-2xl"
       />
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className={`w-24 h-24 rounded-full border border-white/20 backdrop-blur-md flex items-center justify-center shadow-inner transition-all duration-500 ${state === 'listening' ? 'scale-110 opacity-100' : 'scale-100 opacity-0'}`}>
+          <div className="flex gap-1">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="w-1.5 h-8 bg-white rounded-full animate-pulse"
+                style={{ animationDelay: `${i * 0.2}s` }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
-}
-
-function drawWaveform(
-  ctx: CanvasRenderingContext2D,
-  centerX: number,
-  centerY: number,
-  radius: number,
-  phase: number
-) {
-  const bars = 12;
-  const barWidth = 4;
-
-  ctx.strokeStyle = 'rgba(168, 85, 247, 0.8)';
-  ctx.lineWidth = barWidth;
-
-  for (let i = 0; i < bars; i++) {
-    const angle = (i / bars) * Math.PI * 2 - Math.PI / 2 + phase;
-    const amplitude = 20 + Math.sin(phase + i * 0.5) * 10;
-
-    const x1 = centerX + Math.cos(angle) * (radius - 10);
-    const y1 = centerY + Math.sin(angle) * (radius - 10);
-
-    const x2 = centerX + Math.cos(angle) * (radius - 10 + amplitude);
-    const y2 = centerY + Math.sin(angle) * (radius - 10 + amplitude);
-
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-  }
-}
+};

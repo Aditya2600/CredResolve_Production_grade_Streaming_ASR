@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from worker.app.triton_helpers import (
+    decode_triton_json_tensor,
     decode_triton_string_tensor,
     normalize_triton_http_url,
 )
@@ -29,3 +30,12 @@ def test_decode_triton_string_tensor_handles_bytes():
 
 def test_decode_triton_string_tensor_handles_missing_values():
     assert decode_triton_string_tensor(None) == ""
+
+
+def test_decode_triton_json_tensor_handles_bytes():
+    values = np.asarray([b'["hello", 1]'], dtype=object)
+    assert decode_triton_json_tensor(values, default=[]) == ["hello", 1]
+
+
+def test_decode_triton_json_tensor_returns_default_for_missing_values():
+    assert decode_triton_json_tensor(None, default=[]) == []

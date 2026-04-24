@@ -88,8 +88,8 @@ def _import_torch():
         import torch
     except Exception as exc:
         raise NemoExportError(
-            "PyTorch is required for NeMo export. Install the export environment from "
-            "`worker/requirements-export.txt`."
+            "PyTorch is required for NeMo export. Create a Python 3.11 environment and "
+            "install the export dependencies from `worker/requirements-export.txt`."
         ) from exc
     return torch
 
@@ -100,7 +100,7 @@ def _import_onnx():
     except Exception as exc:
         raise NemoExportError(
             "ONNX validation requires the `onnx` package. Install the export environment from "
-            "`worker/requirements-export.txt` or rerun with `--no-validate`."
+            "`worker/requirements-export.txt` in Python 3.11, or rerun with `--no-validate`."
         ) from exc
     return onnx
 
@@ -111,7 +111,7 @@ def _import_huggingface_hub():
     except Exception as exc:
         raise NemoExportError(
             "Hugging Face Hub support is required to download remote NeMo archives. "
-            "Install the worker context-biasing environment from "
+            "Create a Python 3.11 environment and install the worker context-biasing environment from "
             "`worker/requirements-context-biasing.txt`."
         ) from exc
     return hf_hub_download, list_repo_files
@@ -122,8 +122,8 @@ def _resolve_nemo_model_class(name: str):
         import nemo.collections.asr.models as nemo_asr_models
     except Exception as exc:
         raise NemoExportError(
-            "NeMo ASR export dependencies are missing. Install the export environment from "
-            "`worker/requirements-export.txt`."
+            "NeMo ASR export dependencies are missing. Create a Python 3.11 environment and "
+            "install the export environment from `worker/requirements-export.txt`."
         ) from exc
 
     normalized = normalize_model_class_name(name)

@@ -1,7 +1,9 @@
 import asyncio
 from dataclasses import replace
 from functools import lru_cache
+import json
 import logging
+from pathlib import Path
 import time
 
 from fastapi import FastAPI, Header, Request
@@ -14,6 +16,7 @@ from .config import (
     ASR_CONTEXT_BIASING_CONTEXT_SCORE,
     ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT,
     ASR_CONTEXT_BIASING_DEVICE,
+    ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES,
     ASR_CONTEXT_BIASING_METHOD,
     ASR_CONTEXT_BIASING_MODE,
     ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS,
@@ -73,12 +76,14 @@ from .model import (
     ONNXIndicASRWorker,
     UnsupportedLanguageError,
 )
+from .audio_processing import AudioPreprocessor
 from .triton import TritonIndicASRWorker
 
 setup_logging()
 log = logging.getLogger("worker")
 
 app = FastAPI()
+VALID_TIMESTAMP_TYPES = frozenset({"none", "word"})
 
 
 def build_worker_model():
@@ -129,12 +134,18 @@ def build_context_biasing_runtime() -> NeMoContextBiasingRuntime:
             beam_threshold=ASR_CONTEXT_BIASING_BEAM_THRESHOLD,
             context_score=ASR_CONTEXT_BIASING_CONTEXT_SCORE,
             ctc_ali_token_weight=ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT,
+            max_dynamic_phrases=ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES,
         )
     )
 
 
 model = build_worker_model()
 context_biasing = build_context_biasing_runtime()
+
+
+@lru_cache(maxsize=1)
+def get_audio_preprocessor() -> AudioPreprocessor:
+    return AudioPreprocessor()
 sem = asyncio.Semaphore(WORKER_MAX_JOBS)
 
 
@@ -160,9 +171,141 @@ def prefixed_text_metadata(prefix: str, text: str) -> dict[str, object]:
     return {f"{prefix}_{key}": value for key, value in text_metadata(text).items()}
 
 
+def normalize_timestamp_type(value: str) -> str:
+    normalized = (value or "none").strip().lower() or "none"
+    if normalized not in VALID_TIMESTAMP_TYPES:
+        raise ValueError(
+            f"Unsupported X-Timestamp-Type `{value}`. Supported values: {sorted(VALID_TIMESTAMP_TYPES)}"
+        )
+    return normalized
+
+
+def build_transcribe_response(
+    result,
+    *,
+    include_timestamps: bool,
+    context_biasing: dict[str, object] | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "text": result.text,
+        "language": result.language,
+        "language_source": result.language_source,
+    }
+    if context_biasing is not None:
+        payload["context_biasing"] = context_biasing
+    if include_timestamps:
+        payload["word_timestamps"] = list(result.word_timestamps)
+        payload["segment_timestamps"] = list(result.segment_timestamps)
+    return payload
+
+
+def build_fallback_response(
+    *,
+    language: str,
+    language_source: str,
+    include_timestamps: bool,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "text": "worker-fallback",
+        "language": language,
+        "language_source": language_source,
+    }
+    if include_timestamps:
+        payload["word_timestamps"] = []
+        payload["segment_timestamps"] = []
+    return payload
+
+
 @lru_cache(maxsize=16)
 def load_phrase_lexicon(phrase_file: str, language: str) -> PhraseLexicon:
     return PhraseLexicon.from_file(phrase_file, language=language)
+
+
+def cleanup_phrase_file(decision: ContextBiasingDecision) -> None:
+    if not decision.cleanup_phrase_file or not decision.phrase_file:
+        return
+    try:
+        Path(decision.phrase_file).unlink(missing_ok=True)
+    except Exception as exc:
+        log.warning("Failed to remove request-scoped phrase file path=%s error=%s", decision.phrase_file, exc)
+
+
+def build_context_biasing_response(
+    decision: ContextBiasingDecision,
+    *,
+    bias_latency_ms: int | None = None,
+    returned_source: str | None = None,
+    selection_reason: str | None = None,
+    fallback_reason: str | None = None,
+) -> dict[str, object] | None:
+    if (
+        decision.mode == "disabled"
+        and decision.requested_mode is None
+        and not decision.dynamic_context_present
+        and not decision.biasing_errors
+    ):
+        return None
+
+    payload: dict[str, object] = {
+        "mode": decision.mode,
+        "reason": decision.reason,
+        "requested_mode": decision.requested_mode,
+        "dynamic_context_attached": decision.dynamic_context_present,
+        "dynamic_context_used": decision.dynamic_context_used,
+        "fields_provided": list(decision.fields_provided),
+        "phrase_count_before_pruning": decision.phrase_count_before_pruning,
+        "phrase_count_after_pruning": decision.phrase_count_after_pruning,
+        "phrase_count_total": decision.total_phrase_count,
+        "top_phrases": list(decision.top_phrases),
+        "phrase_source": decision.phrase_source,
+        "errors": list(decision.biasing_errors),
+    }
+    if returned_source is not None:
+        payload["returned_source"] = returned_source
+    if selection_reason is not None:
+        payload["selection_reason"] = selection_reason
+    if fallback_reason is not None:
+        payload["fallback_reason"] = fallback_reason
+    if bias_latency_ms is not None:
+        payload["latency_ms"] = bias_latency_ms
+    return payload
+
+
+def parse_context_biasing_request_header(value: str) -> tuple[str | None, dict[str, object] | None]:
+    raw = (value or "").strip()
+    if not raw:
+        return None, None
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("X-Context-Biasing-Request must be valid JSON") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("X-Context-Biasing-Request must decode to an object")
+
+    requested_mode: str | None = None
+    context_biasing = payload.get("context_biasing")
+    if context_biasing is not None:
+        if not isinstance(context_biasing, dict):
+            raise ValueError("context_biasing must be an object when provided")
+        enabled = context_biasing.get("enabled")
+        if enabled is not None and not isinstance(enabled, bool):
+            raise ValueError("context_biasing.enabled must be a boolean when provided")
+        if enabled is False:
+            requested_mode = "disabled"
+        mode = context_biasing.get("mode")
+        if mode is not None:
+            mode_text = str(mode).strip().lower()
+            if mode_text not in {"disabled", "shadow", "active"}:
+                raise ValueError("context_biasing.mode must be one of disabled, shadow, active")
+            requested_mode = mode_text
+
+    biasing_context = payload.get("biasing_context")
+    if biasing_context is not None and not isinstance(biasing_context, dict):
+        raise ValueError("biasing_context must be an object when provided")
+
+    return requested_mode, biasing_context
 
 
 async def maybe_apply_context_biasing(
@@ -175,56 +318,97 @@ async def maybe_apply_context_biasing(
     utterance_id: str | None,
     mode: str,
     sampled: bool,
+    requested_biasing_mode: str | None,
+    biasing_context: dict[str, object] | None,
 ) -> tuple:
     decision: ContextBiasingDecision = context_biasing.decide(
         requested_language=requested_language,
         session_id=session_id,
         utterance_id=utterance_id,
+        requested_mode=requested_biasing_mode,
+        biasing_context=biasing_context,
     )
-    if decision.mode == "disabled":
-        return baseline_result, decision, None, None
-
-    if not decision.eligible:
-        status = "fallback" if decision.reason == "not_ready" and decision.mode == "active" else "skipped"
-        CONTEXT_BIASING_REQUESTS.labels(mode=decision.mode, status=status).inc()
-        if status == "fallback":
-            CONTEXT_BIASING_FALLBACKS.labels(reason="not_ready").inc()
-        emit_eval_event(
-            log,
-            "transcribe_context_biasing_skipped",
-            session_id=session_id,
-            utterance_id=utterance_id,
-            sampled=sampled,
-            mode=mode,
-            bias_mode=decision.mode,
-            bias_method=context_biasing.method,
-            reason=decision.reason,
-            requested_language=requested_language,
-            resolved_language=baseline_result.language,
-            phrase_file=decision.phrase_file,
-        )
-        return baseline_result, decision, None, decision.reason if status == "fallback" else None
-
-    if baseline_result.language != decision.language:
-        CONTEXT_BIASING_REQUESTS.labels(mode=decision.mode, status="skipped").inc()
-        emit_eval_event(
-            log,
-            "transcribe_context_biasing_skipped",
-            session_id=session_id,
-            utterance_id=utterance_id,
-            sampled=sampled,
-            mode=mode,
-            bias_mode=decision.mode,
-            bias_method=context_biasing.method,
-            reason="resolved_language_mismatch",
-            requested_language=requested_language,
-            resolved_language=baseline_result.language,
-            phrase_file=decision.phrase_file,
-        )
-        return baseline_result, decision, None, None
-
-    attempt_t0 = time.time()
     try:
+        if decision.mode == "disabled":
+            return (
+                baseline_result,
+                decision,
+                None,
+                None,
+                build_context_biasing_response(decision),
+            )
+
+        if not decision.eligible:
+            status = "fallback" if decision.reason == "not_ready" and decision.mode == "active" else "skipped"
+            CONTEXT_BIASING_REQUESTS.labels(mode=decision.mode, status=status).inc()
+            if status == "fallback":
+                CONTEXT_BIASING_FALLBACKS.labels(reason="not_ready").inc()
+            emit_eval_event(
+                log,
+                "transcribe_context_biasing_skipped",
+                session_id=session_id,
+                utterance_id=utterance_id,
+                sampled=sampled,
+                mode=mode,
+                bias_mode=decision.mode,
+                bias_method=context_biasing.method,
+                reason=decision.reason,
+                requested_language=requested_language,
+                resolved_language=baseline_result.language,
+                phrase_file=decision.phrase_file,
+                dynamic_context_present=decision.dynamic_context_present,
+                dynamic_context_used=decision.dynamic_context_used,
+                fields_provided=list(decision.fields_provided),
+                phrase_count_before_pruning=decision.phrase_count_before_pruning,
+                phrase_count_after_pruning=decision.phrase_count_after_pruning,
+                total_phrase_count=decision.total_phrase_count,
+                top_phrases=list(decision.top_phrases),
+                phrase_source=decision.phrase_source,
+                biasing_errors=list(decision.biasing_errors),
+            )
+            fallback_reason = decision.reason if status == "fallback" else None
+            return (
+                baseline_result,
+                decision,
+                None,
+                fallback_reason,
+                build_context_biasing_response(decision, fallback_reason=fallback_reason),
+            )
+
+        if baseline_result.language != decision.language:
+            CONTEXT_BIASING_REQUESTS.labels(mode=decision.mode, status="skipped").inc()
+            emit_eval_event(
+                log,
+                "transcribe_context_biasing_skipped",
+                session_id=session_id,
+                utterance_id=utterance_id,
+                sampled=sampled,
+                mode=mode,
+                bias_mode=decision.mode,
+                bias_method=context_biasing.method,
+                reason="resolved_language_mismatch",
+                requested_language=requested_language,
+                resolved_language=baseline_result.language,
+                phrase_file=decision.phrase_file,
+                dynamic_context_present=decision.dynamic_context_present,
+                dynamic_context_used=decision.dynamic_context_used,
+                fields_provided=list(decision.fields_provided),
+                phrase_count_before_pruning=decision.phrase_count_before_pruning,
+                phrase_count_after_pruning=decision.phrase_count_after_pruning,
+                total_phrase_count=decision.total_phrase_count,
+                top_phrases=list(decision.top_phrases),
+                phrase_source=decision.phrase_source,
+                biasing_errors=list(decision.biasing_errors),
+            )
+            return (
+                baseline_result,
+                decision,
+                None,
+                None,
+                build_context_biasing_response(decision),
+            )
+
+        attempt_t0 = time.time()
         biased = await context_biasing.transcribe_with_timeout(
             pcm16le=pcm,
             sample_rate=sample_rate,
@@ -248,7 +432,10 @@ async def maybe_apply_context_biasing(
             lexicon = None
             if decision.phrase_file:
                 try:
-                    lexicon = load_phrase_lexicon(decision.phrase_file, decision.language)
+                    if decision.cleanup_phrase_file:
+                        lexicon = PhraseLexicon.from_file(decision.phrase_file, language=decision.language)
+                    else:
+                        lexicon = load_phrase_lexicon(decision.phrase_file, decision.language)
                 except Exception as exc:
                     log.warning(
                         "Failed to load context-biasing phrase lexicon phrase_file=%s language=%s error=%s",
@@ -284,19 +471,42 @@ async def maybe_apply_context_biasing(
             requested_language=requested_language,
             resolved_language=baseline_result.language,
             phrase_file=biased.phrase_file,
+            phrase_source=decision.phrase_source,
             bias_latency_ms=biased.latency_ms,
             returned_source=returned_source,
             selection_reason=selection_reason,
             baseline_phrase_hits=baseline_phrase_hits,
             biased_phrase_hits=biased_phrase_hits,
             returned_phrase_hits=returned_phrase_hits,
+            dynamic_context_present=decision.dynamic_context_present,
+            dynamic_context_used=decision.dynamic_context_used,
+            fields_provided=list(decision.fields_provided),
+            phrase_count_before_pruning=decision.phrase_count_before_pruning,
+            phrase_count_after_pruning=decision.phrase_count_after_pruning,
+            total_phrase_count=decision.total_phrase_count,
+            top_phrases=list(decision.top_phrases),
+            biasing_errors=list(decision.biasing_errors),
+            baseline_transcript=baseline_result.text,
+            biased_transcript=biased.text,
+            selected_transcript=returned.text,
             **prefixed_text_metadata("baseline", baseline_result.text),
             **prefixed_text_metadata("biased", biased.text),
             **prefixed_text_metadata("returned", returned.text),
         )
         if decision.mode == "active" and not biased.text.strip():
             CONTEXT_BIASING_FALLBACKS.labels(reason="empty_candidate").inc()
-        return returned, decision, biased.text, None
+        return (
+            returned,
+            decision,
+            biased.text,
+            None,
+            build_context_biasing_response(
+                decision,
+                bias_latency_ms=biased.latency_ms,
+                returned_source=returned_source,
+                selection_reason=selection_reason,
+            ),
+        )
     except ContextBiasingTimeoutError as exc:
         CONTEXT_BIASING_REQUESTS.labels(mode=decision.mode, status="fallback").inc()
         CONTEXT_BIASING_FALLBACKS.labels(reason="timeout").inc()
@@ -315,9 +525,25 @@ async def maybe_apply_context_biasing(
             requested_language=requested_language,
             resolved_language=baseline_result.language,
             phrase_file=decision.phrase_file,
+            phrase_source=decision.phrase_source,
+            dynamic_context_present=decision.dynamic_context_present,
+            dynamic_context_used=decision.dynamic_context_used,
+            fields_provided=list(decision.fields_provided),
+            phrase_count_before_pruning=decision.phrase_count_before_pruning,
+            phrase_count_after_pruning=decision.phrase_count_after_pruning,
+            total_phrase_count=decision.total_phrase_count,
+            top_phrases=list(decision.top_phrases),
+            biasing_errors=list(decision.biasing_errors),
+            baseline_transcript=baseline_result.text,
             **prefixed_text_metadata("baseline", baseline_result.text),
         )
-        return baseline_result, decision, None, "timeout"
+        return (
+            baseline_result,
+            decision,
+            None,
+            "timeout",
+            build_context_biasing_response(decision, fallback_reason="timeout"),
+        )
     except (ContextBiasingNotReadyError, ContextBiasingError) as exc:
         CONTEXT_BIASING_REQUESTS.labels(mode=decision.mode, status="fallback").inc()
         CONTEXT_BIASING_FALLBACKS.labels(reason="error").inc()
@@ -336,15 +562,33 @@ async def maybe_apply_context_biasing(
             requested_language=requested_language,
             resolved_language=baseline_result.language,
             phrase_file=decision.phrase_file,
+            phrase_source=decision.phrase_source,
+            dynamic_context_present=decision.dynamic_context_present,
+            dynamic_context_used=decision.dynamic_context_used,
+            fields_provided=list(decision.fields_provided),
+            phrase_count_before_pruning=decision.phrase_count_before_pruning,
+            phrase_count_after_pruning=decision.phrase_count_after_pruning,
+            total_phrase_count=decision.total_phrase_count,
+            top_phrases=list(decision.top_phrases),
+            biasing_errors=list(decision.biasing_errors),
+            baseline_transcript=baseline_result.text,
             **prefixed_text_metadata("baseline", baseline_result.text),
         )
-        return baseline_result, decision, None, "error"
+        return (
+            baseline_result,
+            decision,
+            None,
+            "error",
+            build_context_biasing_response(decision, fallback_reason="error"),
+        )
+    finally:
+        cleanup_phrase_file(decision)
 
 
 @app.on_event("startup")
 async def startup_event():
     log.info(
-        "Worker startup backend=%s model=%s triton_model=%s triton_url=%s decoder=%s default_language=%s lid_enabled=%s lid_primary_provider=%s lid_primary_source=%s lid_fallback_provider=%s lid_fallback_source=%s lid_confidence_threshold=%.2f timeout_ms=%s max_jobs=%s context_biasing_mode=%s context_biasing_method=%s context_biasing_phrases_dir=%s",
+        "Worker startup backend=%s model=%s triton_model=%s triton_url=%s decoder=%s default_language=%s lid_enabled=%s lid_primary_provider=%s lid_primary_source=%s lid_fallback_provider=%s lid_fallback_source=%s lid_confidence_threshold=%.2f timeout_ms=%s max_jobs=%s context_biasing_mode=%s context_biasing_method=%s context_biasing_phrases_dir=%s context_biasing_dynamic_max_phrases=%s",
         ASR_BACKEND,
         ASR_MODEL_NAME or "-",
         TRITON_MODEL_NAME,
@@ -362,6 +606,7 @@ async def startup_event():
         ASR_CONTEXT_BIASING_MODE,
         ASR_CONTEXT_BIASING_METHOD,
         ASR_CONTEXT_BIASING_PHRASES_DIR or "-",
+        ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES,
     )
     try:
         await asyncio.to_thread(model.load)
@@ -409,9 +654,13 @@ async def transcribe(
     x_sample_rate: str = Header(default="16000"),
     x_decoder: str = Header(default=ASR_DECODER),
     x_language: str = Header(default=ASR_DEFAULT_LANGUAGE),
+    x_timestamp_type: str = Header(default="none"),
     x_mode: str = Header(default="final"),
     x_session_id: str = Header(default=""),
     x_utterance_id: str = Header(default=""),
+    x_context_biasing_request: str = Header(default=""),
+    x_vad_enabled: str = Header(default="false"),
+    x_denoise_enabled: str = Header(default="false"),
 ):
     pcm = await request.body()
     mode = (x_mode or "final").lower()
@@ -419,8 +668,57 @@ async def transcribe(
     utterance_id = (x_utterance_id or "").strip() or None
     sampled = should_sample(session_id=session_id, utterance_id=utterance_id)
     t0 = time.time()
+    try:
+        timestamp_type = normalize_timestamp_type(x_timestamp_type)
+    except ValueError as exc:
+        REQS.labels(mode=mode, status="err").inc()
+        LAT.observe(time.time() - t0)
+        log.warning(
+            "Invalid timestamp type session_id=%s utterance_id=%s value=%s",
+            session_id or "-",
+            utterance_id or "-",
+            x_timestamp_type,
+        )
+        emit_eval_event(
+            log,
+            "transcribe_result_error",
+            session_id=session_id,
+            utterance_id=utterance_id,
+            sampled=sampled,
+            mode=mode,
+            reason="invalid_timestamp_type_header",
+            error=str(exc),
+            latency_ms=int((time.time() - t0) * 1000),
+            **lid_eval_fields(include_resolution=False),
+        )
+        return PlainTextResponse(f"error: {exc}", status_code=400)
+    try:
+        requested_biasing_mode, biasing_context = parse_context_biasing_request_header(x_context_biasing_request)
+    except ValueError as exc:
+        REQS.labels(mode=mode, status="err").inc()
+        LAT.observe(time.time() - t0)
+        log.warning(
+            "Invalid context biasing request session_id=%s utterance_id=%s error=%s",
+            session_id or "-",
+            utterance_id or "-",
+            exc,
+        )
+        emit_eval_event(
+            log,
+            "transcribe_result_error",
+            session_id=session_id,
+            utterance_id=utterance_id,
+            sampled=sampled,
+            mode=mode,
+            reason="invalid_context_biasing_request_header",
+            error=str(exc),
+            latency_ms=int((time.time() - t0) * 1000),
+            **lid_eval_fields(include_resolution=False),
+        )
+        return PlainTextResponse(f"error: {exc}", status_code=400)
+    include_timestamps = timestamp_type != "none"
     log.info(
-        "Transcribe request received session_id=%s utterance_id=%s mode=%s bytes=%s sample_rate=%s decoder=%s language=%s",
+        "Transcribe request received session_id=%s utterance_id=%s mode=%s bytes=%s sample_rate=%s decoder=%s language=%s timestamp_type=%s biasing_request_present=%s",
         session_id or "-",
         utterance_id or "-",
         mode,
@@ -428,6 +726,8 @@ async def transcribe(
         x_sample_rate,
         x_decoder,
         x_language,
+        timestamp_type,
+        bool(x_context_biasing_request.strip()),
     )
     emit_eval_event(
         log,
@@ -438,6 +738,8 @@ async def transcribe(
         mode=mode,
         request_bytes=len(pcm),
         x_sample_rate=x_sample_rate,
+        x_timestamp_type=timestamp_type,
+        context_biasing_request_present=bool(x_context_biasing_request.strip()),
         **lid_eval_fields(include_resolution=False),
     )
     
@@ -477,6 +779,53 @@ async def transcribe(
                 )
                 return PlainTextResponse("error: invalid X-Sample-Rate header", status_code=400)
 
+            vad_on = (x_vad_enabled or "").strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+            denoise_on = (x_denoise_enabled or "").strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+            if vad_on or denoise_on:
+                try:
+                    preprocessing_t0 = time.time()
+                    original_bytes = len(pcm)
+                    pcm = await asyncio.to_thread(
+                        get_audio_preprocessor().process,
+                        pcm,
+                        sample_rate,
+                        vad_enabled=vad_on,
+                        denoise_enabled=denoise_on,
+                    )
+                    log.info(
+                        "Audio preprocessing completed session_id=%s utterance_id=%s original_bytes=%s processed_bytes=%s latency_ms=%s vad_enabled=%s denoise_enabled=%s",
+                        session_id or "-",
+                        utterance_id or "-",
+                        original_bytes,
+                        len(pcm),
+                        int((time.time() - preprocessing_t0) * 1000),
+                        vad_on,
+                        denoise_on,
+                    )
+                    if vad_on and not pcm:
+                        REQS.labels(mode=mode, status="ok").inc()
+                        LAT.observe(time.time() - t0)
+                        return {
+                            "text": "",
+                            "language": x_language,
+                            "language_source": "vad_filtered",
+                            "word_timestamps": [],
+                            "segment_timestamps": [],
+                            "metrics": {
+                                "audio_duration": 0.0,
+                                "processing_latency": int((time.time() - t0) * 1000),
+                            },
+                        }
+                except Exception as exc:
+                    log.warning(
+                        "Audio preprocessing failed session_id=%s utterance_id=%s vad_enabled=%s denoise_enabled=%s error=%s",
+                        session_id or "-",
+                        utterance_id or "-",
+                        vad_on,
+                        denoise_on,
+                        exc,
+                    )
+
             try:
                 inference_t0 = time.time()
                 result = await model.transcribe_with_timeout(
@@ -487,18 +836,32 @@ async def transcribe(
                     session_id=session_id,
                     utterance_id=utterance_id,
                     mode=mode,
+                    timestamp_type=timestamp_type,
                 )
                 INFERENCE_LATENCY.observe(time.time() - inference_t0)
-                result, bias_decision, _biased_text, bias_fallback_reason = await maybe_apply_context_biasing(
-                    baseline_result=result,
-                    pcm=pcm,
-                    sample_rate=sample_rate,
-                    requested_language=x_language,
-                    session_id=session_id,
-                    utterance_id=utterance_id,
-                    mode=mode,
-                    sampled=sampled,
-                )
+                if include_timestamps:
+                    bias_decision = ContextBiasingDecision(
+                        mode="disabled",
+                        eligible=False,
+                        reason="timestamp_type_requested",
+                        language=result.language,
+                        phrase_file=None,
+                    )
+                    bias_fallback_reason = None
+                    context_biasing_response = None
+                else:
+                    result, bias_decision, _biased_text, bias_fallback_reason, context_biasing_response = await maybe_apply_context_biasing(
+                        baseline_result=result,
+                        pcm=pcm,
+                        sample_rate=sample_rate,
+                        requested_language=x_language,
+                        session_id=session_id,
+                        utterance_id=utterance_id,
+                        mode=mode,
+                        sampled=sampled,
+                        requested_biasing_mode=requested_biasing_mode,
+                        biasing_context=biasing_context,
+                    )
 
                 REQS.labels(mode=mode, status="ok").inc()
                 log.info(
@@ -525,18 +888,28 @@ async def transcribe(
                     latency_ms=int((time.time() - t0) * 1000),
                     resolved_language=result.language,
                     language_source=result.language_source,
+                    timestamp_type=timestamp_type,
                     context_biasing_mode=bias_decision.mode,
                     context_biasing_reason=bias_decision.reason,
                     context_biasing_phrase_file=bias_decision.phrase_file,
                     context_biasing_fallback_reason=bias_fallback_reason,
+                    context_biasing_dynamic_context_present=bias_decision.dynamic_context_present,
+                    context_biasing_dynamic_context_used=bias_decision.dynamic_context_used,
+                    context_biasing_fields_provided=list(bias_decision.fields_provided),
+                    context_biasing_phrase_count_before_pruning=bias_decision.phrase_count_before_pruning,
+                    context_biasing_phrase_count_after_pruning=bias_decision.phrase_count_after_pruning,
+                    context_biasing_phrase_count_total=bias_decision.total_phrase_count,
+                    context_biasing_top_phrases=list(bias_decision.top_phrases),
+                    context_biasing_phrase_source=bias_decision.phrase_source,
+                    context_biasing_errors=list(bias_decision.biasing_errors),
                     **lid_eval_fields(include_resolution=True),
                     **text_metadata(result.text),
                 )
-                return {
-                    "text": result.text,
-                    "language": result.language,
-                    "language_source": result.language_source,
-                }
+                return build_transcribe_response(
+                    result,
+                    include_timestamps=include_timestamps,
+                    context_biasing=context_biasing_response,
+                )
             except (UnsupportedLanguageError, ValueError) as exc:
                 REQS.labels(mode=mode, status="err").inc()
                 log.warning(
@@ -578,14 +951,15 @@ async def transcribe(
                     sampled=sampled,
                     mode=mode,
                     reason="timeout",
+                    timestamp_type=timestamp_type,
                     latency_ms=int((time.time() - t0) * 1000),
                     **lid_eval_fields(include_resolution=True),
                 )
-                return {
-                    "text": "worker-fallback",
-                    "language": x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
-                    "language_source": "fallback_timeout",
-                }
+                return build_fallback_response(
+                    language=x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
+                    language_source="fallback_timeout",
+                    include_timestamps=include_timestamps,
+                )
             except ModelNotReadyError as exc:
                 ERRORS.labels(type="ModelNotReady").inc()
                 log.warning("model not ready: %s", exc)
@@ -605,14 +979,15 @@ async def transcribe(
                     sampled=sampled,
                     mode=mode,
                     reason="not_ready",
+                    timestamp_type=timestamp_type,
                     latency_ms=int((time.time() - t0) * 1000),
                     **lid_eval_fields(include_resolution=True),
                 )
-                return {
-                    "text": "worker-fallback",
-                    "language": x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
-                    "language_source": "fallback_not_ready",
-                }
+                return build_fallback_response(
+                    language=x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
+                    language_source="fallback_not_ready",
+                    include_timestamps=include_timestamps,
+                )
             except InferenceError as exc:
                 ERRORS.labels(type="InferenceError").inc()
                 log.exception("transcribe inference error: %s", exc)
@@ -633,14 +1008,15 @@ async def transcribe(
                     mode=mode,
                     reason="inference_error",
                     error=str(exc),
+                    timestamp_type=timestamp_type,
                     latency_ms=int((time.time() - t0) * 1000),
                     **lid_eval_fields(include_resolution=True),
                 )
-                return {
-                    "text": "worker-fallback",
-                    "language": x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
-                    "language_source": "fallback_inference_error",
-                }
+                return build_fallback_response(
+                    language=x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
+                    language_source="fallback_inference_error",
+                    include_timestamps=include_timestamps,
+                )
             except Exception as exc:
                 ERRORS.labels(type="Unknown").inc()
                 log.exception("transcribe unexpected error: %s", exc)
@@ -661,14 +1037,15 @@ async def transcribe(
                     mode=mode,
                     reason="unexpected",
                     error=str(exc),
+                    timestamp_type=timestamp_type,
                     latency_ms=int((time.time() - t0) * 1000),
                     **lid_eval_fields(include_resolution=True),
                 )
-                return {
-                    "text": "worker-fallback",
-                    "language": x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
-                    "language_source": "fallback_unexpected",
-                }
+                return build_fallback_response(
+                    language=x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
+                    language_source="fallback_unexpected",
+                    include_timestamps=include_timestamps,
+                )
             finally:
                 LAT.observe(time.time() - t0)
     finally:

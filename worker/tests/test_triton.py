@@ -15,8 +15,11 @@ def _install_fake_triton_http(monkeypatch):
 
     class FakeResult:
         def as_numpy(self, name: str):
-            assert name == "TRANSCRIPT"
-            return np.asarray([b"thread-safe transcript"], dtype=object)
+            if name == "TRANSCRIPT":
+                return np.asarray([b"thread-safe transcript"], dtype=object)
+            if name == "TIMESTAMPS_JSON":
+                return np.asarray([b'[["thread", 0.0, 0.2], ["safe", 0.2, 0.5]]'], dtype=object)
+            raise AssertionError(name)
 
     class FakeInferenceServerClient:
         def __init__(self, *, url: str, verbose: bool = False):
@@ -24,6 +27,7 @@ def _install_fake_triton_http(monkeypatch):
             self.verbose = verbose
             self.creator_thread = threading.get_ident()
             self.closed = False
+            self.infer_calls: list[dict[str, object]] = []
             clients.append(self)
 
         def is_server_live(self) -> bool:
@@ -37,8 +41,8 @@ def _install_fake_triton_http(monkeypatch):
             return True
 
         def infer(self, **kwargs):
-            del kwargs
             assert threading.get_ident() == self.creator_thread
+            self.infer_calls.append(kwargs)
             return FakeResult()
 
         def close(self) -> None:
@@ -97,3 +101,28 @@ def test_triton_remote_inference_model_uses_thread_local_clients(monkeypatch):
     assert len(clients) == 2
     assert clients[0].closed is True
     assert clients[0].creator_thread != clients[1].creator_thread
+    infer_inputs = clients[1].infer_calls[0]["inputs"]
+    infer_outputs = clients[1].infer_calls[0]["outputs"]
+    assert [tensor.name for tensor in infer_inputs] == ["AUDIO_SIGNAL", "LANGUAGE", "DECODER"]
+    assert [tensor.name for tensor in infer_outputs] == ["TRANSCRIPT"]
+
+
+def test_triton_remote_inference_model_returns_timestamps_when_requested(monkeypatch):
+    clients = _install_fake_triton_http(monkeypatch)
+    model = TritonRemoteInferenceModel(server_url="triton:8000", model_name="indic_asr")
+
+    result = model(torch.zeros(1, 8), "hi", decoding="ctc", compute_timestamps="w")
+
+    assert result == (
+        "thread-safe transcript",
+        [["thread", 0.0, 0.2], ["safe", 0.2, 0.5]],
+    )
+    infer_inputs = clients[0].infer_calls[0]["inputs"]
+    infer_outputs = clients[0].infer_calls[0]["outputs"]
+    assert [tensor.name for tensor in infer_inputs] == [
+        "AUDIO_SIGNAL",
+        "LANGUAGE",
+        "DECODER",
+        "TIMESTAMP_TYPE",
+    ]
+    assert [tensor.name for tensor in infer_outputs] == ["TRANSCRIPT", "TIMESTAMPS_JSON"]

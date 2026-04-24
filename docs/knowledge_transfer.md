@@ -30,7 +30,6 @@ Client / Telephony / Browser
 
 Supporting services:
 
-- `redis` for connection admission and rate limiting
 - `prometheus` + `grafana` + `node-exporter` for monitoring
 - `frontend` for browser-based testing and demo usage
 - optional `triton` for production-style ASR model serving behind the worker API
@@ -52,11 +51,8 @@ Responsibilities:
 - query-param based session config validation
 - JSON/base64 audio decoding
 - audio format normalization
-- audio byte-rate limiting
-- connection admission limiting
 - VAD-based utterance segmentation
 - worker dispatch and backpressure
-- circuit breaker behavior when downstream is failing
 - final transcript emission to clients
 
 Important files:
@@ -65,9 +61,6 @@ Important files:
 - `gateway/app/worker_client.py`: HTTP client used to call the worker
 - `gateway/app/vad.py`: WebRTC-VAD based segmenter
 - `gateway/app/config.py`: gateway runtime knobs
-- `gateway/app/redis_limiter.py`: Redis-backed session limiting
-- `gateway/app/fallback_limiter.py`: in-memory fallback limiter
-- `gateway/app/circuit_breaker.py`: downstream protection
 
 ### Worker
 
@@ -104,14 +97,13 @@ Important files:
 1. Client connects to `/ws/stt`.
 2. Gateway authenticates using `Api-Subscription-Key` or `Sec-WebSocket-Protocol`.
 3. Gateway validates required query params like `language-code`, `sample_rate`, and `input_audio_codec`.
-4. Gateway admits or rejects the session using Redis limiter or in-memory fallback limiter.
-5. Client sends JSON `audio` messages containing base64 payloads.
-6. Gateway decodes and normalizes the audio into PCM16.
-7. Gateway feeds 20 ms frames into `VADSegmenter`.
-8. On `speech_end`, `max_utt`, or explicit `{"type":"flush"}`, gateway finalizes the utterance.
-9. Gateway sends the utterance bytes to the worker over HTTP.
-10. Worker returns `{text, language, language_source}`.
-11. Gateway emits a final `type:"data"` message to the client.
+4. Client sends JSON `audio` messages containing base64 payloads.
+5. Gateway decodes and normalizes the audio into PCM16.
+6. Gateway feeds 20 ms frames into `VADSegmenter`.
+7. On `speech_end`, `max_utt`, or explicit `{"type":"flush"}`, gateway finalizes the utterance.
+8. Gateway sends the utterance bytes to the worker over HTTP.
+9. Worker returns `{text, language, language_source}`.
+10. Gateway emits a final `type:"data"` message to the client.
 
 ### Worker flow
 
@@ -180,7 +172,7 @@ Recommended first-read order for a new engineer:
 6. `worker/app/model.py`
 7. `docker-compose.yml`
 
-If you need to produce a standalone ONNX file from a NeMo checkpoint, install `worker/requirements-export.txt` and run `python tools/export_nemo_asr_to_onnx.py --help`.
+If you need to produce a standalone ONNX file from a NeMo checkpoint, create a Python 3.11 environment first, install `worker/requirements-export.txt`, and then run `python tools/export_nemo_asr_to_onnx.py --help`.
 
 ## 7. Environment and Key Runtime Knobs
 
@@ -188,21 +180,12 @@ Defaults live in `.env.example`.
 
 Most important gateway knobs:
 
-- `REDIS_URL`
-- `GATEWAY_DISABLE_RATE_LIMITING`
-- `MAX_CONNS_PER_KEY`
-- `NEW_CONN_PER_MIN`
-- `CONN_BURST`
-- `MAX_BYTES_PER_SEC`
-- `WS_DISABLE_AUDIO_RATE_LIMIT`
 - `GATEWAY_MAX_INFLIGHT_WORKER`
 - `WORKER_TIMEOUT_MS`
 - `WORKER_URL`
 - `VAD_END_SILENCE_MS`
 - `VAD_KEEP_SILENCE_MS`
 - `VAD_MAX_UTT_MS`
-- `CIRCUIT_BREAKER_FAILS`
-- `CIRCUIT_BREAKER_RESET_MS`
 - `WS_API_KEYS`
 
 Most important worker knobs:
@@ -445,17 +428,8 @@ Check:
 - `language-code` query param
 - allowed `sample_rate`
 - allowed `input_audio_codec`
-- Redis/session rate limits
 
-### 4. Sessions close with `TOO_MUCH_DATA`
-
-Check:
-
-- incoming audio frame size and send rate
-- `MAX_BYTES_PER_SEC`
-- whether `WS_DISABLE_AUDIO_RATE_LIMIT` is intentionally disabled in local testing
-
-### 5. Worker returns `worker-fallback`
+### 4. Worker returns `worker-fallback`
 
 This means the service stayed alive but inference did not complete successfully.
 

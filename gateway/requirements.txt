@@ -3,6 +3,5 @@ uvicorn[standard]==0.30.6
 numpy==1.26.4
 webrtcvad==2.0.10
 httpx==0.27.2
-redis==5.0.8
 prometheus-client==0.20.0
 orjson==3.10.7

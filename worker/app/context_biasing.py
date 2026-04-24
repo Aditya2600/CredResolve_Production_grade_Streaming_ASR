@@ -16,6 +16,11 @@ from typing import Any, Optional
 
 import numpy as np
 
+from .context_assembler import (
+    AssembledPhrasePack,
+    build_request_scoped_phrase_pack,
+    parse_biasing_context,
+)
 from .nemo_export import _load_nemo_model, select_supported_kwargs
 
 log = logging.getLogger("worker.context_biasing")
@@ -214,6 +219,7 @@ class ContextBiasingConfig:
     beam_threshold: float
     context_score: float
     ctc_ali_token_weight: float
+    max_dynamic_phrases: int
 
 
 @dataclass(frozen=True)
@@ -223,6 +229,18 @@ class ContextBiasingDecision:
     reason: str
     language: str
     phrase_file: str | None
+    cleanup_phrase_file: bool = False
+    requested_mode: str | None = None
+    dynamic_context_present: bool = False
+    dynamic_context_used: bool = False
+    fields_provided: tuple[str, ...] = ()
+    phrase_count_before_pruning: int = 0
+    phrase_count_after_pruning: int = 0
+    total_phrase_count: int = 0
+    top_phrases: tuple[str, ...] = ()
+    biasing_errors: tuple[str, ...] = ()
+    static_phrase_file: str | None = None
+    phrase_source: str = "static"
 
 
 @dataclass(frozen=True)
@@ -295,6 +313,21 @@ def _write_temp_wav(audio: np.ndarray, sample_rate: int) -> Path:
     return path
 
 
+def _write_temp_phrase_file(lines: tuple[str, ...]) -> Path:
+    handle = tempfile.NamedTemporaryFile(
+        prefix="context_biasing_phrases_",
+        suffix=".txt",
+        delete=False,
+        mode="w",
+        encoding="utf-8",
+    )
+    with handle:
+        if lines:
+            handle.write("\n".join(lines))
+            handle.write("\n")
+    return Path(handle.name)
+
+
 class NeMoContextBiasingRuntime:
     def __init__(self, config: ContextBiasingConfig):
         self.config = config
@@ -360,30 +393,160 @@ class NeMoContextBiasingRuntime:
         requested_language: str,
         session_id: Optional[str],
         utterance_id: Optional[str],
+        requested_mode: Optional[str] = None,
+        biasing_context: Any = None,
     ) -> ContextBiasingDecision:
         language = (requested_language or "").strip().lower()
+        context = parse_biasing_context(biasing_context)
+        requested_mode_value = (requested_mode or "").strip().lower() or None
+        if requested_mode_value not in VALID_CONTEXT_BIASING_MODES:
+            requested_mode_value = None
+
+        common_fields = dict(
+            requested_mode=requested_mode_value,
+            dynamic_context_present=bool(context.provided_fields),
+            fields_provided=context.provided_fields,
+        )
+        if requested_mode_value == "disabled":
+            return ContextBiasingDecision(
+                mode="disabled",
+                eligible=False,
+                reason="request_disabled",
+                language=language,
+                phrase_file=None,
+                **common_fields,
+            )
         if self.mode == "disabled":
-            return ContextBiasingDecision(mode=self.mode, eligible=False, reason="disabled", language=language, phrase_file=None)
+            return ContextBiasingDecision(
+                mode=self.mode,
+                eligible=False,
+                reason="disabled",
+                language=language,
+                phrase_file=None,
+                **common_fields,
+            )
+        effective_mode = requested_mode_value or self.mode
         if not language or language == "auto":
-            return ContextBiasingDecision(mode=self.mode, eligible=False, reason="language_auto", language=language, phrase_file=None)
+            return ContextBiasingDecision(
+                mode=effective_mode,
+                eligible=False,
+                reason="language_auto",
+                language=language,
+                phrase_file=None,
+                **common_fields,
+            )
         if not self.ready or self.model is None:
-            return ContextBiasingDecision(mode=self.mode, eligible=False, reason="not_ready", language=language, phrase_file=None)
-        phrase_file = resolve_phrase_file(self.config.phrases_dir, language)
-        if phrase_file is None:
-            return ContextBiasingDecision(mode=self.mode, eligible=False, reason="missing_phrase_file", language=language, phrase_file=None)
-        if self.mode == "shadow" and not should_sample_shadow(
+            return ContextBiasingDecision(
+                mode=effective_mode,
+                eligible=False,
+                reason="not_ready",
+                language=language,
+                phrase_file=None,
+                **common_fields,
+            )
+
+        static_phrase_file = resolve_phrase_file(self.config.phrases_dir, language)
+        assembled_pack: AssembledPhrasePack | None = None
+        if context.provided_fields:
+            try:
+                assembled_pack = build_request_scoped_phrase_pack(
+                    context=context,
+                    base_phrase_file=static_phrase_file,
+                    max_dynamic_phrases=self.config.max_dynamic_phrases,
+                    language=language,
+                )
+            except Exception as exc:
+                log.warning(
+                    "Failed to build request-scoped context-biasing phrase pack language=%s session_id=%s utterance_id=%s error=%s",
+                    language or "-",
+                    session_id or "-",
+                    utterance_id or "-",
+                    exc,
+                )
+                assembled_pack = AssembledPhrasePack(
+                    lines=tuple(),
+                    base_phrase_count=0,
+                    dynamic_context_present=True,
+                    dynamic_context_used=False,
+                    fields_provided=context.provided_fields,
+                    phrase_count_before_pruning=0,
+                    phrase_count_after_pruning=0,
+                    total_phrase_count=0,
+                    top_phrases=tuple(),
+                    errors=(str(exc),),
+                )
+
+        phrase_file_path: Path | None = static_phrase_file
+        cleanup_phrase_file = False
+        phrase_source = "static"
+        biasing_errors = tuple(assembled_pack.errors) if assembled_pack is not None else tuple()
+        phrase_count_before_pruning = assembled_pack.phrase_count_before_pruning if assembled_pack is not None else 0
+        phrase_count_after_pruning = assembled_pack.phrase_count_after_pruning if assembled_pack is not None else 0
+        total_phrase_count = assembled_pack.total_phrase_count if assembled_pack is not None else 0
+        top_phrases = assembled_pack.top_phrases if assembled_pack is not None else tuple()
+        dynamic_context_used = bool(assembled_pack and assembled_pack.dynamic_context_used)
+
+        if assembled_pack is not None and assembled_pack.dynamic_context_used and assembled_pack.lines:
+            phrase_file_path = _write_temp_phrase_file(assembled_pack.lines)
+            cleanup_phrase_file = True
+            phrase_source = "dynamic_only" if static_phrase_file is None else "dynamic_merged"
+        elif static_phrase_file is None:
+            return ContextBiasingDecision(
+                mode=effective_mode,
+                eligible=False,
+                reason="missing_phrase_file",
+                language=language,
+                phrase_file=None,
+                dynamic_context_used=dynamic_context_used,
+                phrase_count_before_pruning=phrase_count_before_pruning,
+                phrase_count_after_pruning=phrase_count_after_pruning,
+                total_phrase_count=total_phrase_count,
+                top_phrases=top_phrases,
+                biasing_errors=biasing_errors,
+                static_phrase_file=None,
+                phrase_source="dynamic_only" if dynamic_context_used else "static",
+                **common_fields,
+            )
+
+        if effective_mode == "shadow" and not should_sample_shadow(
             sample_rate=self.config.shadow_sample_rate,
             session_id=session_id,
             utterance_id=utterance_id,
         ):
             return ContextBiasingDecision(
-                mode=self.mode,
+                mode=effective_mode,
                 eligible=False,
                 reason="shadow_unsampled",
                 language=language,
-                phrase_file=str(phrase_file),
+                phrase_file=str(phrase_file_path) if phrase_file_path is not None else None,
+                cleanup_phrase_file=cleanup_phrase_file,
+                dynamic_context_used=dynamic_context_used,
+                phrase_count_before_pruning=phrase_count_before_pruning,
+                phrase_count_after_pruning=phrase_count_after_pruning,
+                total_phrase_count=total_phrase_count,
+                top_phrases=top_phrases,
+                biasing_errors=biasing_errors,
+                static_phrase_file=str(static_phrase_file) if static_phrase_file is not None else None,
+                phrase_source=phrase_source,
+                **common_fields,
             )
-        return ContextBiasingDecision(mode=self.mode, eligible=True, reason="eligible", language=language, phrase_file=str(phrase_file))
+        return ContextBiasingDecision(
+            mode=effective_mode,
+            eligible=True,
+            reason="eligible",
+            language=language,
+            phrase_file=str(phrase_file_path) if phrase_file_path is not None else None,
+            cleanup_phrase_file=cleanup_phrase_file,
+            dynamic_context_used=dynamic_context_used,
+            phrase_count_before_pruning=phrase_count_before_pruning,
+            phrase_count_after_pruning=phrase_count_after_pruning,
+            total_phrase_count=total_phrase_count,
+            top_phrases=top_phrases,
+            biasing_errors=biasing_errors,
+            static_phrase_file=str(static_phrase_file) if static_phrase_file is not None else None,
+            phrase_source=phrase_source,
+            **common_fields,
+        )
 
     def _infer_sample_rate(self, model: Any) -> int:
         candidates = (

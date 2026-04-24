@@ -26,7 +26,6 @@ Example:
 - Client sends JSON `audio` messages with base64 payloads
 - Client finalizes buffered audio with `{"type":"flush"}`
 - Server emits final-only `type:"data"` transcript payloads and optional `type:"vad"` signals
-- For local/dev benchmarking, `WS_DISABLE_AUDIO_RATE_LIMIT=true` can bypass the websocket audio-byte limiter without changing the separate connection/session limiter
 
 ## Handshake
 

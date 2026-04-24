@@ -1,0 +1,5 @@
+services:
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile.diarization

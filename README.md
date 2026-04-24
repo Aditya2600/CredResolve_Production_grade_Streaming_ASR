@@ -3,8 +3,7 @@
 This repo is a production-ready reference implementation for a **streaming-ish** STT service:
 - WebSocket (WSS) ingest of JSON `audio` messages with base64 payloads
 - VAD / endpointing (WebRTC VAD)
-- Rate limiting + connection quotas (Redis token bucket + active-conn tracking)
-- Traffic management (backpressure, GPU worker concurrency caps, load shedding, timeouts, circuit breaker)
+- Worker concurrency caps and request timeouts
 - Split architecture:
   - `gateway` (CPU): WebSocket sessions + auth + VAD + final-only `data` events
   - `worker` (GPU): IndicConformer ONNX/TorchScript transcription service
@@ -13,7 +12,7 @@ This repo is a production-ready reference implementation for a **streaming-ish**
 
 ## Architecture
 
-Client/Telephony → Nginx (TLS + basic limits) → gateway (WS) → worker (HTTP, GPU) → transcripts
+Client/Telephony → Nginx → gateway (WS) → worker (HTTP, GPU) → transcripts
 
 ---
 
@@ -96,6 +95,69 @@ See [docs/websocket_auth_migration.md](docs/websocket_auth_migration.md) for the
 
 ---
 
+## Offline Segmentation With Optional Diarization
+
+The repo includes an offline segmentation tool for ASR training data at `tools/segment_inventory_with_silero.py`.
+
+Default behavior stays the same:
+- audio -> Silero VAD -> heuristic transcript grouping -> `manifest.jsonl`
+
+Optional diarization-aware behavior can now be enabled for mono telephony, where one channel may still contain both agent and user:
+- audio -> Silero VAD -> NeMo telephony diarization -> speaker-aware boundary refinement -> final segmentation -> manifest
+
+Important limitation:
+- if transcript utterances are only role-ordered and do not have timestamps, the tool does **not** pretend to have word-level or utterance-level speaker alignment
+- diarization is used only to refine acoustic segment boundaries and to attach segment-level metadata such as dominant speaker, overlap, and mixed-speaker flags
+- transcript grouping still uses the existing order-based heuristic and is marked in the manifest as `transcript_alignment_method: "role_order_heuristic"`
+
+Example VAD-only run:
+
+```bash
+python3 tools/segment_inventory_with_silero.py \
+  --inventory outputs/results_all/data_inventory_normalized.csv \
+  --output-dir outputs/results_all/silero_segments
+```
+
+Example diarization-aware run:
+
+```bash
+python3 tools/segment_inventory_with_silero.py \
+  --inventory outputs/results_all/data_inventory_normalized.csv \
+  --output-dir outputs/results_all/silero_segments_diarized \
+  --enable-diarization \
+  --diarization-audio-mode auto \
+  --diarization-max-speakers 2
+```
+
+Manifest additions are additive and backward-compatible. New fields include:
+- `speaker_label`
+- `speaker_confidence`
+- `overlap_flag`
+- `diarization_used`
+- `diarization_source`
+- `diarization_provider`
+- `diarization_boundary_refined`
+- `diarization_speaker_count`
+- `diarization_mixed_speaker_flag`
+- `speaker_alignment_method`
+- `transcript_alignment_method`
+
+If you already have diarization turns from a separate pass, you can reuse them without running NeMo inline:
+
+```bash
+python3 tools/segment_inventory_with_silero.py \
+  --inventory outputs/results_all/data_inventory_normalized.csv \
+  --output-dir outputs/results_all/silero_segments_labeled \
+  --diarization-turns outputs/results_all/diarization/diarization_turns.jsonl
+```
+
+When inline diarization is enabled, the tool also writes:
+- `diarization_turns.jsonl`
+- `pred_rttms/*.rttm`
+- inventory-level diarization status columns in `data_inventory_segmented.csv`
+
+---
+
 ## Language Auto Mode (LID)
 
 - LID runs only when requested language is `auto` (or empty).
@@ -104,8 +166,8 @@ See [docs/websocket_auth_migration.md](docs/websocket_auth_migration.md) for the
   - primary: `onecxi/vakgyata-small`
   - fallback: `speechbrain/lang-id-voxlingua107-ecapa`
 - If LID is disabled/unavailable/unmappable, worker falls back to `ASR_DEFAULT_LANGUAGE`.
-- Backward compatibility: if the new chain env vars are unset, the legacy single-provider
-  `ASR_LID_MODEL_SOURCE` / `ASR_LID_MODEL_DIR` settings continue to work.
+- Backward compatibility: if the new chain env vars are unset but the legacy single-provider
+  `ASR_LID_MODEL_SOURCE` / `ASR_LID_MODEL_DIR` settings are explicitly set, they continue to work.
 - Worker `/v1/transcribe` responses include:
   - `text`
   - `language`
@@ -204,20 +266,14 @@ Evaluation workflow:
 
 ---
 
-## Key knobs (traffic management)
+## Key Knobs
 
-- `GATEWAY_DISABLE_RATE_LIMITING` (`true` disables both connection admission limiting and audio byte throttling)
-- `MAX_CONNS_PER_KEY`
-- `NEW_CONN_PER_MIN` + `CONN_BURST`
-- `MAX_BYTES_PER_SEC`
-- `WS_DISABLE_AUDIO_RATE_LIMIT` (`true` only for local/dev evaluation; keep `false` in production)
 - `GATEWAY_MAX_INFLIGHT_WORKER`
 - `WORKER_MAX_JOBS`
 - `WORKER_TIMEOUT_MS`
 - `GATEWAY_WS_PING_INTERVAL`
 - `GATEWAY_WS_PING_TIMEOUT`
 - `PARTIAL_DECODE_INTERVAL_MS`
-- `CIRCUIT_BREAKER_FAILS` + `CIRCUIT_BREAKER_RESET_MS`
 - `ASR_ENABLE_LID`
 - `ASR_LID_PRIMARY_PROVIDER`
 - `ASR_LID_PRIMARY_SOURCE`
@@ -346,6 +402,9 @@ Why `500` first:
 
 See [docs/indicvoices_eval.md](/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/docs/indicvoices_eval.md) for the full runbook, monitoring queries, and output interpretation.
 
+See [akshay-docs/indic_conformer_finetuning_strategy.md](/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/akshay-docs/indic_conformer_finetuning_strategy.md) for research paper context, failure analysis, and the optimized fine-tuning strategy for 600M models.
+
+
 ```bash
 # Gateway
 cd gateway
@@ -362,10 +421,17 @@ python -m app.main
 
 The serving worker already consumes an ONNX bundle, but this repo can now export a NeMo ASR checkpoint into a standard `.onnx` artifact for offline conversion and deployment workflows.
 
-Install the export-only dependencies:
+Use Python 3.11 for local installs. The worker and export dependencies are pinned around the
+`pytorch/pytorch:2.4.1` runtime, so a newer interpreter such as Python 3.13 will fail to resolve
+packages like `torch==2.4.1`.
+
+Create a local export environment and install the export-only dependencies:
 
 ```bash
-pip install -r worker/requirements-export.txt
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r worker/requirements-export.txt
 ```
 
 Export from a local `.nemo` checkpoint:
@@ -511,9 +577,69 @@ The logs also emit a summary with total rows, download success/failure counts, W
 - `event_date` is normalized to ISO-like text when the source value parses cleanly as a date/time; otherwise the original text is preserved.
 - Segmentation, alignment, and transcript generation are intentionally not run in this step.
 
+## Silero VAD Segmentation
+
+`tools/segment_inventory_with_silero.py` turns the normalized inventory into utterance-level training audio plus a NeMo-friendly JSONL manifest.
+
+### What it does
+
+- Reads `outputs/data_inventory.csv` or `.parquet`.
+- Selects the right source audio per row:
+  - mono WAV by default for `ready_mono_segmentation`
+  - borrower channel automatically for `ready_split_channels` when `borrower_channel` is known
+- Parses transcript payloads from columns such as `normalized_transcript`, `native_language_transcript`, or `raw_transcript`.
+- Runs Silero VAD to find speech regions, aligns those regions to transcript utterances in order, and exports one WAV per aligned segment.
+- Writes a NeMo-style manifest plus an updated inventory copy with `segmentation_status=segmented_silero_vad` for successful rows.
+
+### Install
+
+The segmentation script needs `torch` and `silero-vad` in the active environment in addition to the usual audio/data packages.
+
+```bash
+pip install torch silero-vad soundfile pandas pyarrow numpy
+```
+
+### Run
+
+```bash
+python tools/segment_inventory_with_silero.py \
+  --inventory outputs/results_all/data_inventory.csv \
+  --output-dir outputs/results_all/silero_segments \
+  --audio-mode auto \
+  --text-column raw_transcript \
+  --language-column language \
+  --output-sample-rate 8000
+```
+
+Useful options:
+
+```bash
+python tools/segment_inventory_with_silero.py \
+  --inventory outputs/results_all/data_inventory.csv \
+  --output-dir outputs/results_all/silero_segments \
+  --audio-mode borrower \
+  --text-column raw_transcript \
+  --language-column language \
+  --threshold 0.5 \
+  --min-speech-duration-ms 250 \
+  --min-silence-duration-ms 150 \
+  --speech-pad-ms 60 \
+  --max-speech-duration-s 20 \
+  --overwrite
+```
+
+### Output files
+
+- `outputs/.../silero_segments/audio/{call_id}_..._seg0001.wav`
+- `outputs/.../silero_segments/manifest.jsonl`
+- `outputs/.../silero_segments/segments.jsonl`
+- `outputs/.../silero_segments/data_inventory_segmented.csv`
+- `outputs/.../silero_segments/data_inventory_segmented.parquet`
+- `outputs/.../silero_segments/summary.json`
+
 ### Next steps
 
-- Add segmentation to split long calls into utterance-level or pause-bounded chunks.
-- Generate ASR manifests from the normalized inventory and segmentation outputs.
+- Bucket, filter, or dedupe `manifest.jsonl` before NeMo fine-tuning.
+- Add stronger forced alignment when transcript order and pause structure drift too far apart.
 - Attach transcript source metadata and normalized text after ASR inference.
 - Add alignment once transcript supervision is available.

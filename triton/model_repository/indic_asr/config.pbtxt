@@ -17,12 +17,23 @@ input [
     name: "DECODER"
     data_type: TYPE_STRING
     dims: [1]
+  },
+  {
+    name: "TIMESTAMP_TYPE"
+    data_type: TYPE_STRING
+    dims: [1]
+    optional: true
   }
 ]
 
 output [
   {
     name: "TRANSCRIPT"
+    data_type: TYPE_STRING
+    dims: [1]
+  },
+  {
+    name: "TIMESTAMPS_JSON"
     data_type: TYPE_STRING
     dims: [1]
   }

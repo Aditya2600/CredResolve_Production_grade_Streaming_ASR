@@ -4,39 +4,42 @@ import binascii
 import io
 import json
 import logging
+from pathlib import Path
 import time
 import uuid
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Optional
 
+import numpy as np
 import orjson
 from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import PlainTextResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from redis.asyncio import Redis
 
-from .circuit_breaker import CircuitBreaker
+from .apm import APMConfig, NoOpAudioProcessor, WebRTCAudioProcessor
 from .config import (
-    CIRCUIT_BREAKER_FAILS,
-    CIRCUIT_BREAKER_RESET_MS,
-    CONN_BURST,
-    GATEWAY_DISABLE_RATE_LIMITING,
     GATEWAY_MAX_INFLIGHT_WORKER,
-    MAX_BYTES_PER_SEC,
-    MAX_CONNS_PER_KEY,
-    NEW_CONN_PER_MIN,
-    REDIS_URL,
+    PARTIAL_DECODE_INTERVAL_MS,
+    SPEAKER_VERIFICATION_BACKEND,
+    SPEAKER_VERIFICATION_DEBUG_SIMILARITY,
+    SPEAKER_VERIFICATION_ENROLLED_EMBEDDING_PATH,
+    SPEAKER_VERIFICATION_FIRST_DECISION_MS,
+    SPEAKER_VERIFICATION_MODE,
+    SPEAKER_VERIFICATION_RESCORE_MS,
+    SPEAKER_VERIFICATION_THRESHOLD,
+    STREAMING_APM_ENABLED,
+    STREAMING_GATE_CLOSE_REQUIRED_UNVOICED_FRAMES,
+    STREAMING_GATE_CLOSE_WINDOW_FRAMES,
+    STREAMING_GATE_OPEN_REQUIRED_VOICED_FRAMES,
+    STREAMING_GATE_OPEN_WINDOW_FRAMES,
+    STREAMING_HANGOVER_MS,
+    STREAMING_RING_BUFFER_MS,
+    STREAMING_VAD_MODE,
     WORKER_TIMEOUT_MS,
     WORKER_URL,
-    VAD_END_SILENCE_MS,
-    VAD_KEEP_SILENCE_MS,
-    VAD_MAX_UTT_MS,
-    WS_DISABLE_AUDIO_RATE_LIMIT,
     WS_API_KEYS,
 )
-from .eval_logging import emit_eval_event, hash_value, should_sample, text_metadata
-from .fallback_limiter import FallbackLimiter
 from .logging_setup import setup_logging
 from .metrics import (
     AUDIO_BYTES_RECEIVED,
@@ -44,25 +47,43 @@ from .metrics import (
     E2E_LATENCY,
     GATEWAY_LATENCY,
     UTTERANCES,
-    VAD_FRAMES,
     WS_CONNECTIONS,
     WS_DISCONNECTS,
     WS_REJECTS,
 )
-from .redis_limiter import RedisLimiter
-from .vad import VADSegmenter
+from .pipeline import (
+    FinalTranscriptEvent,
+    PipelineConfig,
+    PipelineEvent,
+    RNNTFinalResult,
+    RNNTPartialResult,
+    RNNTStream,
+    StreamingSpeechPipeline,
+    VADSignalEvent,
+)
+from .speaker_backends import DebugFixedSimilaritySpeakerEmbedder
+from .speaker_gate import (
+    SpeakerEmbedder,
+    SpeakerGateConfig,
+    SpeakerVerificationGate,
+    SpeakerVerificationMode,
+)
+from .vad_gate import VADGateConfig
 from .worker_client import WorkerClient
 
 DEFAULT_MODEL = "credresolve:v1"
 DEFAULT_MODE = "transcribe"
 DEFAULT_INPUT_AUDIO_CODEC = "pcm_s16le"
 DEFAULT_SAMPLE_RATE = 16000
-DEFAULT_VAD_MODE = 2
-HIGH_SENSITIVITY_VAD_MODE = 3
 FRAME_MS = 20
 INTERNAL_DECODER = "rnnt"
-ALLOWED_SAMPLE_RATES = {8000, 16000}
+ALLOWED_SAMPLE_RATES = {16000}
 ALLOWED_AUDIO_CODECS = {"wav", "pcm_s16le", "pcm_l16", "pcm_raw"}
+VALID_CONTEXT_BIASING_MODES = frozenset({"disabled", "shadow", "active"})
+BIASING_CONTEXT_SCALAR_FIELDS = frozenset({"debtor_name", "agent_name", "lender", "product", "city", "branch"})
+BIASING_CONTEXT_LIST_FIELDS = frozenset(
+    {"account_terms", "prior_call_entities", "campaign_vocabulary", "amounts", "dates"}
+)
 
 setup_logging()
 log = logging.getLogger("gateway")
@@ -70,19 +91,6 @@ log = logging.getLogger("gateway")
 app = FastAPI()
 worker = WorkerClient(WORKER_URL, WORKER_TIMEOUT_MS)
 worker_sem = asyncio.Semaphore(GATEWAY_MAX_INFLIGHT_WORKER)
-breaker = CircuitBreaker(CIRCUIT_BREAKER_FAILS, CIRCUIT_BREAKER_RESET_MS)
-
-redis: Optional[Redis] = None
-redis_limiter: Optional[RedisLimiter] = None
-fallback_limiter = FallbackLimiter(MAX_CONNS_PER_KEY, NEW_CONN_PER_MIN, CONN_BURST)
-
-
-def connection_rate_limit_enabled() -> bool:
-    return not GATEWAY_DISABLE_RATE_LIMITING
-
-
-def audio_rate_limit_enabled() -> bool:
-    return not GATEWAY_DISABLE_RATE_LIMITING and not WS_DISABLE_AUDIO_RATE_LIMIT
 
 
 @dataclass(frozen=True)
@@ -96,6 +104,11 @@ class SessionConfig:
     vad_signals: bool
     flush_signal: bool
     input_audio_codec: str
+    context_biasing_mode: str | None
+    biasing_context: dict[str, object] | None
+    apm_enabled: bool = False
+    vad_enabled: bool = False
+    denoise_enabled: bool = False
 
 
 class HandshakeValidationError(ValueError):
@@ -106,39 +119,236 @@ class BadMessageError(ValueError):
     pass
 
 
+class RNNTProviderError(RuntimeError):
+    pass
+
+
+@dataclass
+class PipelineSessionContext:
+    session_id: str
+    request_id: str
+    sample_rate: int
+    language_code: str
+    mode: str
+    context_biasing_mode: str | None
+    biasing_context: dict[str, object] | None
+    apm_enabled: bool = False
+    vad_enabled: bool = False
+    denoise_enabled: bool = False
+
+
+class BufferedWorkerRNNTStream:
+    def __init__(
+        self,
+        *,
+        session_context: PipelineSessionContext,
+        utterance_id: str,
+    ):
+        self.session_context = session_context
+        self.utterance_id = utterance_id
+        self._buffer = bytearray()
+        self._started = False
+
+    async def start_stream(self) -> None:
+        self._started = True
+
+    async def push_audio(self, pcm_bytes: bytes) -> None:
+        if not self._started:
+            raise RuntimeError("RNNT stream has not been started")
+        self._buffer.extend(pcm_bytes)
+
+    async def get_partial(self) -> RNNTPartialResult | None:
+        return None
+
+    async def end_stream(self) -> RNNTFinalResult | None:
+        if not self._started:
+            return None
+        self._started = False
+        if not self._buffer:
+            return None
+
+        started = time.monotonic()
+        try:
+            async with worker_sem:
+                out = await worker.transcribe(
+                    bytes(self._buffer),
+                    self.session_context.sample_rate,
+                    INTERNAL_DECODER,
+                    self.session_context.language_code,
+                    mode="final",
+                    session_id=self.session_context.session_id,
+                    utterance_id=self.utterance_id,
+                    context_biasing_mode=self.session_context.context_biasing_mode,
+                    biasing_context=self.session_context.biasing_context,
+                    vad_enabled=self.session_context.vad_enabled,
+                    denoise_enabled=self.session_context.denoise_enabled,
+                )
+        except Exception as exc:
+            raise RNNTProviderError("worker transcription failed") from exc
+        GATEWAY_LATENCY.observe(max(0.0, time.monotonic() - started))
+        return RNNTFinalResult(
+            text=out.text,
+            language=out.language,
+            language_source=out.language_source,
+            context_biasing=out.context_biasing,
+        )
+
+
+def normalize_speaker_verification_mode(raw_mode: str) -> SpeakerVerificationMode:
+    try:
+        return SpeakerVerificationMode((raw_mode or "disabled").strip().lower())
+    except ValueError as exc:
+        raise RuntimeError(
+            "SPEAKER_VERIFICATION_MODE must be one of disabled, shadow, enforce"
+        ) from exc
+
+
+def load_enrolled_embedding(path: str) -> np.ndarray:
+    resolved = Path(path).expanduser()
+    if not resolved.exists():
+        raise RuntimeError(f"speaker embedding file not found: {resolved}")
+    suffix = resolved.suffix.lower()
+    if suffix == ".npy":
+        array = np.load(resolved)
+    elif suffix == ".json":
+        array = np.asarray(json.loads(resolved.read_text(encoding="utf-8")), dtype=np.float32)
+    else:
+        text = resolved.read_text(encoding="utf-8")
+        parts = [part for part in text.replace(",", " ").split() if part]
+        array = np.asarray([float(part) for part in parts], dtype=np.float32)
+    array = np.asarray(array, dtype=np.float32).reshape(-1)
+    if array.size == 0:
+        raise RuntimeError(f"speaker embedding file is empty: {resolved}")
+    return array
+
+
+def build_apm_backend() -> object | None:
+    # TODO: Bind a real WebRTC APM Python backend here.
+    return None
+
+
+def build_audio_processor(session: SessionConfig):
+    config = APMConfig(
+        enabled=session.apm_enabled,
+        sample_rate=session.sample_rate,
+    )
+    if not config.enabled:
+        return NoOpAudioProcessor(config)
+    backend = build_apm_backend()
+    if backend is None:
+        log.warning(
+            "APM enabled but no backend is configured; falling back to no-op audio processor"
+        )
+        return NoOpAudioProcessor(config)
+    return WebRTCAudioProcessor(config, backend)
+
+
+def build_speaker_embedder() -> SpeakerEmbedder:
+    if SPEAKER_VERIFICATION_BACKEND == "debug_fixed_similarity":
+        return DebugFixedSimilaritySpeakerEmbedder(SPEAKER_VERIFICATION_DEBUG_SIMILARITY)
+    # TODO: Bind a real speaker embedding backend here.
+    raise NotImplementedError("speaker embedding backend is not configured")
+
+
+def build_speaker_gate(sample_rate: int) -> SpeakerVerificationGate:
+    mode = normalize_speaker_verification_mode(SPEAKER_VERIFICATION_MODE)
+    config = SpeakerGateConfig(
+        mode=mode,
+        sample_rate=sample_rate,
+        frame_ms=FRAME_MS,
+        threshold=SPEAKER_VERIFICATION_THRESHOLD,
+        decision_window_ms=SPEAKER_VERIFICATION_FIRST_DECISION_MS,
+        rescore_interval_ms=SPEAKER_VERIFICATION_RESCORE_MS,
+    )
+    if mode == SpeakerVerificationMode.DISABLED:
+        return SpeakerVerificationGate(config)
+    if SPEAKER_VERIFICATION_BACKEND == "debug_fixed_similarity":
+        return SpeakerVerificationGate(
+            config,
+            enrolled_embedding=np.asarray([1.0, 0.0], dtype=np.float32),
+            embedder=build_speaker_embedder(),
+        )
+    if not SPEAKER_VERIFICATION_ENROLLED_EMBEDDING_PATH:
+        raise RuntimeError(
+            "SPEAKER_VERIFICATION_ENROLLED_EMBEDDING_PATH is required when speaker verification is enabled"
+        )
+    return SpeakerVerificationGate(
+        config,
+        enrolled_embedding=load_enrolled_embedding(SPEAKER_VERIFICATION_ENROLLED_EMBEDDING_PATH),
+        embedder=build_speaker_embedder(),
+    )
+
+
+def build_rnnt_stream_factory(
+    *,
+    session_context: PipelineSessionContext,
+):
+    utterance_counter = 0
+
+    # TODO: Replace this compatibility wrapper with the real streaming RNNT provider.
+    def factory() -> RNNTStream:
+        nonlocal utterance_counter
+        utterance_counter += 1
+        return BufferedWorkerRNNTStream(
+            session_context=session_context,
+            utterance_id=f"utt-{utterance_counter:04d}",
+        )
+
+    return factory
+
+
+def build_streaming_pipeline(
+    session: SessionConfig, *, session_id: str
+) -> tuple[StreamingSpeechPipeline, PipelineSessionContext]:
+    session_context = PipelineSessionContext(
+        session_id=session_id,
+        request_id=session.request_id,
+        sample_rate=session.sample_rate,
+        language_code=session.language_code,
+        mode=session.mode,
+        context_biasing_mode=session.context_biasing_mode,
+        biasing_context=session.biasing_context,
+        apm_enabled=session.apm_enabled,
+        vad_enabled=session.vad_enabled,
+        denoise_enabled=session.denoise_enabled,
+    )
+    pipeline = StreamingSpeechPipeline(
+        config=PipelineConfig(
+            sample_rate=session.sample_rate,
+            ring_buffer_ms=STREAMING_RING_BUFFER_MS,
+            partial_poll_interval_ms=PARTIAL_DECODE_INTERVAL_MS,
+            vad=VADGateConfig(
+                sample_rate=session.sample_rate,
+                frame_ms=FRAME_MS,
+                vad_mode=STREAMING_VAD_MODE,
+                open_window_frames=STREAMING_GATE_OPEN_WINDOW_FRAMES,
+                open_required_voiced_frames=STREAMING_GATE_OPEN_REQUIRED_VOICED_FRAMES,
+                close_window_frames=STREAMING_GATE_CLOSE_WINDOW_FRAMES,
+                close_required_unvoiced_frames=STREAMING_GATE_CLOSE_REQUIRED_UNVOICED_FRAMES,
+                hangover_ms=STREAMING_HANGOVER_MS,
+            ),
+        ),
+        audio_processor=build_audio_processor(session),
+        speaker_gate=build_speaker_gate(session.sample_rate),
+        rnnt_stream_factory=build_rnnt_stream_factory(session_context=session_context),
+        session_id=session_id,
+    )
+    return pipeline, session_context
+
+
 @app.on_event("startup")
 async def startup():
-    global redis, redis_limiter
     log.info(
-        "Gateway startup redis_url=%s worker_url=%s worker_timeout_ms=%s max_inflight_worker=%s connection_rate_limit_enabled=%s audio_rate_limit_enabled=%s",
-        REDIS_URL,
+        "Gateway startup worker_url=%s worker_timeout_ms=%s max_inflight_worker=%s",
         WORKER_URL,
         WORKER_TIMEOUT_MS,
         GATEWAY_MAX_INFLIGHT_WORKER,
-        connection_rate_limit_enabled(),
-        audio_rate_limit_enabled(),
     )
-    if not connection_rate_limit_enabled():
-        redis = None
-        redis_limiter = None
-        log.info("All gateway rate limiting disabled")
-        return
-    try:
-        redis = Redis.from_url(REDIS_URL, decode_responses=False)
-        await redis.ping()
-        redis_limiter = RedisLimiter(redis, MAX_CONNS_PER_KEY, NEW_CONN_PER_MIN, CONN_BURST)
-        log.info("Redis limiter enabled")
-    except Exception as exc:
-        redis = None
-        redis_limiter = None
-        log.warning("Redis unavailable; using in-memory limiter: %s", exc)
 
 
 @app.on_event("shutdown")
 async def shutdown():
     log.info("Gateway shutdown initiated")
-    if redis:
-        await redis.close()
     await worker.close()
     log.info("Gateway shutdown complete")
 
@@ -209,7 +419,7 @@ def parse_sample_rate(value: Optional[str]) -> int:
     except ValueError as exc:
         raise HandshakeValidationError(f"invalid sample_rate: {raw}") from exc
     if sample_rate not in ALLOWED_SAMPLE_RATES:
-        raise HandshakeValidationError("sample_rate must be 8000 or 16000")
+        raise HandshakeValidationError("sample_rate must be 16000")
     return sample_rate
 
 
@@ -240,6 +450,139 @@ def parse_session_config(ws: WebSocket, request_id: str) -> SessionConfig:
         vad_signals=parse_bool_query("vad_signals", params.get("vad_signals"), False),
         flush_signal=parse_bool_query("flush_signal", params.get("flush_signal"), False),
         input_audio_codec=parse_input_audio_codec(params.get("input_audio_codec")),
+        context_biasing_mode=None,
+        biasing_context=None,
+        apm_enabled=parse_bool_query("apm_enabled", params.get("apm_enabled"), STREAMING_APM_ENABLED),
+        vad_enabled=parse_bool_query("vad_enabled", params.get("vad_enabled"), False),
+        denoise_enabled=parse_bool_query("denoise_enabled", params.get("denoise_enabled"), False),
+    )
+
+
+def _normalize_biasing_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return " ".join(value.strip().split())
+    return " ".join(str(value).strip().split())
+
+
+def _split_biasing_list_text(value: str) -> list[str]:
+    if not value:
+        return []
+
+    items: list[str] = []
+    current: list[str] = []
+    for index, char in enumerate(value):
+        if char == ",":
+            prev_char = value[index - 1] if index > 0 else ""
+            next_char = value[index + 1] if index + 1 < len(value) else ""
+            if prev_char.isdigit() and next_char.isdigit():
+                current.append(char)
+                continue
+            item = "".join(current).strip()
+            if item:
+                items.append(item)
+            current = []
+            continue
+        current.append(char)
+
+    tail = "".join(current).strip()
+    if tail:
+        items.append(tail)
+    return items
+
+
+def _normalize_biasing_list(value: Any, field_name: str) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw_items = _split_biasing_list_text(value)
+    elif isinstance(value, list):
+        raw_items = value
+    else:
+        raise BadMessageError(f"{field_name} must be a comma-separated string or array")
+
+    items: list[str] = []
+    seen: set[str] = set()
+    for raw_item in raw_items:
+        normalized = _normalize_biasing_text(raw_item)
+        key = normalized.lower()
+        if not normalized or key in seen:
+            continue
+        seen.add(key)
+        items.append(normalized)
+    return items
+
+
+def parse_biasing_context_payload(value: Any) -> dict[str, object] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise BadMessageError("biasing_context must be an object")
+
+    normalized: dict[str, object] = {}
+    for field_name in BIASING_CONTEXT_SCALAR_FIELDS:
+        if field_name not in value:
+            continue
+        text = _normalize_biasing_text(value.get(field_name))
+        if text:
+            normalized[field_name] = text
+
+    for field_name in BIASING_CONTEXT_LIST_FIELDS:
+        if field_name not in value:
+            continue
+        items = _normalize_biasing_list(value.get(field_name), field_name)
+        if items:
+            normalized[field_name] = items
+
+    return normalized or None
+
+
+def parse_context_biasing_mode(value: Any) -> str | None:
+    if value is None:
+        return None
+    mode = _normalize_biasing_text(value).lower()
+    if not mode:
+        return None
+    if mode not in VALID_CONTEXT_BIASING_MODES:
+        raise BadMessageError("context_biasing.mode must be one of disabled, shadow, active")
+    return mode
+
+
+def parse_session_update(payload: dict[str, Any], session: SessionConfig) -> SessionConfig:
+    context_biasing = payload.get("context_biasing")
+    if context_biasing is not None and not isinstance(context_biasing, dict):
+        raise BadMessageError("context_biasing must be an object")
+    audio_processing = payload.get("audio_processing")
+    if audio_processing is not None and not isinstance(audio_processing, dict):
+        raise BadMessageError("audio_processing must be an object")
+
+    requested_mode: str | None = None
+    if isinstance(context_biasing, dict):
+        enabled = context_biasing.get("enabled")
+        if enabled is not None and not isinstance(enabled, bool):
+            raise BadMessageError("context_biasing.enabled must be a boolean when provided")
+        if enabled is False:
+            requested_mode = "disabled"
+        mode = parse_context_biasing_mode(context_biasing.get("mode"))
+        if mode is not None:
+            requested_mode = mode
+
+    def audio_processing_bool(name: str, current: bool) -> bool:
+        if not isinstance(audio_processing, dict) or name not in audio_processing:
+            return current
+        value = audio_processing.get(name)
+        if not isinstance(value, bool):
+            raise BadMessageError(f"audio_processing.{name} must be a boolean when provided")
+        return value
+
+    return replace(
+        session,
+        context_biasing_mode=requested_mode,
+        biasing_context=parse_biasing_context_payload(payload.get("biasing_context")),
+        apm_enabled=audio_processing_bool("apm_enabled", session.apm_enabled),
+        vad_enabled=audio_processing_bool("vad_enabled", session.vad_enabled),
+        denoise_enabled=audio_processing_bool("denoise_enabled", session.denoise_enabled),
     )
 
 
@@ -323,45 +666,23 @@ async def send_ws_error_and_close(ws: WebSocket, code: str, message: str, close_
     await ws.close(code=close_code)
 
 
-class ByteRateGuard:
-    def __init__(self, max_bps: int):
-        self.rate = float(max_bps)
-        self.capacity = float(max_bps) * 2.0
-        self.tokens = self.capacity
-        self.last_check = time.monotonic()
-
-    def add(self, n: int) -> bool:
-        now = time.monotonic()
-        elapsed = max(0.0, now - self.last_check)
-        self.last_check = now
-
-        self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
-        if n > self.tokens:
-            return False
-        self.tokens -= n
-        return True
-
-
 @app.websocket("/ws/stt")
 async def ws_stt(ws: WebSocket):
     api_key, accepted_subprotocol = extract_ws_auth(ws)
-    api_key_hash = hash_value(api_key) if api_key else ""
 
     await ws.accept(subprotocol=accepted_subprotocol)
 
     session_id = str(uuid.uuid4())
-    sampled = should_sample(session_id=session_id)
     session_started_ms = int(time.time() * 1000)
     close_reason = "unknown"
     total_audio_bytes = 0
     utterance_count = 0
-    admitted = False
     session: Optional[SessionConfig] = None
     request_id = session_id
-    utt_start_time = 0.0
+    pipeline: StreamingSpeechPipeline | None = None
+    pipeline_session_context: PipelineSessionContext | None = None
 
     WS_CONNECTIONS.inc()
-    guard = ByteRateGuard(MAX_BYTES_PER_SEC)
     log.info("WS accepted session_id=%s client=%s", session_id, ws.client)
 
     try:
@@ -369,15 +690,6 @@ async def ws_stt(ws: WebSocket):
             WS_REJECTS.labels(reason="AUTH_FAILED").inc()
             close_reason = "auth_failed"
             log.warning("WS rejected session_id=%s reason=AUTH_FAILED", session_id)
-            emit_eval_event(
-                log,
-                "ws_session_rejected",
-                session_id=session_id,
-                sampled=sampled,
-                reason="AUTH_FAILED",
-                code="AUTH_FAILED",
-                api_key_hash=api_key_hash,
-            )
             await send_ws_error_and_close(
                 ws,
                 "AUTH_FAILED",
@@ -392,229 +704,116 @@ async def ws_stt(ws: WebSocket):
             WS_REJECTS.labels(reason="VALIDATION_ERROR").inc()
             close_reason = "validation_error"
             log.warning("WS rejected session_id=%s reason=VALIDATION_ERROR error=%s", session_id, exc)
-            emit_eval_event(
-                log,
-                "ws_session_rejected",
-                session_id=session_id,
-                sampled=sampled,
-                reason="VALIDATION_ERROR",
-                code="VALIDATION_ERROR",
-                api_key_hash=api_key_hash,
-                error=str(exc),
-            )
             await send_ws_error_and_close(ws, "VALIDATION_ERROR", str(exc), 1008)
             return
 
         request_id = session.request_id
-
-        if connection_rate_limit_enabled():
-            if redis_limiter:
-                res = await redis_limiter.admit(api_key)
-                if not res.ok:
-                    WS_REJECTS.labels(reason=res.reason).inc()
-                    close_reason = "admission_rejected"
-                    emit_eval_event(
-                        log,
-                        "ws_session_rejected",
-                        session_id=session_id,
-                        sampled=sampled,
-                        reason=res.reason,
-                        code=res.reason,
-                        api_key_hash=api_key_hash,
-                    )
-                    await send_ws_error_and_close(ws, res.reason, res.reason, 1008)
-                    return
-                admitted = True
-            else:
-                ok, reason = fallback_limiter.admit(api_key)
-                if not ok:
-                    WS_REJECTS.labels(reason=reason).inc()
-                    close_reason = "admission_rejected"
-                    emit_eval_event(
-                        log,
-                        "ws_session_rejected",
-                        session_id=session_id,
-                        sampled=sampled,
-                        reason=reason,
-                        code=reason,
-                        api_key_hash=api_key_hash,
-                    )
-                    await send_ws_error_and_close(ws, reason, reason, 1008)
-                    return
-                admitted = True
-
-        vad = VADSegmenter(
-            sample_rate=session.sample_rate,
-            frame_ms=FRAME_MS,
-            mode=HIGH_SENSITIVITY_VAD_MODE if session.high_vad_sensitivity else DEFAULT_VAD_MODE,
-            end_silence_ms=VAD_END_SILENCE_MS,
-            keep_silence_ms=VAD_KEEP_SILENCE_MS,
-            max_utt_ms=VAD_MAX_UTT_MS,
-        )
-        frame_buffer = bytearray()
-        segment_audio_buffer = bytearray()
+        pipeline, pipeline_session_context = build_streaming_pipeline(session, session_id=session_id)
 
         log.info(
-            "WS session started session_id=%s request_id=%s api_key_hash=%s language=%s model=%s mode=%s sample_rate=%s codec=%s vad_signals=%s audio_rate_limit_enabled=%s",
+            "WS session started session_id=%s request_id=%s language=%s model=%s mode=%s sample_rate=%s codec=%s vad_signals=%s speaker_verification_mode=%s speaker_verification_backend=%s apm_enabled=%s",
             session_id,
             session.request_id,
-            api_key_hash or "-",
             session.language_code,
             session.model,
             session.mode,
             session.sample_rate,
             session.input_audio_codec,
             session.vad_signals,
-            audio_rate_limit_enabled(),
+            SPEAKER_VERIFICATION_MODE,
+            SPEAKER_VERIFICATION_BACKEND,
+            session.apm_enabled,
         )
-        emit_eval_event(
-            log,
-            "ws_session_started",
-            session_id=session_id,
-            sampled=sampled,
-            api_key_hash=api_key_hash,
-            request_id=session.request_id,
-            language=session.language_code,
-            model=session.model,
-            public_mode=session.mode,
-            sample_rate=session.sample_rate,
-            input_audio_codec=session.input_audio_codec,
-            high_vad_sensitivity=session.high_vad_sensitivity,
-            vad_signals=session.vad_signals,
-            flush_signal=session.flush_signal,
-        )
-
-        async def finalize_audio(audio_bytes: bytes, trigger: str) -> bool:
-            nonlocal utterance_count, utt_start_time, close_reason
-
-            if not audio_bytes:
-                segment_audio_buffer.clear()
-                return True
-
-            UTTERANCES.inc()
-            utterance_count += 1
-            utterance_id = f"utt-{utterance_count:04d}"
-            emit_eval_event(
-                log,
-                "vad_segment_finalized",
-                session_id=session_id,
-                utterance_id=utterance_id,
-                sampled=sampled,
-                audio_bytes=len(audio_bytes),
-                trigger=trigger,
+        if session.high_vad_sensitivity:
+            log.info(
+                "WS high_vad_sensitivity flag ignored session_id=%s request_id=%s fixed_mode=%s",
+                session_id,
+                session.request_id,
+                STREAMING_VAD_MODE,
             )
 
-            if not breaker.allow():
-                close_reason = "overloaded"
-                log.warning(
-                    "WS rejected session_id=%s utterance_id=%s reason=OVERLOADED",
-                    session_id,
-                    utterance_id,
-                )
-                emit_eval_event(
-                    log,
-                    "ws_session_rejected",
-                    session_id=session_id,
-                    utterance_id=utterance_id,
-                    sampled=sampled,
-                    reason="OVERLOADED",
-                    code="OVERLOADED",
-                    api_key_hash=api_key_hash,
-                )
-                await send_ws_error_and_close(ws, "OVERLOADED", "gateway overloaded", 1013)
-                return False
+        async def emit_pipeline_events(events: list[PipelineEvent]) -> bool:
+            nonlocal utterance_count
 
-            out = None
-            async with worker_sem:
-                try:
-                    final_t0 = time.time()
+            for event in events:
+                if isinstance(event, VADSignalEvent):
                     log.info(
-                        "Dispatching final transcription session_id=%s utterance_id=%s bytes=%s trigger=%s language=%s",
+                        "VAD event session_id=%s request_id=%s state=%s",
                         session_id,
-                        utterance_id,
-                        len(audio_bytes),
-                        trigger,
-                        session.language_code,
+                        session.request_id,
+                        event.event,
                     )
-                    out = await worker.transcribe(
-                        audio_bytes,
-                        session.sample_rate,
-                        INTERNAL_DECODER,
-                        session.language_code,
-                        mode="final",
-                        session_id=session_id,
-                        utterance_id=utterance_id,
-                        sampled=sampled,
+                    if session.vad_signals:
+                        await ws.send_text(
+                            jdump(
+                                {
+                                    "type": "vad",
+                                    "data": {
+                                        "request_id": session.request_id,
+                                        "event": event.event,
+                                    },
+                                }
+                            )
+                        )
+                    continue
+
+                if not isinstance(event, FinalTranscriptEvent):
+                    log.debug(
+                        "Internal partial transcript available session_id=%s request_id=%s chars=%s",
+                        session_id,
+                        session.request_id,
+                        len(event.result.text),
                     )
-                    GATEWAY_LATENCY.observe(max(0, time.time() - final_t0))
-                    processing_latency = max(0.0, time.time() - final_t0)
-                    processing_latency_ms = int(processing_latency * 1000)
-                    breaker.on_success()
+                    continue
+
+                try:
+                    result = event.result
+                    UTTERANCES.inc()
+                    utterance_count += 1
+                    resolved_language = result.language or (
+                        session.language_code if session.language_code != "auto" else None
+                    )
+                    resolved_language_source = result.language_source or (
+                        "client" if session.language_code != "auto" else None
+                    )
+                    await ws.send_text(
+                        jdump(
+                            {
+                                "type": "data",
+                                "data": {
+                                    "request_id": session.request_id,
+                                    "transcript": result.text,
+                                    "language_code": resolved_language,
+                                    "language_source": resolved_language_source,
+                                    "metrics": {
+                                        "audio_duration": event.audio_duration,
+                                        "processing_latency": event.processing_latency,
+                                    },
+                                    "context_biasing": result.context_biasing,
+                                },
+                            }
+                        )
+                    )
+                    if event.final_latency is not None:
+                        E2E_LATENCY.observe(event.final_latency)
+                    log.info(
+                        "Data sent session_id=%s utterance_id=%s latency_ms=%s text_chars=%s language=%s language_source=%s context_biasing_mode=%s",
+                        session_id,
+                        f"utt-{utterance_count:04d}",
+                        int(event.processing_latency * 1000),
+                        len(result.text),
+                        result.language or "-",
+                        result.language_source or "-",
+                        ((result.context_biasing or {}).get("mode") if isinstance(result.context_biasing, dict) else "-"),
+                    )
                 except Exception:
-                    breaker.on_failure()
                     log.exception(
-                        "Final transcription failed session_id=%s utterance_id=%s",
+                        "Final transcription emission failed session_id=%s utterance_id=%s",
                         session_id,
-                        utterance_id,
+                        f"utt-{utterance_count:04d}",
                     )
                     await send_ws_error(ws, "WORKER_ERROR", "worker transcription failed")
-                    segment_audio_buffer.clear()
-                    return True
-
-            if out is None:
-                segment_audio_buffer.clear()
-                return True
-
-            audio_duration = len(audio_bytes) / float(session.sample_rate * 2)
-            resolved_language = out.language or (
-                session.language_code if session.language_code != "auto" else None
-            )
-            resolved_language_source = out.language_source or (
-                "client" if session.language_code != "auto" else None
-            )
-            await ws.send_text(
-                jdump(
-                    {
-                        "type": "data",
-                        "data": {
-                            "request_id": session.request_id,
-                            "transcript": out.text,
-                            "language_code": resolved_language,
-                            "language_source": resolved_language_source,
-                            "metrics": {
-                                "audio_duration": round(audio_duration, 4),
-                                "processing_latency": round(processing_latency, 4),
-                            },
-                        },
-                    }
-                )
-            )
-            log.info(
-                "Data sent session_id=%s utterance_id=%s latency_ms=%s text_chars=%s language=%s language_source=%s trigger=%s",
-                session_id,
-                utterance_id,
-                processing_latency_ms,
-                len(out.text),
-                out.language or "-",
-                out.language_source or "-",
-                trigger,
-            )
-            emit_eval_event(
-                log,
-                "final_sent",
-                session_id=session_id,
-                utterance_id=utterance_id,
-                sampled=sampled,
-                worker_latency_ms=processing_latency_ms,
-                trigger=trigger,
-                resolved_language=out.language or None,
-                language_source=out.language_source or None,
-                **text_metadata(out.text),
-            )
-            if utt_start_time > 0:
-                E2E_LATENCY.observe(time.time() - utt_start_time)
-                utt_start_time = 0.0
-            segment_audio_buffer.clear()
+                    return False
             return True
 
         while True:
@@ -654,17 +853,40 @@ async def ws_stt(ws: WebSocket):
 
             if payload.get("type") == "flush":
                 log.info("WS flush received session_id=%s request_id=%s", session_id, session.request_id)
-                if frame_buffer:
-                    segment_audio_buffer.extend(frame_buffer)
-                    frame_buffer.clear()
-                flush_audio = bytes(segment_audio_buffer)
-                vad.flush()
-                if flush_audio:
-                    ok = await finalize_audio(flush_audio, "flush")
-                    if not ok:
-                        return
-                else:
-                    segment_audio_buffer.clear()
+                ok = await emit_pipeline_events(await pipeline.flush())
+                if not ok:
+                    return
+                continue
+
+            if payload.get("type") == "session_config":
+                try:
+                    session = parse_session_update(payload, session)
+                except BadMessageError as exc:
+                    close_reason = "bad_message"
+                    WS_REJECTS.labels(reason="BAD_MESSAGE").inc()
+                    await send_ws_error_and_close(ws, "BAD_MESSAGE", str(exc), 1003)
+                    return
+
+                log.info(
+                    "WS session config updated session_id=%s request_id=%s context_biasing_mode=%s dynamic_context_present=%s fields=%s apm_enabled=%s vad_enabled=%s denoise_enabled=%s",
+                    session_id,
+                    session.request_id,
+                    session.context_biasing_mode or "-",
+                    bool(session.biasing_context),
+                    sorted(session.biasing_context.keys()) if session.biasing_context else [],
+                    session.apm_enabled,
+                    session.vad_enabled,
+                    session.denoise_enabled,
+                )
+                if pipeline_session_context is not None:
+                    pipeline_session_context.request_id = session.request_id
+                    pipeline_session_context.language_code = session.language_code
+                    pipeline_session_context.mode = session.mode
+                    pipeline_session_context.context_biasing_mode = session.context_biasing_mode
+                    pipeline_session_context.biasing_context = session.biasing_context
+                    pipeline_session_context.apm_enabled = session.apm_enabled
+                    pipeline_session_context.vad_enabled = session.vad_enabled
+                    pipeline_session_context.denoise_enabled = session.denoise_enabled
                 continue
 
             if "audio" not in payload:
@@ -689,51 +911,9 @@ async def ws_stt(ws: WebSocket):
             AUDIO_BYTES_RECEIVED.inc(len(pcm_bytes))
             AUDIO_FRAMES_RECEIVED.inc()
             total_audio_bytes += len(pcm_bytes)
-
-            if audio_rate_limit_enabled() and not guard.add(len(pcm_bytes)):
-                WS_REJECTS.labels(reason="TOO_MUCH_DATA").inc()
-                close_reason = "too_much_data"
-                emit_eval_event(
-                    log,
-                    "ws_session_rejected",
-                    session_id=session_id,
-                    sampled=sampled,
-                    reason="TOO_MUCH_DATA",
-                    code="TOO_MUCH_DATA",
-                    api_key_hash=api_key_hash,
-                )
-                await send_ws_error_and_close(ws, "TOO_MUCH_DATA", "audio rate limit exceeded", 1008)
+            ok = await emit_pipeline_events(await pipeline.push_audio(pcm_bytes))
+            if not ok:
                 return
-
-            frame_buffer.extend(pcm_bytes)
-            while len(frame_buffer) >= vad.frame_bytes:
-                frame = bytes(frame_buffer[: vad.frame_bytes])
-                del frame_buffer[: vad.frame_bytes]
-                segment_audio_buffer.extend(frame)
-                events, audio_ready = vad.push(frame)
-                for event in events:
-                    if event == "speech_start":
-                        utt_start_time = time.time()
-                    log.info("VAD event session_id=%s request_id=%s state=%s", session_id, session.request_id, event)
-                    VAD_FRAMES.labels(state=event).inc()
-                    if session.vad_signals:
-                        await ws.send_text(
-                            jdump(
-                                {
-                                    "type": "vad",
-                                    "data": {
-                                        "request_id": session.request_id,
-                                        "event": event,
-                                    },
-                                }
-                            )
-                        )
-
-                if audio_ready:
-                    trigger = "max_utt" if "max_utt" in events else "speech_end"
-                    ok = await finalize_audio(audio_ready, trigger)
-                    if not ok:
-                        return
 
     except WebSocketDisconnect:
         close_reason = "client_disconnect"
@@ -746,29 +926,11 @@ async def ws_stt(ws: WebSocket):
         except Exception:
             pass
     finally:
+        if pipeline is not None:
+            pipeline.reset()
         WS_CONNECTIONS.dec()
         if close_reason != "unknown":
             WS_DISCONNECTS.labels(reason=close_reason).inc()
-        if api_key and admitted:
-            try:
-                if redis_limiter:
-                    await redis_limiter.release(api_key)
-                else:
-                    fallback_limiter.release(api_key)
-            except Exception:
-                pass
-        emit_eval_event(
-            log,
-            "ws_session_closed",
-            session_id=session_id,
-            sampled=sampled,
-            api_key_hash=api_key_hash,
-            request_id=request_id,
-            close_reason=close_reason,
-            duration_ms=max(0, int(time.time() * 1000) - session_started_ms),
-            total_audio_bytes=total_audio_bytes,
-            utterance_count=utterance_count,
-        )
         log.info(
             "WS session closed session_id=%s request_id=%s close_reason=%s duration_ms=%s total_audio_bytes=%s utterance_count=%s",
             session_id,

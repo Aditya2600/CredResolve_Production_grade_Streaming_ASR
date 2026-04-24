@@ -100,6 +100,9 @@ def test_primary_result_above_threshold_skips_fallback():
     assert result.language == "te"
     assert result.provider == "vakgyata"
     assert result.fallback_from is None
+    assert result.primary_language == "te"
+    assert result.primary_provider == "vakgyata"
+    assert result.primary_raw_label == "telugu"
     assert fallback.calls == 0
 
 
@@ -122,6 +125,8 @@ def test_load_failure_uses_secondary_fallback():
     assert result.provider == "speechbrain"
     assert result.fallback_from == "vakgyata"
     assert result.fallback_reason == "vakgyata_load_failed"
+    assert result.primary_provider == "vakgyata"
+    assert result.primary_raw_label == ""
 
 
 def test_primary_runtime_error_uses_secondary_fallback():
@@ -142,6 +147,8 @@ def test_primary_runtime_error_uses_secondary_fallback():
     assert result.provider == "speechbrain"
     assert result.fallback_from == "vakgyata"
     assert result.fallback_reason == "vakgyata_error:boom"
+    assert result.primary_provider == "vakgyata"
+    assert result.primary_raw_label == ""
 
 
 def test_unmappable_primary_uses_secondary_fallback():
@@ -162,6 +169,10 @@ def test_unmappable_primary_uses_secondary_fallback():
     assert result.provider == "speechbrain"
     assert result.fallback_from == "vakgyata"
     assert result.fallback_reason == "unmappable_label:unknown-lang"
+    assert result.primary_provider == "vakgyata"
+    assert result.primary_language is None
+    assert result.primary_raw_label == "unknown-lang"
+    assert result.primary_normalized_label == "unknown-lang"
 
 
 def test_low_confidence_primary_uses_secondary_fallback():
@@ -182,6 +193,10 @@ def test_low_confidence_primary_uses_secondary_fallback():
     assert result.provider == "speechbrain"
     assert result.fallback_from == "vakgyata"
     assert result.fallback_reason == "low_confidence:0.3500"
+    assert result.primary_provider == "vakgyata"
+    assert result.primary_language == "te"
+    assert result.primary_raw_label == "telugu"
+    assert result.primary_confidence == 0.35
 
 
 def test_unmappable_primary_and_fallback_resolve_to_default_language():

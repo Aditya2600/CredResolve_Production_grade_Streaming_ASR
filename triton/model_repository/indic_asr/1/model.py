@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import logging
 import os
 from pathlib import Path
@@ -23,6 +24,18 @@ def _decode_string_tensor(tensor, default: str = "") -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8")
     return str(value)
+
+
+def _json_safe(value):
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    return value
 
 
 class TritonPythonModel:
@@ -64,6 +77,7 @@ class TritonPythonModel:
                 audio_tensor = pb_utils.get_input_tensor_by_name(request, "AUDIO_SIGNAL")
                 language_tensor = pb_utils.get_input_tensor_by_name(request, "LANGUAGE")
                 decoder_tensor = pb_utils.get_input_tensor_by_name(request, "DECODER")
+                timestamp_type_tensor = pb_utils.get_input_tensor_by_name(request, "TIMESTAMP_TYPE")
 
                 if audio_tensor is None:
                     raise ValueError("Missing required input AUDIO_SIGNAL")
@@ -76,15 +90,21 @@ class TritonPythonModel:
 
                 language = _decode_string_tensor(language_tensor, default="hi").strip().lower() or "hi"
                 decoder = _decode_string_tensor(decoder_tensor, default="rnnt").strip().lower() or "rnnt"
+                timestamp_type = _decode_string_tensor(timestamp_type_tensor).strip().lower()
                 if decoder not in {"ctc", "rnnt"}:
                     decoder = "rnnt"
+                compute_timestamps = "w" if timestamp_type in {"w", "word"} else None
 
                 wav_t = torch.from_numpy(audio)
+                model_kwargs = {"decoding": decoder}
+                if compute_timestamps:
+                    model_kwargs["compute_timestamps"] = compute_timestamps
                 with torch.inference_mode():
-                    out = self.model(wav_t, language, decoding=decoder)
+                    out = self.model(wav_t, language, **model_kwargs)
 
+                raw_timestamps = []
                 if isinstance(out, tuple):
-                    out = out[0]
+                    out, raw_timestamps = out[0], out[1] if len(out) > 1 else []
                 if isinstance(out, list):
                     out = out[0] if out else ""
 
@@ -93,7 +113,11 @@ class TritonPythonModel:
                     "TRANSCRIPT",
                     np.asarray([text.encode("utf-8")], dtype=object),
                 )
-                responses.append(pb_utils.InferenceResponse(output_tensors=[transcript]))
+                timestamps_json = pb_utils.Tensor(
+                    "TIMESTAMPS_JSON",
+                    np.asarray([json.dumps(_json_safe(raw_timestamps), ensure_ascii=False).encode("utf-8")], dtype=object),
+                )
+                responses.append(pb_utils.InferenceResponse(output_tensors=[transcript, timestamps_json]))
             except Exception as exc:
                 LOG.exception("Triton ASR request failed: %s", exc)
                 responses.append(

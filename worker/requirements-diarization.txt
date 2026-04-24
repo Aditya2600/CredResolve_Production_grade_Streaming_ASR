@@ -1,0 +1,20 @@
+# Offline diarization worker dependencies.
+# Keep these close to worker/requirements.txt, but allow the newer
+# transformers/huggingface_hub stack that NeMo ASR 2.4.1 expects.
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+numpy==1.26.4
+pandas
+pyarrow
+soundfile
+torch==2.4.1
+torchaudio==2.4.1
+onnxruntime-gpu==1.20.1
+huggingface_hub>=0.30.0,<1.0
+transformers==4.52.0
+speechbrain==0.5.16
+prometheus-client==0.20.0
+orjson==3.10.7
+tritonclient[http]>=2.54,<2.67
+nemo_toolkit[asr]==2.4.1

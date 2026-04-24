@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from urllib.parse import urlparse
 
 import numpy as np
@@ -28,3 +29,10 @@ def decode_triton_string_tensor(values: np.ndarray | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8")
     return str(value)
+
+
+def decode_triton_json_tensor(values: np.ndarray | None, *, default):
+    text = decode_triton_string_tensor(values)
+    if not text:
+        return default
+    return json.loads(text)

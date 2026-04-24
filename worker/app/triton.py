@@ -6,7 +6,11 @@ import threading
 import numpy as np
 
 from .model import ModelNotReadyError, ONNXIndicASRWorker
-from .triton_helpers import decode_triton_string_tensor, normalize_triton_http_url
+from .triton_helpers import (
+    decode_triton_json_tensor,
+    decode_triton_string_tensor,
+    normalize_triton_http_url,
+)
 
 log = logging.getLogger("worker.triton")
 
@@ -70,7 +74,7 @@ class TritonRemoteInferenceModel:
                 f"Triton model `{self.model_name}` version `{version}` is not ready"
             )
 
-    def __call__(self, wav_t, resolved_language: str, decoding: str):
+    def __call__(self, wav_t, resolved_language: str, decoding: str, compute_timestamps: str | None = None):
         audio = wav_t.detach().cpu().numpy().astype(np.float32, copy=False)
         language = np.asarray([resolved_language.encode("utf-8")], dtype=object)
         decoder = np.asarray([decoding.encode("utf-8")], dtype=object)
@@ -83,16 +87,29 @@ class TritonRemoteInferenceModel:
         language_input.set_data_from_numpy(language, binary_data=True)
         decoder_input.set_data_from_numpy(decoder, binary_data=True)
 
+        inputs = [audio_input, language_input, decoder_input]
+        outputs = [self._InferRequestedOutput("TRANSCRIPT", binary_data=True)]
+        if compute_timestamps:
+            timestamp_type = np.asarray([compute_timestamps.encode("utf-8")], dtype=object)
+            timestamp_input = self._InferInput("TIMESTAMP_TYPE", list(timestamp_type.shape), "BYTES")
+            timestamp_input.set_data_from_numpy(timestamp_type, binary_data=True)
+            inputs.append(timestamp_input)
+            outputs.append(self._InferRequestedOutput("TIMESTAMPS_JSON", binary_data=True))
+
         infer_kwargs = dict(
             model_name=self.model_name,
-            inputs=[audio_input, language_input, decoder_input],
-            outputs=[self._InferRequestedOutput("TRANSCRIPT", binary_data=True)],
+            inputs=inputs,
+            outputs=outputs,
         )
         if self.model_version:
             infer_kwargs["model_version"] = self.model_version
 
         result = self._get_client().infer(**infer_kwargs)
-        return decode_triton_string_tensor(result.as_numpy("TRANSCRIPT"))
+        transcript = decode_triton_string_tensor(result.as_numpy("TRANSCRIPT"))
+        if not compute_timestamps:
+            return transcript
+        timestamps = decode_triton_json_tensor(result.as_numpy("TIMESTAMPS_JSON"), default=[])
+        return transcript, timestamps
 
 
 class TritonIndicASRWorker(ONNXIndicASRWorker):

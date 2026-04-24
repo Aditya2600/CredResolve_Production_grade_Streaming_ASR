@@ -63,6 +63,13 @@ def infer_lid_provider(source: str, default: str = "speechbrain") -> str:
     return default
 
 
+DEFAULT_LID_PRIMARY_PROVIDER = "vakgyata"
+DEFAULT_LID_PRIMARY_SOURCE = "onecxi/vakgyata-small"
+DEFAULT_LID_PRIMARY_MODEL_DIR = "models/lid_primary"
+DEFAULT_LID_FALLBACK_PROVIDER = "speechbrain"
+DEFAULT_LID_FALLBACK_SOURCE = "speechbrain/lang-id-voxlingua107-ecapa"
+DEFAULT_LID_FALLBACK_MODEL_DIR = "models/lid_fallback"
+
 ASR_MODEL_NAME = getenv_str("ASR_MODEL_NAME", "")
 ASR_BACKEND = getenv_str("ASR_BACKEND", "local").lower()
 ASR_DECODER = getenv_str("ASR_DECODER", "rnnt")
@@ -73,8 +80,10 @@ TRITON_URL = getenv_str("TRITON_URL", "triton:8000")
 TRITON_MODEL_NAME = getenv_str("TRITON_MODEL_NAME", "indic_asr")
 TRITON_MODEL_VERSION = getenv_str("TRITON_MODEL_VERSION", "")
 ASR_ENABLE_LID = getenv_bool("ASR_ENABLE_LID", False)
-ASR_LID_MODEL_SOURCE = getenv_str("ASR_LID_MODEL_SOURCE", "speechbrain/lang-id-voxlingua107-ecapa")
-ASR_LID_MODEL_DIR = getenv_str("ASR_LID_MODEL_DIR", "models/lid_model")
+_LEGACY_LID_MODEL_SOURCE = getenv_optional_str("ASR_LID_MODEL_SOURCE")
+_LEGACY_LID_MODEL_DIR = getenv_optional_str("ASR_LID_MODEL_DIR")
+ASR_LID_MODEL_SOURCE = _LEGACY_LID_MODEL_SOURCE or DEFAULT_LID_FALLBACK_SOURCE
+ASR_LID_MODEL_DIR = _LEGACY_LID_MODEL_DIR or "models/lid_model"
 _HAS_NEW_LID_CHAIN_CONFIG = any(
     getenv_optional_str(name) is not None
     for name in (
@@ -87,34 +96,37 @@ _HAS_NEW_LID_CHAIN_CONFIG = any(
         "ASR_LID_CONFIDENCE_THRESHOLD",
     )
 )
+_USE_DEFAULT_LID_CHAIN = _HAS_NEW_LID_CHAIN_CONFIG or (
+    _LEGACY_LID_MODEL_SOURCE is None and _LEGACY_LID_MODEL_DIR is None
+)
 ASR_LID_PRIMARY_PROVIDER = (
-    getenv_str("ASR_LID_PRIMARY_PROVIDER", "vakgyata")
-    if _HAS_NEW_LID_CHAIN_CONFIG
+    getenv_str("ASR_LID_PRIMARY_PROVIDER", DEFAULT_LID_PRIMARY_PROVIDER)
+    if _USE_DEFAULT_LID_CHAIN
     else infer_lid_provider(ASR_LID_MODEL_SOURCE, default="speechbrain")
 )
 ASR_LID_PRIMARY_SOURCE = (
-    getenv_str("ASR_LID_PRIMARY_SOURCE", "onecxi/vakgyata-small")
-    if _HAS_NEW_LID_CHAIN_CONFIG
+    getenv_str("ASR_LID_PRIMARY_SOURCE", DEFAULT_LID_PRIMARY_SOURCE)
+    if _USE_DEFAULT_LID_CHAIN
     else ASR_LID_MODEL_SOURCE
 )
 ASR_LID_PRIMARY_MODEL_DIR = (
-    getenv_str("ASR_LID_PRIMARY_MODEL_DIR", "models/lid_primary")
-    if _HAS_NEW_LID_CHAIN_CONFIG
+    getenv_str("ASR_LID_PRIMARY_MODEL_DIR", DEFAULT_LID_PRIMARY_MODEL_DIR)
+    if _USE_DEFAULT_LID_CHAIN
     else ASR_LID_MODEL_DIR
 )
 ASR_LID_FALLBACK_PROVIDER = (
-    getenv_str("ASR_LID_FALLBACK_PROVIDER", "speechbrain")
-    if _HAS_NEW_LID_CHAIN_CONFIG
+    getenv_str("ASR_LID_FALLBACK_PROVIDER", DEFAULT_LID_FALLBACK_PROVIDER)
+    if _USE_DEFAULT_LID_CHAIN
     else ""
 )
 ASR_LID_FALLBACK_SOURCE = (
-    getenv_str("ASR_LID_FALLBACK_SOURCE", "speechbrain/lang-id-voxlingua107-ecapa")
-    if _HAS_NEW_LID_CHAIN_CONFIG
+    getenv_str("ASR_LID_FALLBACK_SOURCE", DEFAULT_LID_FALLBACK_SOURCE)
+    if _USE_DEFAULT_LID_CHAIN
     else ""
 )
 ASR_LID_FALLBACK_MODEL_DIR = (
-    getenv_str("ASR_LID_FALLBACK_MODEL_DIR", "models/lid_fallback")
-    if _HAS_NEW_LID_CHAIN_CONFIG
+    getenv_str("ASR_LID_FALLBACK_MODEL_DIR", DEFAULT_LID_FALLBACK_MODEL_DIR)
+    if _USE_DEFAULT_LID_CHAIN
     else ""
 )
 ASR_LID_CONFIDENCE_THRESHOLD = min(1.0, max(0.0, getenv_float("ASR_LID_CONFIDENCE_THRESHOLD", 0.70)))
@@ -139,6 +151,10 @@ ASR_CONTEXT_BIASING_CONTEXT_SCORE = max(0.0, getenv_float("ASR_CONTEXT_BIASING_C
 ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT = max(
     0.0,
     getenv_float("ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT", 0.6),
+)
+ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES = max(
+    1,
+    getenv_int("ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES", 32),
 )
 HUGGINGFACE_HUB_TOKEN = getenv_str("HUGGINGFACE_HUB_TOKEN", getenv_str("HF_TOKEN", ""))
 WORKER_MAX_JOBS = getenv_int("WORKER_MAX_JOBS", 2)

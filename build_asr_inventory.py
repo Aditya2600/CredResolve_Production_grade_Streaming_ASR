@@ -53,6 +53,12 @@ NORMALIZED_COLUMNS = [
     "slice_tags",
 ]
 
+INTERNAL_METADATA_COLUMNS = (
+    "inventory_source_file",
+    "inventory_source_path",
+    "inventory_source_row_number",
+)
+
 SOURCE_DERIVED_COLUMNS = (
     "call_id",
     "audio_url",
@@ -103,9 +109,9 @@ class AudioProbeResult:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Build a normalized ASR inventory from a raw call-export CSV, download audio, "
-            "inspect the downloaded recording with ffprobe, split stereo recordings into "
-            "per-channel WAV files, convert audio to mono 8 kHz WAV, and export the "
+            "Build a normalized ASR inventory from one or more raw call-export CSVs, download audio, "
+            "inspect the downloaded recording with ffprobe, optionally split stereo recordings into "
+            "per-channel WAV files, optionally convert audio to mono 8 kHz WAV, and export the "
             "inventory as CSV and Parquet."
         )
     )
@@ -113,7 +119,8 @@ def parse_args() -> argparse.Namespace:
         "--input",
         type=Path,
         required=True,
-        help="Path to the raw call-export CSV.",
+        nargs="+",
+        help="One or more raw call-export CSV paths.",
     )
     parser.add_argument(
         "--raw-dir",
@@ -125,7 +132,7 @@ def parse_args() -> argparse.Namespace:
         "--wav-dir",
         type=Path,
         default=Path("data/wav"),
-        help="Directory used for normalized WAV audio. Default: data/wav",
+        help="Directory used for normalized mono WAV audio. Ignored with --skip-mono-conversion. Default: data/wav",
     )
     parser.add_argument(
         "--channel-dir",
@@ -208,6 +215,14 @@ def parse_args() -> argparse.Namespace:
         help="Re-download and re-convert audio even if output files already exist.",
     )
     parser.add_argument(
+        "--skip-mono-conversion",
+        action="store_true",
+        help=(
+            "Skip the normalized mono 8 kHz WAV output. The pipeline will still download source audio, "
+            "probe it, and split stereo recordings into per-channel WAV files."
+        ),
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
@@ -235,19 +250,31 @@ def ensure_ffprobe_available() -> None:
     raise SystemExit("ffprobe was not found on PATH. Please install ffprobe before running this script.")
 
 
-def read_source_csv(path: Path) -> pd.DataFrame:
-    if not path.exists():
-        raise SystemExit(f"Input file not found: {path}")
+def read_source_csvs(paths: list[Path]) -> pd.DataFrame:
+    source_frames: list[pd.DataFrame] = []
 
-    try:
-        source_df = pd.read_csv(path, dtype=str, keep_default_na=True, encoding="utf-8-sig")
-    except Exception as exc:  # pragma: no cover - defensive exit path
-        raise SystemExit(f"Failed to read CSV {path}: {exc}") from exc
+    for path in paths:
+        if not path.exists():
+            raise SystemExit(f"Input file not found: {path}")
 
-    if source_df.empty:
-        raise SystemExit(f"Input CSV is empty: {path}")
+        try:
+            source_df = pd.read_csv(path, dtype=str, keep_default_na=True, encoding="utf-8-sig")
+        except Exception as exc:  # pragma: no cover - defensive exit path
+            raise SystemExit(f"Failed to read CSV {path}: {exc}") from exc
 
-    return source_df
+        if source_df.empty:
+            raise SystemExit(f"Input CSV is empty: {path}")
+
+        prepared_df = source_df.copy()
+        prepared_df["inventory_source_file"] = path.name
+        prepared_df["inventory_source_path"] = str(path)
+        prepared_df["inventory_source_row_number"] = range(2, len(prepared_df) + 2)
+        source_frames.append(prepared_df)
+
+    if not source_frames:
+        raise SystemExit("At least one input CSV is required.")
+
+    return pd.concat(source_frames, ignore_index=True, sort=False)
 
 
 def clean_nullable_string(value: object) -> object:
@@ -271,6 +298,8 @@ def canonicalize_column_name(name: str) -> str:
 def build_column_profiles(source_df: pd.DataFrame, *, sample_limit: int = 3) -> list[ColumnProfile]:
     profiles: list[ColumnProfile] = []
     for column in source_df.columns:
+        if column in INTERNAL_METADATA_COLUMNS:
+            continue
         series = source_df[column].dropna().astype(str)
         sample_values = tuple(value.strip() for value in series.head(sample_limit) if value.strip())
         canonical_name = canonicalize_column_name(column)
@@ -633,6 +662,21 @@ def build_source_export_names(source_columns: pd.Index) -> tuple[list[str], dict
     return export_names, rename_map
 
 
+def find_source_column(
+    source_df: pd.DataFrame,
+    *canonical_names: str,
+) -> str | None:
+    canonical_lookup = {
+        canonicalize_column_name(column): column
+        for column in source_df.columns
+    }
+    for canonical_name in canonical_names:
+        column = canonical_lookup.get(canonical_name)
+        if column is not None:
+            return column
+    return None
+
+
 def normalize_event_date_value(value: object) -> object:
     cleaned = clean_nullable_string(value)
     if pd.isna(cleaned):
@@ -655,6 +699,95 @@ def normalize_event_date_value(value: object) -> object:
     return parsed.isoformat()
 
 
+def derive_call_id_from_audio_url(value: object) -> str | None:
+    cleaned = clean_nullable_string(value)
+    if pd.isna(cleaned):
+        return None
+
+    parsed = urlparse(str(cleaned))
+    basename = Path(parsed.path).stem.strip()
+    return basename or None
+
+
+def build_fallback_call_id(
+    *,
+    audio_url: object,
+    source_file: object,
+    source_row_number: object,
+) -> str:
+    source_stem = "source"
+    cleaned_source_file = clean_nullable_string(source_file)
+    if not pd.isna(cleaned_source_file):
+        source_stem = Path(str(cleaned_source_file)).stem or "source"
+
+    audio_stem = derive_call_id_from_audio_url(audio_url)
+    if audio_stem:
+        return f"{sanitize_filename_component(source_stem)}__{sanitize_filename_component(audio_stem)}"
+
+    cleaned_source_row = clean_nullable_string(source_row_number)
+    row_component = str(cleaned_source_row) if not pd.isna(cleaned_source_row) else "unknown"
+    return f"{sanitize_filename_component(source_stem)}__row_{sanitize_filename_component(row_component)}"
+
+
+def build_call_id_series(source_df: pd.DataFrame, mapping: MappingResult) -> pd.Series:
+    mapped_call_id_column = mapping.mapped_columns.get("call_id")
+    mapped_audio_url_column = mapping.mapped_columns.get("audio_url")
+
+    if mapped_call_id_column is not None:
+        raw_call_ids = source_df[mapped_call_id_column].map(clean_nullable_string)
+    else:
+        raw_call_ids = pd.Series([pd.NA] * len(source_df), index=source_df.index, dtype="object")
+
+    if mapped_audio_url_column is not None:
+        audio_urls = source_df[mapped_audio_url_column]
+    else:
+        audio_urls = pd.Series([pd.NA] * len(source_df), index=source_df.index, dtype="object")
+
+    if "inventory_source_file" in source_df.columns:
+        source_files = source_df["inventory_source_file"]
+    else:
+        source_files = pd.Series(["source.csv"] * len(source_df), index=source_df.index, dtype="object")
+
+    if "inventory_source_row_number" in source_df.columns:
+        source_row_numbers = source_df["inventory_source_row_number"]
+    else:
+        source_row_numbers = pd.Series(range(2, len(source_df) + 2), index=source_df.index, dtype="object")
+
+    seen_keys: set[str] = set()
+    resolved_call_ids: list[str] = []
+
+    for idx in source_df.index:
+        mapped_call_id = raw_call_ids.loc[idx]
+        if pd.isna(mapped_call_id):
+            candidate = build_fallback_call_id(
+                audio_url=audio_urls.loc[idx],
+                source_file=source_files.loc[idx],
+                source_row_number=source_row_numbers.loc[idx],
+            )
+        else:
+            candidate = str(mapped_call_id)
+
+        candidate_key = sanitize_filename_component(candidate)
+        if candidate_key in seen_keys:
+            duplicate_suffix = build_fallback_call_id(
+                audio_url=audio_urls.loc[idx],
+                source_file=source_files.loc[idx],
+                source_row_number=source_row_numbers.loc[idx],
+            )
+            candidate = f"{candidate}__{duplicate_suffix}"
+            candidate_key = sanitize_filename_component(candidate)
+            suffix_index = 2
+            while candidate_key in seen_keys:
+                candidate = f"{candidate}__dup_{suffix_index}"
+                candidate_key = sanitize_filename_component(candidate)
+                suffix_index += 1
+
+        seen_keys.add(candidate_key)
+        resolved_call_ids.append(candidate)
+
+    return pd.Series(resolved_call_ids, index=source_df.index, dtype="object")
+
+
 def build_path_series(call_ids: pd.Series, base_dir: Path, suffix: str) -> pd.Series:
     def path_for_call_id(value: object) -> object:
         if pd.isna(value):
@@ -675,8 +808,11 @@ def build_inventory_frame(
 ) -> pd.DataFrame:
     inventory = pd.DataFrame(index=source_df.index)
     inventory["row_id"] = range(1, len(source_df) + 1)
+    inventory["call_id"] = build_call_id_series(source_df, mapping)
 
     for normalized_column in SOURCE_DERIVED_COLUMNS:
+        if normalized_column == "call_id":
+            continue
         source_column = mapping.mapped_columns.get(normalized_column)
         if source_column is None:
             inventory[normalized_column] = pd.Series([pd.NA] * len(source_df), dtype="object")
@@ -711,11 +847,45 @@ def build_inventory_frame(
     inventory["split"] = "unset"
     inventory["slice_tags"] = "[]"
 
+    transcript_column = find_source_column(
+        source_df,
+        "native_language_transcript",
+        "raw_transcript",
+        "transcript",
+        "transcription",
+    )
+    if transcript_column is not None:
+        inventory["transcript_source"] = transcript_column
+        inventory["raw_transcript"] = source_df[transcript_column].map(clean_nullable_string)
+
+    normalized_transcript_column = find_source_column(
+        source_df,
+        "normalized_transcript",
+        "cleaned_transcript",
+    )
+    if normalized_transcript_column is not None:
+        inventory["normalized_transcript"] = source_df[normalized_transcript_column].map(
+            clean_nullable_string
+        )
+
     source_export_df = source_df.copy()
     source_export_df.columns = mapping.source_export_names
 
     ordered_columns = NORMALIZED_COLUMNS + list(source_export_df.columns)
     return pd.concat([inventory[NORMALIZED_COLUMNS], source_export_df], axis=1)[ordered_columns]
+
+
+def apply_audio_processing_mode(
+    inventory_df: pd.DataFrame,
+    *,
+    skip_mono_conversion: bool,
+) -> pd.DataFrame:
+    if not skip_mono_conversion:
+        return inventory_df
+
+    inventory_df["wav_audio_path"] = pd.Series(pd.NA, index=inventory_df.index, dtype="object")
+    inventory_df["audio_convert_status"] = "skipped"
+    return inventory_df
 
 
 def is_valid_http_url(value: object) -> bool:
@@ -753,14 +923,31 @@ def parse_non_negative_float(value: object) -> float | None:
     return round(parsed, 3)
 
 
-def derive_audio_routing(channels: int | None) -> tuple[str, str]:
+def derive_audio_structure(channels: int | None) -> str:
     if channels == 1:
-        return "mono", "diarization_or_role_filter_first"
+        return "mono"
     if channels == 2:
-        return "stereo", "split_channels_first"
+        return "stereo"
     if channels is not None and channels > 2:
-        return "multi_channel", "manual_review"
-    return "unknown", "manual_review"
+        return "multi_channel"
+    return "unknown"
+
+
+def derive_audio_routing(
+    *,
+    channels: int | None,
+    sample_rate: int | None,
+    duration_sec: float | None,
+) -> str:
+    # Segmentation needs basic probe metadata before we can safely choose
+    # between mono processing and split-channel handling.
+    if channels is None or sample_rate is None or duration_sec is None or duration_sec <= 0:
+        return "manual_review"
+    if channels == 1:
+        return "diarization_or_role_filter_first"
+    if channels == 2:
+        return "split_channels_first"
+    return "manual_review"
 
 
 def build_audio_probe_result(
@@ -769,7 +956,12 @@ def build_audio_probe_result(
     sample_rate: int | None,
     duration_sec: float | None,
 ) -> AudioProbeResult:
-    audio_structure, recommended_next_step = derive_audio_routing(channels)
+    audio_structure = derive_audio_structure(channels)
+    recommended_next_step = derive_audio_routing(
+        channels=channels,
+        sample_rate=sample_rate,
+        duration_sec=duration_sec,
+    )
     return AudioProbeResult(
         channels=channels,
         sample_rate=sample_rate,
@@ -838,6 +1030,29 @@ def probe_audio_metadata(path: Path) -> AudioProbeResult:
         probe_result.recommended_next_step,
     )
     return probe_result
+
+
+def prepare_audio_for_segmentation(
+    *,
+    input_path: Path,
+    channel_0_path: Path,
+    channel_1_path: Path,
+    overwrite: bool,
+    split_output_sample_rate: int | None,
+) -> tuple[AudioProbeResult, bool | None]:
+    probe_result = probe_audio_metadata(input_path)
+    split_ok: bool | None = None
+
+    if probe_result.recommended_next_step == "split_channels_first":
+        split_ok = split_stereo_channels(
+            input_path=input_path,
+            channel_0_path=channel_0_path,
+            channel_1_path=channel_1_path,
+            overwrite=overwrite,
+            output_sample_rate=split_output_sample_rate,
+        )
+
+    return probe_result, split_ok
 
 
 def download_audio(
@@ -929,6 +1144,7 @@ def split_stereo_channels(
     channel_0_path: Path,
     channel_1_path: Path,
     overwrite: bool,
+    output_sample_rate: int | None,
 ) -> bool:
     if not input_path.exists():
         logging.warning("Channel split skipped because source audio is missing: %s", input_path)
@@ -953,19 +1169,27 @@ def split_stereo_channels(
         "[0:a]pan=mono|c0=c0[ch0];[0:a]pan=mono|c0=c1[ch1]",
         "-map",
         "[ch0]",
-        "-ar",
-        "8000",
         "-ac",
         "1",
-        str(channel_0_path),
-        "-map",
-        "[ch1]",
-        "-ar",
-        "8000",
-        "-ac",
-        "1",
-        str(channel_1_path),
     ]
+    if output_sample_rate is not None:
+        command.extend(["-ar", str(output_sample_rate)])
+    command.extend(
+        [
+            str(channel_0_path),
+            "-map",
+            "[ch1]",
+            "-ac",
+            "1",
+        ]
+    )
+    if output_sample_rate is not None:
+        command.extend(["-ar", str(output_sample_rate)])
+    command.extend(
+        [
+            str(channel_1_path),
+        ]
+    )
 
     try:
         subprocess.run(command, check=True, capture_output=True, text=True)
@@ -976,6 +1200,22 @@ def split_stereo_channels(
             if output_path.exists():
                 output_path.unlink()
         return False
+
+
+def derive_segmentation_status(
+    *,
+    recommended_next_step: str,
+    mono_conversion_requested: bool = True,
+    audio_convert_ok: bool,
+    channel_split_ok: bool | None,
+) -> str:
+    if recommended_next_step == "split_channels_first":
+        return "ready_split_channels" if channel_split_ok else "blocked_split_failed"
+    if recommended_next_step == "diarization_or_role_filter_first":
+        if not mono_conversion_requested:
+            return "ready_source_audio"
+        return "ready_mono_segmentation" if audio_convert_ok else "blocked_audio_conversion_failed"
+    return "manual_review_required"
 
 
 def path_exists(value: object) -> bool:
@@ -1180,6 +1420,9 @@ def write_borrower_audit_report(
 
 
 def process_audio(inventory_df: pd.DataFrame, args: argparse.Namespace) -> pd.DataFrame:
+    mono_conversion_requested = not args.skip_mono_conversion
+    split_output_sample_rate = None if args.skip_mono_conversion else 8000
+
     with requests.Session() as session:
         session.headers.update({"User-Agent": REQUEST_USER_AGENT})
 
@@ -1196,19 +1439,25 @@ def process_audio(inventory_df: pd.DataFrame, args: argparse.Namespace) -> pd.Da
             if (
                 pd.isna(call_id)
                 or pd.isna(local_audio_path)
-                or pd.isna(wav_audio_path)
                 or pd.isna(channel_0_path)
                 or pd.isna(channel_1_path)
+                or (mono_conversion_requested and pd.isna(wav_audio_path))
             ):
                 logging.warning("Row %s is missing call_id; audio processing skipped.", row_id)
                 inventory_df.at[idx, "download_status"] = "failed"
-                inventory_df.at[idx, "audio_convert_status"] = "failed"
+                inventory_df.at[idx, "audio_convert_status"] = (
+                    "failed" if mono_conversion_requested else "skipped"
+                )
+                inventory_df.at[idx, "segmentation_status"] = "blocked_missing_metadata"
                 continue
 
             if not is_valid_http_url(audio_url):
                 logging.warning("Row %s (%s) is missing or has an invalid audio_url.", row_id, call_id)
                 inventory_df.at[idx, "download_status"] = "failed"
-                inventory_df.at[idx, "audio_convert_status"] = "failed"
+                inventory_df.at[idx, "audio_convert_status"] = (
+                    "failed" if mono_conversion_requested else "skipped"
+                )
+                inventory_df.at[idx, "segmentation_status"] = "blocked_invalid_audio_url"
                 continue
 
             logging.info("Processing row %s/%s for call_id=%s", row_id, total_rows, call_id)
@@ -1224,10 +1473,19 @@ def process_audio(inventory_df: pd.DataFrame, args: argparse.Namespace) -> pd.Da
             inventory_df.at[idx, "download_status"] = "done" if download_ok else "failed"
 
             if not download_ok:
-                inventory_df.at[idx, "audio_convert_status"] = "failed"
+                inventory_df.at[idx, "audio_convert_status"] = (
+                    "failed" if mono_conversion_requested else "skipped"
+                )
+                inventory_df.at[idx, "segmentation_status"] = "blocked_download_failed"
                 continue
 
-            probe_result = probe_audio_metadata(Path(str(local_audio_path)))
+            probe_result, split_ok = prepare_audio_for_segmentation(
+                input_path=Path(str(local_audio_path)),
+                channel_0_path=Path(str(channel_0_path)),
+                channel_1_path=Path(str(channel_1_path)),
+                overwrite=args.overwrite,
+                split_output_sample_rate=split_output_sample_rate,
+            )
             inventory_df.at[idx, "channels"] = (
                 probe_result.channels if probe_result.channels is not None else pd.NA
             )
@@ -1240,13 +1498,7 @@ def process_audio(inventory_df: pd.DataFrame, args: argparse.Namespace) -> pd.Da
             inventory_df.at[idx, "audio_structure"] = probe_result.audio_structure
             inventory_df.at[idx, "recommended_next_step"] = probe_result.recommended_next_step
 
-            if probe_result.channels == 2:
-                split_ok = split_stereo_channels(
-                    input_path=Path(str(local_audio_path)),
-                    channel_0_path=Path(str(channel_0_path)),
-                    channel_1_path=Path(str(channel_1_path)),
-                    overwrite=args.overwrite,
-                )
+            if split_ok is not None:
                 if split_ok:
                     logging.info(
                         "Channel split succeeded for call_id=%s -> %s, %s",
@@ -1257,12 +1509,22 @@ def process_audio(inventory_df: pd.DataFrame, args: argparse.Namespace) -> pd.Da
                 else:
                     logging.warning("Channel split failed for call_id=%s", call_id)
 
-            convert_ok = convert_audio_to_wav(
-                input_path=Path(str(local_audio_path)),
-                output_path=Path(str(wav_audio_path)),
-                overwrite=args.overwrite,
+            if mono_conversion_requested:
+                convert_ok = convert_audio_to_wav(
+                    input_path=Path(str(local_audio_path)),
+                    output_path=Path(str(wav_audio_path)),
+                    overwrite=args.overwrite,
+                )
+                inventory_df.at[idx, "audio_convert_status"] = "done" if convert_ok else "failed"
+            else:
+                convert_ok = True
+                inventory_df.at[idx, "audio_convert_status"] = "skipped"
+            inventory_df.at[idx, "segmentation_status"] = derive_segmentation_status(
+                recommended_next_step=probe_result.recommended_next_step,
+                mono_conversion_requested=mono_conversion_requested,
+                audio_convert_ok=convert_ok,
+                channel_split_ok=split_ok,
             )
-            inventory_df.at[idx, "audio_convert_status"] = "done" if convert_ok else "failed"
 
     return inventory_df
 
@@ -1306,6 +1568,7 @@ def log_processing_summary(inventory_df: pd.DataFrame) -> None:
     download_failure = int((inventory_df["download_status"] == "failed").sum())
     wav_success = int((inventory_df["audio_convert_status"] == "done").sum())
     wav_failure = int((inventory_df["audio_convert_status"] == "failed").sum())
+    wav_skipped = int((inventory_df["audio_convert_status"] == "skipped").sum())
     split_channels_first = int((inventory_df["recommended_next_step"] == "split_channels_first").sum())
     diarization_first = int(
         (inventory_df["recommended_next_step"] == "diarization_or_role_filter_first").sum()
@@ -1334,6 +1597,7 @@ def log_processing_summary(inventory_df: pd.DataFrame) -> None:
     logging.info("  download_failure=%s", download_failure)
     logging.info("  wav_conversion_success=%s", wav_success)
     logging.info("  wav_conversion_failure=%s", wav_failure)
+    logging.info("  wav_conversion_skipped=%s", wav_skipped)
     logging.info("  split_channels_first=%s", split_channels_first)
     logging.info("  channel_split_success=%s", channel_split_success)
     logging.info("  diarization_or_role_filter_first=%s", diarization_first)
@@ -1348,21 +1612,23 @@ def main() -> int:
     ensure_ffmpeg_available()
     ensure_ffprobe_available()
 
-    input_path = args.input.expanduser().resolve()
+    input_paths = [path.expanduser().resolve() for path in args.input]
     raw_dir = args.raw_dir.expanduser()
     wav_dir = args.wav_dir.expanduser()
     channel_dir = args.channel_dir.expanduser()
     output_dir = args.output_dir.expanduser()
     channel_map = load_channel_map(args.channel_map) if args.channel_map else {}
 
-    logging.info("Reading source CSV from %s", input_path)
-    source_df = read_source_csv(input_path)
+    logging.info("Reading %s source CSV file(s)", len(input_paths))
+    for input_path in input_paths:
+        logging.info("  source_csv=%s", input_path)
+    source_df = read_source_csvs(input_paths)
     if args.max_rows is not None:
         if args.max_rows <= 0:
             raise SystemExit("--max-rows must be greater than 0 when provided.")
         source_df = source_df.head(args.max_rows).copy()
         logging.info("Limiting processing to the first %s rows", len(source_df))
-    logging.info("Loaded %s rows from input CSV", len(source_df))
+    logging.info("Loaded %s rows from %s input CSV file(s)", len(source_df), len(input_paths))
 
     mapping = infer_schema_mapping(source_df)
     log_mapping_summary(mapping)
@@ -1373,6 +1639,10 @@ def main() -> int:
         raw_dir=raw_dir,
         wav_dir=wav_dir,
         channel_dir=channel_dir,
+    )
+    inventory_df = apply_audio_processing_mode(
+        inventory_df,
+        skip_mono_conversion=args.skip_mono_conversion,
     )
     inventory_df = process_audio(inventory_df, args)
     inventory_df = apply_borrower_channel_assignments(

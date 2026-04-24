@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from worker.app.context_biasing import (
+    ContextBiasingConfig,
+    NeMoContextBiasingRuntime,
     PhraseLexicon,
     compare_phrase_counts,
     extract_transcript_text,
@@ -128,3 +130,64 @@ def test_should_return_active_biasing_transcript_accepts_phrase_gain(tmp_path: P
     assert reason == "phrase_gain"
     assert baseline_hits == 0
     assert biased_hits == 1
+
+
+def _build_runtime(phrases_dir: Path) -> NeMoContextBiasingRuntime:
+    runtime = NeMoContextBiasingRuntime(
+        ContextBiasingConfig(
+            mode="active",
+            method="ctc_ws",
+            nemo_source="demo.nemo",
+            nemo_model_class="EncDecCTCModelBPE",
+            phrases_dir=str(phrases_dir),
+            timeout_ms=4000,
+            device="cpu",
+            shadow_sample_rate=1.0,
+            beam_threshold=8.0,
+            context_score=3.0,
+            ctc_ali_token_weight=0.6,
+            max_dynamic_phrases=32,
+        )
+    )
+    runtime.ready = True
+    runtime.model = object()
+    return runtime
+
+
+def test_decide_preserves_old_behavior_without_dynamic_context(tmp_path: Path):
+    runtime = _build_runtime(tmp_path)
+
+    decision = runtime.decide(
+        requested_language="hi",
+        session_id="session-1",
+        utterance_id="utt-1",
+    )
+
+    assert decision.eligible is False
+    assert decision.reason == "missing_phrase_file"
+    assert decision.dynamic_context_present is False
+
+
+def test_decide_allows_dynamic_context_without_static_phrase_file(tmp_path: Path):
+    runtime = _build_runtime(tmp_path)
+
+    decision = runtime.decide(
+        requested_language="hi",
+        session_id="session-1",
+        utterance_id="utt-1",
+        requested_mode="shadow",
+        biasing_context={"debtor_name": "Ravi Kumar", "lender": "SMFG India Credit"},
+    )
+
+    try:
+        assert decision.eligible is True
+        assert decision.mode == "shadow"
+        assert decision.dynamic_context_present is True
+        assert decision.dynamic_context_used is True
+        assert decision.cleanup_phrase_file is True
+        assert decision.phrase_source == "dynamic_only"
+        assert decision.phrase_file is not None
+        assert Path(decision.phrase_file).exists()
+    finally:
+        if decision.phrase_file:
+            Path(decision.phrase_file).unlink(missing_ok=True)

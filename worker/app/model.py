@@ -5,14 +5,22 @@ import json
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from huggingface_hub import snapshot_download
 import numpy as np
 import torch
 
+from .config import (
+    DEFAULT_LID_FALLBACK_MODEL_DIR,
+    DEFAULT_LID_FALLBACK_PROVIDER,
+    DEFAULT_LID_FALLBACK_SOURCE,
+    DEFAULT_LID_PRIMARY_MODEL_DIR,
+    DEFAULT_LID_PRIMARY_PROVIDER,
+    DEFAULT_LID_PRIMARY_SOURCE,
+)
 from .lid import BaseLanguageDetector, build_language_detector
 from .metrics import LID_DETECTED, LID_LAT, LID_REQS
 
@@ -47,6 +55,62 @@ class TranscribeResult:
     text: str
     language: str
     language_source: str
+    word_timestamps: list[dict[str, Any]] = field(default_factory=list)
+    segment_timestamps: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _normalize_word_timestamps(payload: Any) -> list[dict[str, Any]]:
+    if payload is None:
+        return []
+    rows = payload
+    if isinstance(rows, list) and rows and isinstance(rows[0], list):
+        rows = rows[0]
+
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(rows or []):
+        if not isinstance(item, (list, tuple)) or len(item) < 3:
+            continue
+        token = str(item[0] or "").strip()
+        if not token:
+            continue
+        try:
+            start_sec = float(item[1])
+            end_sec = float(item[2])
+        except (TypeError, ValueError):
+            continue
+        if end_sec <= start_sec:
+            continue
+        normalized.append(
+            {
+                "word": token,
+                "start_sec": round(start_sec, 4),
+                "end_sec": round(end_sec, 4),
+                "word_index": index,
+            }
+        )
+    return normalized
+
+
+def _build_segment_timestamps(text: str, word_timestamps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not word_timestamps:
+        return []
+    return [
+        {
+            "segment_index": 0,
+            "text": str(text or "").strip(),
+            "start_sec": word_timestamps[0]["start_sec"],
+            "end_sec": word_timestamps[-1]["end_sec"],
+        }
+    ]
+
+
+def _normalize_timestamp_type(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    if not normalized or normalized == "none":
+        return "none"
+    if normalized != "word":
+        raise ValueError("Unsupported timestamp_type. Supported values: none, word")
+    return normalized
 
 
 class ONNXIndicASRWorker:
@@ -59,14 +123,14 @@ class ONNXIndicASRWorker:
         default_language: str,
         supported_language_allowlist: tuple[str, ...] = tuple(),
         enable_lid: bool = False,
-        lid_model_source: str = "speechbrain/lang-id-voxlingua107-ecapa",
+        lid_model_source: str = DEFAULT_LID_PRIMARY_SOURCE,
         lid_model_dir: str = "models/lid_model",
-        lid_primary_provider: str = "",
-        lid_primary_source: str = "",
-        lid_primary_model_dir: str = "",
-        lid_fallback_provider: str = "",
-        lid_fallback_source: str = "",
-        lid_fallback_model_dir: str = "",
+        lid_primary_provider: str = DEFAULT_LID_PRIMARY_PROVIDER,
+        lid_primary_source: str = DEFAULT_LID_PRIMARY_SOURCE,
+        lid_primary_model_dir: str = DEFAULT_LID_PRIMARY_MODEL_DIR,
+        lid_fallback_provider: str = DEFAULT_LID_FALLBACK_PROVIDER,
+        lid_fallback_source: str = DEFAULT_LID_FALLBACK_SOURCE,
+        lid_fallback_model_dir: str = DEFAULT_LID_FALLBACK_MODEL_DIR,
         lid_confidence_threshold: float = 0.70,
         lid_cache_ttl_sec: int = 600,
         lid_cache_max_entries: int = 10000,
@@ -83,14 +147,14 @@ class ONNXIndicASRWorker:
         self.requested_supported_languages = set(supported_language_allowlist)
 
         self.enable_lid = bool(enable_lid)
-        self.lid_model_source = (lid_model_source or "speechbrain/lang-id-voxlingua107-ecapa").strip()
+        self.lid_model_source = (lid_model_source or DEFAULT_LID_PRIMARY_SOURCE).strip()
         self.lid_model_dir = (lid_model_dir or "models/lid_model").strip()
-        self.lid_primary_provider = (lid_primary_provider or "").strip().lower()
+        self.lid_primary_provider = (lid_primary_provider or DEFAULT_LID_PRIMARY_PROVIDER).strip().lower()
         self.lid_primary_source = (lid_primary_source or self.lid_model_source).strip()
-        self.lid_primary_model_dir = (lid_primary_model_dir or self.lid_model_dir).strip()
-        self.lid_fallback_provider = (lid_fallback_provider or "").strip().lower()
-        self.lid_fallback_source = (lid_fallback_source or "").strip()
-        self.lid_fallback_model_dir = (lid_fallback_model_dir or "").strip()
+        self.lid_primary_model_dir = (lid_primary_model_dir or DEFAULT_LID_PRIMARY_MODEL_DIR).strip()
+        self.lid_fallback_provider = (lid_fallback_provider or DEFAULT_LID_FALLBACK_PROVIDER).strip().lower()
+        self.lid_fallback_source = (lid_fallback_source or DEFAULT_LID_FALLBACK_SOURCE).strip()
+        self.lid_fallback_model_dir = (lid_fallback_model_dir or DEFAULT_LID_FALLBACK_MODEL_DIR).strip()
         self.lid_confidence_threshold = min(1.0, max(0.0, float(lid_confidence_threshold)))
         self.lid_cache_ttl_sec = max(int(lid_cache_ttl_sec), 1)
         self.lid_cache_max_entries = max(int(lid_cache_max_entries), 1)
@@ -122,7 +186,8 @@ class ONNXIndicASRWorker:
     def load(self) -> None:
         log.info("Loading ONNX model: %s on %s", self.model_name, self.device)
         try:
-            snapshot_path = snapshot_download(repo_id=self.model_name, token=self.hf_token)
+            ignore_patterns = ["*.onnx", "*.pt", "*.bin", "*.safetensors"] if self.__class__.__name__ != "ONNXIndicASRWorker" else None
+            snapshot_path = snapshot_download(repo_id=self.model_name, token=self.hf_token, ignore_patterns=ignore_patterns)
             self.snapshot_path = snapshot_path
             log.info("Model snapshot downloaded model=%s snapshot=%s", self.model_name, self.snapshot_path)
 
@@ -232,6 +297,9 @@ class ONNXIndicASRWorker:
         return effective
 
     def _require_cuda_execution_provider(self) -> None:
+        if self.device != "cuda":
+            return
+            
         if not torch.cuda.is_available():
             raise ModelNotReadyError("CUDA is required but torch.cuda.is_available() is False")
 
@@ -519,6 +587,7 @@ class ONNXIndicASRWorker:
         session_id: Optional[str],
         utterance_id: Optional[str],
         mode: str,
+        timestamp_type: str | None = None,
     ) -> TranscribeResult:
         if not self.ready or self.model is None:
             raise ModelNotReadyError(self.init_error or "Model not initialized")
@@ -535,6 +604,7 @@ class ONNXIndicASRWorker:
         )
 
         normalized_mode = (mode or "final").strip().lower()
+        requested_timestamp_type = _normalize_timestamp_type(timestamp_type)
 
         if not pcm16le_model:
             log.info(
@@ -546,6 +616,9 @@ class ONNXIndicASRWorker:
                 language_source,
             )
             return TranscribeResult(text="", language=resolved_language, language_source=language_source)
+
+        if requested_timestamp_type == "word" and dec != "ctc":
+            raise ValueError("timestamp_type=word requires decoder=ctc")
 
         wav = np.frombuffer(pcm16le_model, dtype=np.int16).astype(np.float32) / 32768.0
         wav_t = torch.from_numpy(wav).unsqueeze(0)
@@ -568,17 +641,23 @@ class ONNXIndicASRWorker:
         )
 
         try:
+            model_kwargs = {"decoding": dec}
+            if requested_timestamp_type == "word":
+                model_kwargs["compute_timestamps"] = "w"
             with torch.inference_mode():
-                out = self.model(wav_t, resolved_language, decoding=dec)
+                out = self.model(wav_t, resolved_language, **model_kwargs)
         except Exception as exc:
             raise InferenceError(str(exc)) from exc
 
+        word_timestamps: list[dict[str, Any]] = []
         if isinstance(out, tuple):
-            out = out[0]
+            out, raw_timestamps = out[0], out[1] if len(out) > 1 else None
+            word_timestamps = _normalize_word_timestamps(raw_timestamps)
         if isinstance(out, list):
             out = out[0] if out else ""
 
         text = str(out or "").strip()
+        segment_timestamps = _build_segment_timestamps(text, word_timestamps)
         log.info(
             "Transcribe finished mode=%s session_id=%s utterance_id=%s latency_ms=%s text_chars=%s resolved_language=%s language_source=%s",
             normalized_mode,
@@ -589,7 +668,13 @@ class ONNXIndicASRWorker:
             resolved_language,
             language_source,
         )
-        return TranscribeResult(text=text, language=resolved_language, language_source=language_source)
+        return TranscribeResult(
+            text=text,
+            language=resolved_language,
+            language_source=language_source,
+            word_timestamps=word_timestamps,
+            segment_timestamps=segment_timestamps,
+        )
 
     async def transcribe_with_timeout(
         self,
@@ -600,6 +685,7 @@ class ONNXIndicASRWorker:
         session_id: Optional[str],
         utterance_id: Optional[str],
         mode: str,
+        timestamp_type: str | None = None,
     ) -> TranscribeResult:
         timeout_s = self.inference_timeout_ms / 1000.0
         loop = asyncio.get_running_loop()
@@ -618,6 +704,7 @@ class ONNXIndicASRWorker:
                 session_id,
                 utterance_id,
                 mode,
+                timestamp_type,
             )
         except Exception:
             self._inference_slots.release()
