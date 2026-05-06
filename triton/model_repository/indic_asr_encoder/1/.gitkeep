@@ -1,0 +1,2 @@
+# Place encoder.onnx (renamed to model.onnx) plus the external `layers.*`
+# weight blobs from the HF snapshot here at deploy time.

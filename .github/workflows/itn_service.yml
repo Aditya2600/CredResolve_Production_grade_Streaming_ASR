@@ -1,0 +1,58 @@
+name: itn_service CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "itn_service/**"
+      - ".github/workflows/itn_service.yml"
+  pull_request:
+    paths:
+      - "itn_service/**"
+      - ".github/workflows/itn_service.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: itn_service
+
+jobs:
+  lint-typecheck-test:
+    name: ruff + mypy + pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      # Native deps for PyICU and pynini are not needed for the
+      # scaffolding-stage CI; we lint and type-check the runtime contract
+      # and run an (empty) pytest. Heavier wheels are exercised once
+      # grammars and runtime logic land.
+      - name: Install lint/type/test toolchain
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "pydantic>=2.6,<3" \
+            "pyyaml>=6.0" \
+            "regex>=2024.5.15" \
+            "pytest>=8.0" \
+            "pytest-benchmark>=4.0" \
+            "hypothesis>=6.100" \
+            "ruff>=0.5" \
+            "mypy>=1.10" \
+            "types-PyYAML"
+
+      - name: ruff
+        run: ruff check .
+
+      - name: mypy (strict, runtime/)
+        run: mypy
+
+      - name: pytest
+        run: pytest

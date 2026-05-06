@@ -40,9 +40,14 @@ def pcm_l16_bytes(pcm_s16le: bytes) -> bytes:
     return bytes(swapped)
 
 
-def encode_audio_chunk(raw_audio: bytes, encoding: str) -> str:
+def prepare_audio_chunk(raw_audio: bytes, encoding: str) -> bytes:
     if encoding == "pcm_l16":
         raw_audio = pcm_l16_bytes(raw_audio)
+    return raw_audio
+
+
+def encode_audio_chunk(raw_audio: bytes, encoding: str) -> str:
+    raw_audio = prepare_audio_chunk(raw_audio, encoding)
     return base64.b64encode(raw_audio).decode("ascii")
 
 
@@ -63,7 +68,14 @@ async def main():
     parser.add_argument("--vad-signals", action="store_true")
     parser.add_argument("--high-vad-sensitivity", action="store_true")
     parser.add_argument("--flush-signal", action="store_true")
+    parser.add_argument(
+        "--json-base64",
+        action="store_true",
+        help="Send legacy JSON/base64 PCM frames instead of binary websocket audio frames",
+    )
     args = parser.parse_args()
+
+    binary_audio = args.input_audio_codec != "wav" and not args.json_base64
 
     ws_url = update_ws_query(
         args.ws,
@@ -76,6 +88,7 @@ async def main():
             "vad_signals": str(args.vad_signals).lower(),
             "flush_signal": str(args.flush_signal).lower(),
             "input_audio_codec": args.input_audio_codec,
+            "binary_audio": "1" if binary_audio else "0",
         },
     )
     auth_headers = {"Api-Subscription-Key": args.api_key}
@@ -108,17 +121,20 @@ async def main():
                     raise SystemExit(
                         f"WAV sample rate {wav_sample_rate}Hz does not match --sample-rate {args.sample_rate}Hz"
                     )
-                await ws.send(
-                    json.dumps(
-                        {
-                            "audio": {
-                                "data": encode_audio_chunk(frame, args.input_audio_codec),
-                                "sample_rate": str(args.sample_rate),
-                                "encoding": args.input_audio_codec,
+                if binary_audio:
+                    await ws.send(prepare_audio_chunk(frame, args.input_audio_codec))
+                else:
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "audio": {
+                                    "data": encode_audio_chunk(frame, args.input_audio_codec),
+                                    "sample_rate": str(args.sample_rate),
+                                    "encoding": args.input_audio_codec,
+                                }
                             }
-                        }
+                        )
                     )
-                )
                 try:
                     while True:
                         msg = await asyncio.wait_for(ws.recv(), timeout=0.01)

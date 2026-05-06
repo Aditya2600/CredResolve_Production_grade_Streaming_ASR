@@ -49,6 +49,26 @@ def _process(sample: dict, seen: set[tuple[str, str]] | None = None) -> dict:
     )
 
 
+def _process_language(
+    sample: dict,
+    *,
+    dataset_config: str,
+    language_code: str,
+    seen: set[tuple[str, str]] | None = None,
+) -> dict:
+    return process_sample(
+        sample,
+        dataset_index=7,
+        text_field="transcript",
+        audio_field="audio",
+        filters=VaaniExportFilters(),
+        seen_dedupe_keys=seen if seen is not None else set(),
+        dataset_config=dataset_config,
+        split="train",
+        language_code=language_code,
+    )
+
+
 def test_process_sample_accepts_clean_hindi_audio():
     decision = _process(_sample())
 
@@ -71,6 +91,29 @@ def test_process_sample_rejects_non_hindi_language():
 
     assert decision["status"] == "rejected"
     assert decision["reject"]["reason"] == "non_hindi_language"
+
+
+def test_process_sample_accepts_configured_non_hindi_language():
+    decision = _process_language(
+        _sample(transcript="ગુજરાતી વાક્ય", language="Gujarati"),
+        dataset_config="Gujarati",
+        language_code="gu",
+    )
+
+    assert decision["status"] == "accepted"
+    assert decision["row"]["lang"] == "gu"
+    assert decision["row"]["dataset_config"] == "Gujarati"
+
+
+def test_process_sample_rejects_wrong_configured_language():
+    decision = _process_language(
+        _sample(transcript="ગુજરાતી વાક્ય", language="Hindi"),
+        dataset_config="Gujarati",
+        language_code="gu",
+    )
+
+    assert decision["status"] == "rejected"
+    assert decision["reject"]["reason"] == "non_target_language"
 
 
 def test_process_sample_rejects_duration_outliers():

@@ -1,0 +1,94 @@
+# locales.yaml — per-language locale and script policy.
+#
+# `script` follows ISO 15924. `numbering_systems` lists CLDR numbering
+# system identifiers (see CLDR `numberingSystems` data); the first entry
+# is the canonical storage form (always Latin per policy.yaml). The rest
+# are display-only options.
+#
+# `date_order` is the policy used to disambiguate purely numeric dates
+# (e.g. 12/05/2026). Plain numeric dates outside an explicit policy are
+# deferred — see thresholds.yaml.
+#
+# `currency` is the default ISO 4217 code assumed when an amount carries
+# only a generic currency cue (e.g. "rupees" in an Indian-locale call).
+
+version: "0.0.0"
+
+defaults:
+  date_order: "DMY"           # day-first; consistent with the plan's seed examples
+  currency: "INR"
+  decimal_separator: "."
+  group_separator: ","
+  group_style: "indian"        # 1,25,000 grouping for Indic locales
+
+locales:
+  hi:
+    name: "Hindi"
+    script: "Deva"
+    numbering_systems: ["latn", "deva"]
+    date_order: "DMY"
+    currency: "INR"
+
+  mr:
+    name: "Marathi"
+    script: "Deva"
+    numbering_systems: ["latn", "deva"]
+    date_order: "DMY"
+    currency: "INR"
+
+  bn:
+    name: "Bengali"
+    script: "Beng"
+    numbering_systems: ["latn", "beng"]
+    date_order: "DMY"
+    currency: "INR"
+
+  ta:
+    name: "Tamil"
+    script: "Taml"
+    numbering_systems: ["latn", "tamldec"]
+    date_order: "DMY"
+    currency: "INR"
+
+  te:
+    name: "Telugu"
+    script: "Telu"
+    numbering_systems: ["latn", "telu"]
+    date_order: "DMY"
+    currency: "INR"
+
+  kn:
+    name: "Kannada"
+    script: "Knda"
+    numbering_systems: ["latn", "knda"]
+    date_order: "DMY"
+    currency: "INR"
+
+  ml:
+    name: "Malayalam"
+    script: "Mlym"
+    numbering_systems: ["latn", "mlym"]
+    date_order: "DMY"
+    currency: "INR"
+
+  gu:
+    name: "Gujarati"
+    script: "Gujr"
+    numbering_systems: ["latn", "gujr"]
+    date_order: "DMY"
+    currency: "INR"
+
+  pa:
+    name: "Punjabi"
+    script: "Guru"
+    numbering_systems: ["latn", "guru"]
+    date_order: "DMY"
+    currency: "INR"
+
+  ur:
+    name: "Urdu"
+    script: "Arab"
+    numbering_systems: ["latn", "arabext"]
+    date_order: "DMY"
+    currency: "INR"
+    bidi: true                # right-to-left UI; do not inject bidi controls into stored text

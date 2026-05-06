@@ -3,23 +3,48 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib
 import json
 import os
+import re
+import sys
+import tarfile
+import tempfile
+import unicodedata
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import soundfile as sf
 import torch
 from omegaconf import DictConfig, OmegaConf
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 try:
     from compute_wer import edit_distance, normalize
 except ImportError:  # pragma: no cover
     from tools.compute_wer import edit_distance, normalize
 
+from tools.asr_text_normalizer import normalize_asr_text
+from gateway.app.apm import APMConfig, NoOpAudioProcessor, WebRTCAudioProcessor
+from worker.app.context_biasing import (
+    ContextBiasingConfig,
+    NeMoContextBiasingRuntime,
+    PhraseLexicon,
+    should_return_active_biasing_transcript,
+)
+from worker.app.audio_processing import AudioPreprocessor
+
 
 TEXT_KEY_CANDIDATES = ("text", "reference", "normalized_text", "transcript", "sentence")
 AUDIO_KEY_CANDIDATES = ("audio_filepath", "audio_path", "audio", "path")
 LANGUAGE_KEY_CANDIDATES = ("lang", "language", "language_id")
+VAANI_NON_SPEECH_TAG_RE = re.compile(r"</?[^>\s]+>|\[[^\]]+\]")
+VAANI_BRACED_SPEECH_RE = re.compile(r"\{([^}]+)\}")
+VAANI_PARTIAL_WORD_RE = re.compile(r"\b\S+-")
 
 
 def configure_hf_cache_env() -> None:
@@ -51,10 +76,25 @@ def parse_args() -> argparse.Namespace:
         default="rnnt",
         help="Decoder path for hybrid models. Default: rnnt",
     )
+    parser.add_argument(
+        "--restore-compat",
+        choices=("auto", "disabled"),
+        default="auto",
+        help=(
+            "NeMo .nemo restore compatibility mode. Use `disabled` for checkpoints whose "
+            "native multilingual config must be preserved exactly."
+        ),
+    )
     parser.add_argument("--language", help="Force a single language ID for all rows, for example `hi`.")
     parser.add_argument("--language-field", help="Manifest field that carries the language ID.")
     parser.add_argument("--text-field", help="Override transcript field name.")
     parser.add_argument("--audio-field", help="Override audio path field name.")
+    parser.add_argument(
+        "--reference-normalization",
+        choices=("raw", "vaani"),
+        default="raw",
+        help="Reference cleanup before WER. `vaani` strips tags like <noise> and English glosses like {blue}.",
+    )
     parser.add_argument("--limit", type=int, help="Optional row limit.")
     parser.add_argument(
         "--out-tsv",
@@ -82,6 +122,43 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable NeMo transcription progress bars.",
     )
+    parser.add_argument(
+        "--denoise",
+        action="store_true",
+        help="Apply the existing worker AudioPreprocessor denoise hook before direct model transcription.",
+    )
+    parser.add_argument(
+        "--apm",
+        action="store_true",
+        help="Apply the existing gateway WebRTC APM hook before direct model transcription.",
+    )
+    parser.add_argument(
+        "--apm-backend",
+        help=(
+            "Optional import spec for a WebRTCAPMBackend implementation, e.g. package.module:ClassName. "
+            "When omitted, --apm uses the existing no-op APM processor and reports apm_backend=noop."
+        ),
+    )
+    parser.add_argument(
+        "--processed-audio-dir",
+        type=Path,
+        help="Optional directory for preprocessed WAVs. Defaults to a temp directory when --denoise or --apm is used.",
+    )
+    parser.add_argument(
+        "--context-biasing-mode",
+        choices=("disabled", "shadow", "active"),
+        default="disabled",
+        help="Run direct-model NeMo context biasing with the same phrase-file pipeline. Default: disabled",
+    )
+    parser.add_argument(
+        "--context-biasing-phrases-dir",
+        type=Path,
+        default=Path("context_biasing/phrases"),
+        help="Directory containing <language>.txt phrase files. Default: context_biasing/phrases",
+    )
+    parser.add_argument("--context-biasing-beam-threshold", type=float, default=8.0)
+    parser.add_argument("--context-biasing-context-score", type=float, default=3.0)
+    parser.add_argument("--context-biasing-ctc-ali-token-weight", type=float, default=0.6)
     return parser.parse_args()
 
 
@@ -137,6 +214,17 @@ def resolve_path(value: Any, manifest_path: Path) -> str:
     return str(candidate)
 
 
+def normalize_space(value: str) -> str:
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", value or "")).strip()
+
+
+def clean_reference(text: str, mode: str, language: str | None = None) -> str:
+    text = normalize_space(text)
+    if mode == "raw":
+        return text
+    return normalize_asr_text(text, language)
+
+
 def select_device(raw: str) -> torch.device:
     if raw == "cpu":
         return torch.device("cpu")
@@ -145,6 +233,129 @@ def select_device(raw: str) -> torch.device:
             raise SystemExit("CUDA was requested but is not available.")
         return torch.device("cuda")
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def audio_to_float32(path: str | Path) -> tuple[np.ndarray, int]:
+    audio, sample_rate = sf.read(str(path), dtype="float32", always_2d=False)
+    return np.asarray(audio, dtype=np.float32), int(sample_rate)
+
+
+def to_mono(audio: np.ndarray) -> np.ndarray:
+    if audio.ndim == 1:
+        return audio.astype(np.float32, copy=False)
+    return audio.mean(axis=1, dtype=np.float32)
+
+
+def resample_linear(audio: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:
+    if src_sr == dst_sr:
+        return audio.astype(np.float32, copy=False)
+    if audio.size == 0:
+        return np.zeros(0, dtype=np.float32)
+
+    src_positions = np.arange(audio.shape[0], dtype=np.float32)
+    dst_length = max(1, int(round(audio.shape[0] * (dst_sr / src_sr))))
+    dst_positions = np.linspace(0.0, audio.shape[0] - 1, num=dst_length, dtype=np.float32)
+    return np.interp(dst_positions, src_positions, audio).astype(np.float32)
+
+
+def float_to_pcm16(audio: np.ndarray) -> bytes:
+    clipped = np.clip(audio, -1.0, 1.0)
+    return np.rint(clipped * 32767.0).astype(np.int16).tobytes()
+
+
+def pcm16_to_float(pcm16le: bytes) -> np.ndarray:
+    if not pcm16le:
+        return np.zeros(0, dtype=np.float32)
+    return np.frombuffer(pcm16le, dtype=np.int16).astype(np.float32) / 32768.0
+
+
+def read_pcm16_mono(path: str | Path, *, sample_rate: int = 16000) -> tuple[bytes, int]:
+    audio, source_sample_rate = audio_to_float32(path)
+    audio = resample_linear(to_mono(audio), source_sample_rate, sample_rate)
+    return float_to_pcm16(audio), sample_rate
+
+
+def load_apm_backend(spec: str | None) -> Any | None:
+    if not spec:
+        return None
+    module_name, sep, attr = spec.partition(":")
+    if not sep or not module_name.strip() or not attr.strip():
+        raise SystemExit("--apm-backend must use module.path:ClassName format")
+    module = importlib.import_module(module_name)
+    factory = getattr(module, attr)
+    return factory()
+
+
+def build_apm_processor(enabled: bool, backend_spec: str | None):
+    if not enabled:
+        return None, "disabled"
+
+    config = APMConfig(enabled=True)
+    backend = load_apm_backend(backend_spec)
+    if backend is None:
+        return NoOpAudioProcessor(config), "noop"
+    return WebRTCAudioProcessor(config, backend), backend_spec or type(backend).__name__
+
+
+def process_pcm_with_apm(pcm16le: bytes, processor) -> bytes:
+    if processor is None or not pcm16le:
+        return pcm16le
+    frame_bytes = int(processor.frame_bytes)
+    if frame_bytes <= 0:
+        return pcm16le
+
+    processed = bytearray()
+    full_bytes = (len(pcm16le) // frame_bytes) * frame_bytes
+    for start in range(0, full_bytes, frame_bytes):
+        processed.extend(processor.process_frame(pcm16le[start : start + frame_bytes]))
+    processed.extend(pcm16le[full_bytes:])
+    return bytes(processed)
+
+
+def prepare_audio_paths(
+    audio_paths: list[str],
+    *,
+    denoise: bool,
+    apm: bool,
+    apm_backend: str | None,
+    processed_audio_dir: Path | None,
+) -> tuple[list[str], dict[str, Any], tempfile.TemporaryDirectory[str] | None]:
+    apm_processor, apm_backend_name = build_apm_processor(apm, apm_backend)
+    metadata: dict[str, Any] = {
+        "denoise": bool(denoise),
+        "apm": bool(apm),
+        "apm_backend": apm_backend_name,
+    }
+    if not denoise and not apm:
+        return audio_paths, metadata, None
+
+    temp_dir: tempfile.TemporaryDirectory[str] | None = None
+    if processed_audio_dir is None:
+        temp_dir = tempfile.TemporaryDirectory(prefix="nemo_eval_audio_")
+        output_dir = Path(temp_dir.name)
+    else:
+        output_dir = processed_audio_dir.expanduser().resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    denoiser = AudioPreprocessor() if denoise else None
+    processed_paths: list[str] = []
+    for index, audio_path in enumerate(audio_paths):
+        pcm16le, sample_rate = read_pcm16_mono(audio_path, sample_rate=16000)
+        pcm16le = process_pcm_with_apm(pcm16le, apm_processor)
+        if denoiser is not None:
+            pcm16le = denoiser.process(
+                pcm16le,
+                sample_rate,
+                vad_enabled=False,
+                denoise_enabled=True,
+            )
+        processed_audio = pcm16_to_float(pcm16le)
+        output_path = output_dir / f"{index:06d}.wav"
+        sf.write(output_path, processed_audio, sample_rate, subtype="PCM_16")
+        processed_paths.append(str(output_path))
+
+    metadata["processed_audio_dir"] = str(output_dir)
+    return processed_paths, metadata, temp_dir
 
 
 def nested_get(node: Any, *path: str) -> Any:
@@ -223,7 +434,67 @@ def resolve_checkpoint_restore_source(checkpoint_path: Path) -> tuple[Path | Non
     return None, True
 
 
-def load_model(path: Path, requested_device: torch.device, *, allow_cpu_fallback: bool):
+def remove_config_key_recursive(node: Any, key: str) -> bool:
+    changed = False
+    if isinstance(node, (dict, DictConfig)):
+        if key in node:
+            del node[key]
+            changed = True
+        for value in list(node.values()):
+            changed = remove_config_key_recursive(value, key) or changed
+    elif isinstance(node, list):
+        for value in node:
+            changed = remove_config_key_recursive(value, key) or changed
+    return changed
+
+
+def build_nemo_compat_override_config(model_path: Path, temp_dir: Path) -> Path | None:
+    try:
+        with tarfile.open(model_path, "r:*") as archive:
+            member = next(
+                (item for item in archive.getmembers() if item.name.strip("./") == "model_config.yaml"),
+                None,
+            )
+            if member is None:
+                return None
+            handle = archive.extractfile(member)
+            if handle is None:
+                return None
+            config = OmegaConf.load(handle)
+    except Exception:
+        return None
+
+    tokenizer_type = nested_get(config, "tokenizer", "type")
+    tokenizer_langs = nested_get(config, "tokenizer", "langs")
+    if tokenizer_type != "multilingual" or not isinstance(tokenizer_langs, (dict, DictConfig)):
+        changed = False
+    else:
+        config.tokenizer.type = "agg"
+        changed = True
+
+    changed = remove_config_key_recursive(config, "multisoftmax") or changed
+
+    joint = nested_get(config, "joint")
+    if isinstance(joint, (dict, DictConfig)):
+        for key in ("multilingual", "language_keys"):
+            if key in joint:
+                del joint[key]
+                changed = True
+
+    if not changed:
+        return None
+    override_path = temp_dir / "model_config_compat.yaml"
+    OmegaConf.save(config=config, f=str(override_path))
+    return override_path
+
+
+def load_model(
+    path: Path,
+    requested_device: torch.device,
+    *,
+    allow_cpu_fallback: bool,
+    restore_compat: str,
+):
     configure_hf_cache_env()
     from nemo.collections.asr.models import ASRModel
     from nemo.utils.model_utils import import_class_by_path
@@ -233,7 +504,21 @@ def load_model(path: Path, requested_device: torch.device, *, allow_cpu_fallback
 
     def restore(map_location: torch.device):
         if suffix == ".nemo":
-            return ASRModel.restore_from(restore_path=str(resolved), map_location=map_location)
+            if restore_compat == "disabled":
+                return ASRModel.restore_from(
+                    restore_path=str(resolved),
+                    map_location=map_location,
+                )
+            with tempfile.TemporaryDirectory(prefix="nemo_restore_compat_") as temp_text:
+                override_config_path = build_nemo_compat_override_config(resolved, Path(temp_text))
+                kwargs = {}
+                if override_config_path is not None:
+                    kwargs["override_config_path"] = str(override_config_path)
+                return ASRModel.restore_from(
+                    restore_path=str(resolved),
+                    map_location=map_location,
+                    **kwargs,
+                )
         if suffix == ".ckpt":
             restore_source, apply_checkpoint_weights = resolve_checkpoint_restore_source(resolved)
             if restore_source is not None:
@@ -309,6 +594,232 @@ def normalize_predictions(output: Any) -> list[str]:
     raise SystemExit(f"Unsupported transcription output type: {type(output)!r}")
 
 
+def transcribe_batch(
+    model: Any,
+    audio_paths: list[str],
+    *,
+    batch_size: int,
+    num_workers: int,
+    quiet: bool,
+    language_id: str | None,
+) -> list[str]:
+    predictions: list[str] = []
+    for start in range(0, len(audio_paths), batch_size):
+        batch_paths = audio_paths[start : start + batch_size]
+        batch_output = model.transcribe(
+            batch_paths,
+            batch_size=min(batch_size, len(batch_paths)),
+            num_workers=num_workers,
+            verbose=not quiet,
+            language_id=language_id,
+        )
+        batch_predictions = normalize_predictions(batch_output)
+        if len(batch_predictions) != len(batch_paths):
+            raise SystemExit(
+                f"Expected {len(batch_paths)} predictions from transcribe(), got {len(batch_predictions)}."
+            )
+        predictions.extend(batch_predictions)
+    return predictions
+
+
+def row_language_ids(
+    rows: list[dict[str, Any]],
+    *,
+    forced_language_id: str | None,
+    language_field: str | None,
+) -> list[str | None]:
+    if forced_language_id:
+        return [forced_language_id for _ in rows]
+    if language_field is None:
+        return [None for _ in rows]
+    return [
+        str(row.get(language_field, "") or "").strip() or None
+        for row in rows
+    ]
+
+
+def transcribe_manifest_rows(
+    model: Any,
+    audio_paths: list[str],
+    row_languages: list[str | None],
+    *,
+    batch_size: int,
+    num_workers: int,
+    quiet: bool,
+) -> list[str]:
+    predictions: list[str | None] = [None] * len(audio_paths)
+    grouped_indices: dict[str | None, list[int]] = {}
+    for index, language_id in enumerate(row_languages):
+        grouped_indices.setdefault(language_id, []).append(index)
+
+    for language_id, indices in grouped_indices.items():
+        group_predictions = transcribe_batch(
+            model,
+            [audio_paths[index] for index in indices],
+            batch_size=batch_size,
+            num_workers=num_workers,
+            quiet=quiet,
+            language_id=language_id,
+        )
+        for index, hypothesis in zip(indices, group_predictions):
+            predictions[index] = hypothesis
+
+    missing = [index for index, hypothesis in enumerate(predictions) if hypothesis is None]
+    if missing:
+        raise SystemExit(f"Missing predictions for rows: {missing[:10]}")
+    return [str(hypothesis) for hypothesis in predictions]
+
+
+def build_context_biasing_runtime(
+    model: Any,
+    *,
+    mode: str,
+    phrases_dir: Path,
+    device: torch.device,
+    beam_threshold: float,
+    context_score: float,
+    ctc_ali_token_weight: float,
+) -> NeMoContextBiasingRuntime:
+    runtime = NeMoContextBiasingRuntime(
+        ContextBiasingConfig(
+            mode=mode,
+            method="ctc_ws",
+            nemo_source="direct-model-eval",
+            nemo_model_class=type(model).__name__,
+            phrases_dir=str(phrases_dir.expanduser().resolve()),
+            timeout_ms=600000,
+            device=str(device),
+            shadow_sample_rate=1.0,
+            beam_threshold=float(beam_threshold),
+            context_score=float(context_score),
+            ctc_ali_token_weight=float(ctc_ali_token_weight),
+            max_dynamic_phrases=0,
+        )
+    )
+    runtime.ready = True
+    runtime.model = model
+    runtime.target_sample_rate = runtime._infer_sample_rate(model)
+    return runtime
+
+
+def select_context_biasing_text(
+    *,
+    mode: str,
+    baseline_text: str,
+    biased_text: str | None,
+    phrase_file: str | None,
+    language: str,
+) -> tuple[str, str, str, int, int]:
+    if mode != "active" or not biased_text:
+        return baseline_text, "baseline", "shadow_mode" if mode == "shadow" else "baseline_only", 0, 0
+
+    lexicon = None
+    if phrase_file:
+        try:
+            lexicon = PhraseLexicon.from_file(phrase_file, language=language)
+        except Exception:
+            lexicon = None
+    use_biased, reason, baseline_hits, biased_hits = should_return_active_biasing_transcript(
+        baseline_text=baseline_text,
+        biased_text=biased_text,
+        lexicon=lexicon,
+    )
+    if use_biased:
+        return biased_text, "biased", reason, baseline_hits, biased_hits
+    return baseline_text, "baseline", reason, baseline_hits, biased_hits
+
+
+def apply_context_biasing(
+    model: Any,
+    audio_paths: list[str],
+    baseline_predictions: list[str],
+    *,
+    mode: str,
+    language_id: str | None,
+    rows: list[dict[str, Any]],
+    language_field: str | None,
+    phrases_dir: Path,
+    device: torch.device,
+    beam_threshold: float,
+    context_score: float,
+    ctc_ali_token_weight: float,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    if mode == "disabled":
+        return baseline_predictions, [{} for _ in baseline_predictions]
+
+    runtime = build_context_biasing_runtime(
+        model,
+        mode=mode,
+        phrases_dir=phrases_dir,
+        device=device,
+        beam_threshold=beam_threshold,
+        context_score=context_score,
+        ctc_ali_token_weight=ctc_ali_token_weight,
+    )
+    predictions: list[str] = []
+    metadata_rows: list[dict[str, Any]] = []
+    for index, (row, audio_path, baseline_text) in enumerate(zip(rows, audio_paths, baseline_predictions)):
+        row_language = language_id
+        if not row_language and language_field:
+            row_language = str(row.get(language_field, "") or "").strip() or None
+        row_language = row_language or ""
+        decision = runtime.decide(
+            requested_language=row_language,
+            session_id="direct-model-eval",
+            utterance_id=f"row-{index}",
+            requested_mode=mode,
+            biasing_context=None,
+        )
+
+        biased_text: str | None = None
+        fallback_reason: str | None = None
+        if decision.eligible and decision.phrase_file:
+            try:
+                pcm16le, sample_rate = read_pcm16_mono(audio_path, sample_rate=16000)
+                biased = runtime.transcribe_pcm16(
+                    pcm16le=pcm16le,
+                    sample_rate=sample_rate,
+                    language=decision.language,
+                    phrase_file=decision.phrase_file,
+                    session_id="direct-model-eval",
+                    utterance_id=f"row-{index}",
+                    mode=mode,
+                )
+                biased_text = biased.text
+            except Exception as exc:
+                fallback_reason = str(exc)
+
+        selected_text, returned_source, selection_reason, baseline_hits, biased_hits = select_context_biasing_text(
+            mode=mode,
+            baseline_text=baseline_text,
+            biased_text=biased_text,
+            phrase_file=decision.phrase_file,
+            language=decision.language,
+        )
+        predictions.append(selected_text)
+        metadata_rows.append(
+            {
+                "context_biasing": {
+                    "mode": decision.mode,
+                    "reason": decision.reason,
+                    "eligible": decision.eligible,
+                    "phrase_file": decision.phrase_file,
+                    "phrase_source": decision.phrase_source,
+                    "returned_source": returned_source,
+                    "selection_reason": selection_reason,
+                    "fallback_reason": fallback_reason,
+                    "baseline_phrase_hits": baseline_hits,
+                    "biased_phrase_hits": biased_hits,
+                },
+                "baseline_hypothesis": baseline_text,
+                "biased_hypothesis": biased_text,
+            }
+        )
+        if decision.cleanup_phrase_file and decision.phrase_file:
+            Path(decision.phrase_file).unlink(missing_ok=True)
+    return predictions, metadata_rows
+
+
 def resolve_language(
     rows: list[dict[str, Any]],
     *,
@@ -323,10 +834,7 @@ def resolve_language(
     if not values:
         return None
     if len(values) > 1:
-        raise SystemExit(
-            f"Manifest contains multiple language IDs in `{language_field}`: {values}. "
-            "Run separate evaluations or pass --language explicitly."
-        )
+        return None
     return values[0]
 
 
@@ -358,35 +866,64 @@ def main() -> int:
         args.model,
         requested_device=requested_device,
         allow_cpu_fallback=(args.device == "auto"),
+        restore_compat=args.restore_compat,
     )
     if hasattr(model, "cur_decoder"):
         model.cur_decoder = args.decoder
 
     language_id = resolve_language(rows, cli_language=args.language, language_field=language_field)
+    row_languages = row_language_ids(
+        rows,
+        forced_language_id=language_id,
+        language_field=language_field,
+    )
 
-    audio_paths = [resolve_path(row.get(audio_field), manifest_path) for row in rows]
-    predictions: list[str] = []
-    for start in range(0, len(audio_paths), args.batch_size):
-        batch_paths = audio_paths[start : start + args.batch_size]
-        batch_output = model.transcribe(
-            batch_paths,
-            batch_size=min(args.batch_size, len(batch_paths)),
+    original_audio_paths = [resolve_path(row.get(audio_field), manifest_path) for row in rows]
+    audio_paths, preprocessing_metadata, temp_audio_dir = prepare_audio_paths(
+        original_audio_paths,
+        denoise=bool(args.denoise),
+        apm=bool(args.apm),
+        apm_backend=args.apm_backend,
+        processed_audio_dir=args.processed_audio_dir,
+    )
+    try:
+        baseline_predictions = transcribe_manifest_rows(
+            model,
+            audio_paths,
+            row_languages,
+            batch_size=args.batch_size,
             num_workers=args.num_workers,
-            verbose=not args.quiet,
-            language_id=language_id,
+            quiet=args.quiet,
         )
-        batch_predictions = normalize_predictions(batch_output)
-        if len(batch_predictions) != len(batch_paths):
-            raise SystemExit(
-                f"Expected {len(batch_paths)} predictions from transcribe(), got {len(batch_predictions)}."
-            )
-        predictions.extend(batch_predictions)
+        predictions, prediction_metadata = apply_context_biasing(
+            model,
+            audio_paths,
+            baseline_predictions,
+            mode=args.context_biasing_mode,
+            language_id=language_id,
+            rows=rows,
+            language_field=language_field,
+            phrases_dir=args.context_biasing_phrases_dir,
+            device=actual_device,
+            beam_threshold=args.context_biasing_beam_threshold,
+            context_score=args.context_biasing_context_score,
+            ctc_ali_token_weight=args.context_biasing_ctc_ali_token_weight,
+        )
+    finally:
+        if temp_audio_dir is not None:
+            temp_audio_dir.cleanup()
 
     results: list[dict[str, Any]] = []
     total_s = total_d = total_i = total_words = 0
 
     for index, (row, hypothesis) in enumerate(zip(rows, predictions)):
-        reference = str(row.get(text_field, "") or "").strip()
+        raw_reference = str(row.get(text_field, "") or "").strip()
+        row_language = language_id or (
+            str(row.get(language_field, "") or "").strip()
+            if language_field is not None
+            else ""
+        )
+        reference = clean_reference(raw_reference, args.reference_normalization, row_language or None)
         ref_words = normalize(reference)
         hyp_words = normalize(hypothesis)
         s, d, ins = edit_distance(ref_words, hyp_words)
@@ -398,6 +935,7 @@ def main() -> int:
             "index": index,
             "audio_filepath": audio_paths[index],
             "reference": reference,
+            "raw_reference": raw_reference,
             "hypothesis": hypothesis,
             "reference_words": len(ref_words),
             "substitutions": s,
@@ -405,14 +943,18 @@ def main() -> int:
             "insertions": ins,
             "sample_wer": ((s + d + ins) / len(ref_words)) if ref_words else 0.0,
         }
+        if original_audio_paths[index] != audio_paths[index]:
+            result["original_audio_filepath"] = original_audio_paths[index]
+        if prediction_metadata[index]:
+            result.update(prediction_metadata[index])
         if "source_id" in row:
             result["source_id"] = row["source_id"]
         elif "id" in row:
             result["source_id"] = row["id"]
         if "dataset_index" in row:
             result["dataset_index"] = row["dataset_index"]
-        if language_id:
-            result["language_id"] = language_id
+        if row_language:
+            result["language_id"] = row_language
         results.append(result)
 
     wer = ((total_s + total_d + total_i) / total_words) if total_words else 0.0
@@ -422,7 +964,14 @@ def main() -> int:
         "requested_device": str(requested_device),
         "device": str(actual_device),
         "decoder": args.decoder,
+        "restore_compat": args.restore_compat,
         "language_id": language_id,
+        "language_field": language_field,
+        "language_ids": sorted({value for value in row_languages if value}),
+        "reference_normalization": args.reference_normalization,
+        "audio_preprocessing": preprocessing_metadata,
+        "context_biasing_mode": args.context_biasing_mode,
+        "context_biasing_phrases_dir": str(args.context_biasing_phrases_dir.expanduser().resolve()),
         "utterances": len(results),
         "reference_words": total_words,
         "substitutions": total_s,

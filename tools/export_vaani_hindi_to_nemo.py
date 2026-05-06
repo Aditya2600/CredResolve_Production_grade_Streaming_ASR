@@ -44,20 +44,33 @@ except ImportError:  # pragma: no cover - allows package-style imports
     )
 
 
-HINDI_LANGUAGE_VALUES = frozenset({"hi", "hin", "hindi"})
+LANGUAGE_ALIASES_BY_CODE = {
+    "bn": frozenset({"bn", "ben", "bengali", "bangla"}),
+    "gu": frozenset({"gu", "guj", "gujarati"}),
+    "hi": frozenset({"hi", "hin", "hindi"}),
+    "kn": frozenset({"kn", "kan", "kannada"}),
+    "ml": frozenset({"ml", "mal", "malayalam"}),
+    "mr": frozenset({"mr", "mar", "marathi"}),
+    "ta": frozenset({"ta", "tam", "tamil"}),
+    "te": frozenset({"te", "tel", "telugu"}),
+}
+HINDI_LANGUAGE_VALUES = LANGUAGE_ALIASES_BY_CODE["hi"]
 DEFAULT_TARGET_HOURS = 20.0
 
 
 @dataclass(frozen=True)
 class VaaniExportFilters:
     min_duration: float = 0.3
-    max_duration: float = 9999.0
-    max_words: int = 9999
-    max_chars: int = 9999
-    min_words_per_sec: float = 0.0
-    max_words_per_sec: float = 9999.0
+    max_duration: float = 8.0
+    max_words: int = 40
+    max_chars: int = 220
+    min_words_per_sec: float = 0.6
+    max_words_per_sec: float = 4.5
     language_field: str = "language"
     drop_unintelligible: bool = True
+
+
+DEFAULT_FILTERS = VaaniExportFilters()
 
 
 def parse_args() -> argparse.Namespace:
@@ -85,12 +98,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--audio-field", help="Override audio field. Auto-detected by default.")
     parser.add_argument("--language-field", default="language", help="Language metadata field. Default: language")
     parser.add_argument("--language", default="hi", help="Language code to write in the NeMo manifest. Default: hi")
-    parser.add_argument("--min-duration", type=float, default=0.3)
-    parser.add_argument("--max-duration", type=float, default=9999.0)
-    parser.add_argument("--max-words", type=int, default=9999)
-    parser.add_argument("--max-chars", type=int, default=9999)
-    parser.add_argument("--min-words-per-sec", type=float, default=0.0)
-    parser.add_argument("--max-words-per-sec", type=float, default=9999.0)
+    parser.add_argument("--min-duration", type=float, default=DEFAULT_FILTERS.min_duration)
+    parser.add_argument("--max-duration", type=float, default=DEFAULT_FILTERS.max_duration)
+    parser.add_argument("--max-words", type=int, default=DEFAULT_FILTERS.max_words)
+    parser.add_argument("--max-chars", type=int, default=DEFAULT_FILTERS.max_chars)
+    parser.add_argument("--min-words-per-sec", type=float, default=DEFAULT_FILTERS.min_words_per_sec)
+    parser.add_argument("--max-words-per-sec", type=float, default=DEFAULT_FILTERS.max_words_per_sec)
     parser.add_argument(
         "--drop-unintelligible",
         action=argparse.BooleanOptionalAction,
@@ -134,10 +147,35 @@ def normalize_text(value: Any) -> str:
 
 
 def is_hindi_language(value: Any) -> bool:
-    text = normalize_text(value).casefold()
+    return is_expected_language(value, language_code="hi", dataset_config=VAANI_HINDI_CONFIG)
+
+
+def normalize_language_token(value: Any) -> str:
+    return normalize_text(value).casefold()
+
+
+def expected_language_values(*, language_code: str, dataset_config: str) -> frozenset[str]:
+    tokens = set(LANGUAGE_ALIASES_BY_CODE.get(normalize_language_token(language_code), ()))
+    if language_code:
+        tokens.add(normalize_language_token(language_code))
+    if dataset_config:
+        config_text = normalize_language_token(dataset_config)
+        tokens.add(config_text)
+        tokens.add(config_text.rsplit("/", 1)[-1])
+    return frozenset(token for token in tokens if token)
+
+
+def is_expected_language(value: Any, *, language_code: str, dataset_config: str) -> bool:
+    text = normalize_language_token(value)
     if not text:
         return True
-    return text in HINDI_LANGUAGE_VALUES
+    return text in expected_language_values(language_code=language_code, dataset_config=dataset_config)
+
+
+def language_reject_reason(language_code: str) -> str:
+    if normalize_language_token(language_code) == "hi":
+        return "non_hindi_language"
+    return "non_target_language"
 
 
 def sanitize_component(value: str) -> str:
@@ -228,10 +266,15 @@ def process_sample(
             "status": "rejected",
             "reject": reject_row(dataset_index=dataset_index, reason="unintelligible_text", text=text, language_value=language_value),
         }
-    if not is_hindi_language(language_value):
+    if not is_expected_language(language_value, language_code=language_code, dataset_config=dataset_config):
         return {
             "status": "rejected",
-            "reject": reject_row(dataset_index=dataset_index, reason="non_hindi_language", text=text, language_value=language_value),
+            "reject": reject_row(
+                dataset_index=dataset_index,
+                reason=language_reject_reason(language_code),
+                text=text,
+                language_value=language_value,
+            ),
         }
 
     try:

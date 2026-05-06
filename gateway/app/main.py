@@ -29,6 +29,8 @@ from .config import (
     SPEAKER_VERIFICATION_RESCORE_MS,
     SPEAKER_VERIFICATION_THRESHOLD,
     STREAMING_APM_ENABLED,
+    STREAMING_DENOISE_ENABLED,
+    STREAMING_VAD_ENABLED,
     STREAMING_GATE_CLOSE_REQUIRED_UNVOICED_FRAMES,
     STREAMING_GATE_CLOSE_WINDOW_FRAMES,
     STREAMING_GATE_OPEN_REQUIRED_VOICED_FRAMES,
@@ -79,11 +81,26 @@ FRAME_MS = 20
 INTERNAL_DECODER = "rnnt"
 ALLOWED_SAMPLE_RATES = {16000}
 ALLOWED_AUDIO_CODECS = {"wav", "pcm_s16le", "pcm_l16", "pcm_raw"}
+BINARY_AUDIO_CODECS = {"pcm_s16le", "pcm_l16", "pcm_raw"}
+MAX_BINARY_AUDIO_FRAME_BYTES = 64 * 1024
 VALID_CONTEXT_BIASING_MODES = frozenset({"disabled", "shadow", "active"})
 BIASING_CONTEXT_SCALAR_FIELDS = frozenset({"debtor_name", "agent_name", "lender", "product", "city", "branch"})
 BIASING_CONTEXT_LIST_FIELDS = frozenset(
     {"account_terms", "prior_call_entities", "campaign_vocabulary", "amounts", "dates"}
 )
+QUERY_DOMAIN_BIASING_CONTEXTS: dict[str, dict[str, object]] = {
+    "banking": {
+        "product": "banking",
+        "campaign_vocabulary": [
+            "account number",
+            "bank account",
+            "due amount",
+            "emi",
+            "loan id",
+            "payment link",
+        ],
+    }
+}
 
 setup_logging()
 log = logging.getLogger("gateway")
@@ -106,6 +123,7 @@ class SessionConfig:
     input_audio_codec: str
     context_biasing_mode: str | None
     biasing_context: dict[str, object] | None
+    binary_audio: bool = False
     apm_enabled: bool = False
     vad_enabled: bool = False
     denoise_enabled: bool = False
@@ -432,11 +450,34 @@ def parse_input_audio_codec(value: Optional[str]) -> str:
     return codec
 
 
-def parse_session_config(ws: WebSocket, request_id: str) -> SessionConfig:
-    params = ws.query_params
-    language_code = (params.get("language-code") or "").strip()
+def parse_query_language_code(params: Any) -> str:
+    language_code = (params.get("language-code") or params.get("lang") or "").strip()
     if not language_code:
         raise HandshakeValidationError("missing required query param: language-code")
+    return language_code
+
+
+def parse_query_biasing_context(params: Any) -> tuple[str | None, dict[str, object] | None]:
+    domain = _normalize_biasing_text(params.get("domain")).lower()
+    if not domain:
+        return None, None
+
+    context = QUERY_DOMAIN_BIASING_CONTEXTS.get(domain)
+    if context is None:
+        return None, None
+    return "active", dict(context)
+
+
+def parse_session_config(ws: WebSocket, request_id: str) -> SessionConfig:
+    params = ws.query_params
+    language_code = parse_query_language_code(params)
+    context_biasing_mode, biasing_context = parse_query_biasing_context(params)
+    input_audio_codec = parse_input_audio_codec(params.get("input_audio_codec"))
+    binary_audio = parse_bool_query("binary_audio", params.get("binary_audio"), False)
+    if binary_audio and input_audio_codec not in BINARY_AUDIO_CODECS:
+        raise HandshakeValidationError(
+            "binary_audio is only supported with pcm_s16le, pcm_l16, or pcm_raw"
+        )
 
     return SessionConfig(
         request_id=request_id,
@@ -449,12 +490,13 @@ def parse_session_config(ws: WebSocket, request_id: str) -> SessionConfig:
         ),
         vad_signals=parse_bool_query("vad_signals", params.get("vad_signals"), False),
         flush_signal=parse_bool_query("flush_signal", params.get("flush_signal"), False),
-        input_audio_codec=parse_input_audio_codec(params.get("input_audio_codec")),
-        context_biasing_mode=None,
-        biasing_context=None,
+        input_audio_codec=input_audio_codec,
+        context_biasing_mode=context_biasing_mode,
+        biasing_context=biasing_context,
+        binary_audio=binary_audio,
         apm_enabled=parse_bool_query("apm_enabled", params.get("apm_enabled"), STREAMING_APM_ENABLED),
-        vad_enabled=parse_bool_query("vad_enabled", params.get("vad_enabled"), False),
-        denoise_enabled=parse_bool_query("denoise_enabled", params.get("denoise_enabled"), False),
+        vad_enabled=parse_bool_query("vad_enabled", params.get("vad_enabled"), STREAMING_VAD_ENABLED),
+        denoise_enabled=parse_bool_query("denoise_enabled", params.get("denoise_enabled"), STREAMING_DENOISE_ENABLED),
     )
 
 
@@ -657,6 +699,14 @@ def decode_audio_message(payload: dict[str, Any], session: SessionConfig) -> byt
     return normalize_audio_payload(raw_audio, session.input_audio_codec, session.sample_rate)
 
 
+def decode_binary_audio_frame(raw_audio: bytes, session: SessionConfig) -> bytes:
+    if len(raw_audio) > MAX_BINARY_AUDIO_FRAME_BYTES:
+        raise BadMessageError(
+            f"binary audio frame exceeds maximum size of {MAX_BINARY_AUDIO_FRAME_BYTES} bytes"
+        )
+    return normalize_audio_payload(raw_audio, session.input_audio_codec, session.sample_rate)
+
+
 async def send_ws_error(ws: WebSocket, code: str, message: str) -> None:
     await ws.send_text(jdump({"type": "error", "code": code, "message": message}))
 
@@ -667,6 +717,7 @@ async def send_ws_error_and_close(ws: WebSocket, code: str, message: str, close_
 
 
 @app.websocket("/ws/stt")
+@app.websocket("/ws/")
 async def ws_stt(ws: WebSocket):
     api_key, accepted_subprotocol = extract_ws_auth(ws)
 
@@ -711,7 +762,7 @@ async def ws_stt(ws: WebSocket):
         pipeline, pipeline_session_context = build_streaming_pipeline(session, session_id=session_id)
 
         log.info(
-            "WS session started session_id=%s request_id=%s language=%s model=%s mode=%s sample_rate=%s codec=%s vad_signals=%s speaker_verification_mode=%s speaker_verification_backend=%s apm_enabled=%s",
+            "WS session started session_id=%s request_id=%s language=%s model=%s mode=%s sample_rate=%s codec=%s binary_audio=%s vad_signals=%s speaker_verification_mode=%s speaker_verification_backend=%s apm_enabled=%s",
             session_id,
             session.request_id,
             session.language_code,
@@ -719,6 +770,7 @@ async def ws_stt(ws: WebSocket):
             session.mode,
             session.sample_rate,
             session.input_audio_codec,
+            session.binary_audio,
             session.vad_signals,
             SPEAKER_VERIFICATION_MODE,
             SPEAKER_VERIFICATION_BACKEND,
@@ -797,11 +849,12 @@ async def ws_stt(ws: WebSocket):
                     if event.final_latency is not None:
                         E2E_LATENCY.observe(event.final_latency)
                     log.info(
-                        "Data sent session_id=%s utterance_id=%s latency_ms=%s text_chars=%s language=%s language_source=%s context_biasing_mode=%s",
+                        "Data sent session_id=%s utterance_id=%s latency_ms=%s text_chars=%s text=\"%s\" language=%s language_source=%s context_biasing_mode=%s",
                         session_id,
                         f"utt-{utterance_count:04d}",
                         int(event.processing_latency * 1000),
                         len(result.text),
+                        result.text,
                         result.language or "-",
                         result.language_source or "-",
                         ((result.context_biasing or {}).get("mode") if isinstance(result.context_biasing, dict) else "-"),
@@ -816,22 +869,45 @@ async def ws_stt(ws: WebSocket):
                     return False
             return True
 
+        async def push_audio_frame(pcm_bytes: bytes) -> bool:
+            nonlocal total_audio_bytes
+
+            AUDIO_BYTES_RECEIVED.inc(len(pcm_bytes))
+            AUDIO_FRAMES_RECEIVED.inc()
+            total_audio_bytes += len(pcm_bytes)
+            return await emit_pipeline_events(await pipeline.push_audio(pcm_bytes))
+
         while True:
             msg = await ws.receive()
             if msg.get("type") == "websocket.disconnect":
                 close_reason = "client_disconnect"
                 break
 
-            if msg.get("bytes"):
-                close_reason = "bad_message"
-                WS_REJECTS.labels(reason="BAD_MESSAGE").inc()
-                await send_ws_error_and_close(
-                    ws,
-                    "BAD_MESSAGE",
-                    "binary websocket frames are not supported; send JSON audio messages",
-                    1003,
-                )
-                return
+            raw_bytes = msg.get("bytes")
+            if raw_bytes is not None:
+                if not session.binary_audio:
+                    close_reason = "bad_message"
+                    WS_REJECTS.labels(reason="BAD_MESSAGE").inc()
+                    await send_ws_error_and_close(
+                        ws,
+                        "BAD_MESSAGE",
+                        "binary websocket frames are not supported; send JSON audio messages",
+                        1003,
+                    )
+                    return
+
+                try:
+                    pcm_bytes = decode_binary_audio_frame(raw_bytes, session)
+                except BadMessageError as exc:
+                    close_reason = "bad_message"
+                    WS_REJECTS.labels(reason="BAD_MESSAGE").inc()
+                    await send_ws_error_and_close(ws, "BAD_MESSAGE", str(exc), 1003)
+                    return
+
+                ok = await push_audio_frame(pcm_bytes)
+                if not ok:
+                    return
+                continue
 
             text = msg.get("text")
             if not text:
@@ -908,10 +984,7 @@ async def ws_stt(ws: WebSocket):
                 await send_ws_error_and_close(ws, "BAD_MESSAGE", str(exc), 1003)
                 return
 
-            AUDIO_BYTES_RECEIVED.inc(len(pcm_bytes))
-            AUDIO_FRAMES_RECEIVED.inc()
-            total_audio_bytes += len(pcm_bytes)
-            ok = await emit_pipeline_events(await pipeline.push_audio(pcm_bytes))
+            ok = await push_audio_frame(pcm_bytes)
             if not ok:
                 return
 

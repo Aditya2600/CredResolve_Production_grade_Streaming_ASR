@@ -38,6 +38,22 @@ def _json_safe(value):
     return value
 
 
+def _load_vendored_module():
+    """Load the vendored `indic_asr_model.py` sitting next to this file.
+
+    Going through importlib (instead of `import indic_asr_model`) keeps the
+    module isolated from any other Python files of the same name that another
+    Triton model in the repo might happen to expose.
+    """
+    module_path = Path(__file__).parent / "indic_asr_model.py"
+    spec = importlib.util.spec_from_file_location("indic_asr_model", str(module_path))
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load vendored module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class TritonPythonModel:
     def initialize(self, args):
         del args
@@ -57,9 +73,13 @@ class TritonPythonModel:
 
         LOG.info("Loading Triton Indic ASR model repo=%s device=%s", self.model_name, self.device)
         snapshot_path = snapshot_download(repo_id=self.model_name, token=self.hf_token)
-        model_onnx_path = Path(snapshot_path) / "model_onnx.py"
-        self._patch_model_onnx_for_cpu_preprocessor(model_onnx_path)
-        module = self._load_model_module(model_onnx_path)
+        # Phase 2: we no longer execute model_onnx.py from the HF snapshot. The
+        # vendored `indic_asr_model.py` is functionally equivalent except the
+        # encoder runs via BLS to `indic_asr_encoder` instead of an in-process
+        # onnxruntime session. We still need the snapshot for the rest of the
+        # assets (preprocessor.ts, joint*.onnx, rnnt_decoder.onnx, ctc_decoder.onnx,
+        # vocab.json, language_masks.json).
+        module = _load_vendored_module()
 
         config = module.IndicASRConfig(
             ts_folder=snapshot_path,
@@ -68,7 +88,7 @@ class TritonPythonModel:
         )
         self.model = module.IndicASRModel(config)
         self._force_preprocessor_cpu()
-        LOG.info("Triton Indic ASR model ready snapshot=%s", snapshot_path)
+        LOG.info("Triton Indic ASR model ready snapshot=%s (encoder via BLS)", snapshot_path)
 
     def execute(self, requests):
         responses = []
@@ -129,32 +149,6 @@ class TritonPythonModel:
 
     def finalize(self):
         LOG.info("Finalizing Triton Indic ASR model")
-
-    def _load_model_module(self, model_onnx_path: Path):
-        if not model_onnx_path.exists():
-            raise RuntimeError(f"model_onnx.py missing at {model_onnx_path}")
-
-        spec = importlib.util.spec_from_file_location("ai4bharat_model_onnx", str(model_onnx_path))
-        if spec is None or spec.loader is None:
-            raise RuntimeError(f"Unable to load module spec from {model_onnx_path}")
-
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-
-    def _patch_model_onnx_for_cpu_preprocessor(self, model_onnx_path: Path) -> None:
-        source = model_onnx_path.read_text(encoding="utf-8")
-        cpu_line = "self.d = torch.device('cpu')"
-        cuda_line = "self.d = torch.device('cuda' if torch.cuda.is_available() else 'cpu')"
-
-        if cpu_line in source:
-            return
-        if cuda_line not in source:
-            LOG.warning("Could not patch preprocessor device in %s; expected pattern not found", model_onnx_path)
-            return
-
-        model_onnx_path.write_text(source.replace(cuda_line, cpu_line, 1), encoding="utf-8")
-        LOG.info("Patched model_onnx preprocessor device to cpu at %s", model_onnx_path)
 
     def _force_preprocessor_cpu(self) -> None:
         try:

@@ -100,6 +100,46 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Validation manifest. Required unless --disable-validation is set.",
     )
+    parser.add_argument(
+        "--normalize-manifest-text",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Normalize train/val manifest transcripts into ASR-friendly Indic targets before "
+            "building NeMo dataloaders. Default: disabled"
+        ),
+    )
+    parser.add_argument(
+        "--normalized-manifest-dir",
+        type=Path,
+        help="Directory for normalized train/val manifests. Default: <run_dir>/normalized_manifests",
+    )
+    parser.add_argument(
+        "--manifest-normalizer-config",
+        type=Path,
+        help="Language mapping config for manifest text normalization.",
+    )
+    parser.add_argument(
+        "--manifest-normalizer-text-key",
+        help="Manifest transcript key for text normalization. Auto-detected per row by default.",
+    )
+    parser.add_argument(
+        "--manifest-normalizer-language-key",
+        help="Manifest language key for text normalization. Auto-detected per row by default.",
+    )
+    parser.add_argument(
+        "--manifest-normalizer-language",
+        help="Fixed language override for all manifest rows, for example hi or MARATHI.",
+    )
+    parser.add_argument(
+        "--manifest-normalizer-target",
+        choices=("asr_l1_text", "normalized_l2_text"),
+        default="asr_l1_text",
+        help="Normalized text field to fine-tune on. Default: asr_l1_text",
+    )
+    parser.add_argument("--manifest-normalizer-min-chars", type=int, default=2)
+    parser.add_argument("--manifest-normalizer-max-chars", type=int, default=220)
+    parser.add_argument("--manifest-normalizer-max-words", type=int, default=40)
     parser.add_argument("--exp-dir", type=Path, required=True, help="Experiment root directory.")
     parser.add_argument("--name", default="indicconformer_t4_safe", help="Experiment name. Default: indicconformer_t4_safe")
     parser.add_argument("--monitor", default="val_wer", help="Checkpoint and early-stop metric. Default: val_wer")
@@ -530,6 +570,8 @@ def main() -> int:
     model_path = args.model.expanduser().resolve()
     train_manifest = args.train_manifest.expanduser().resolve()
     val_manifest = args.val_manifest.expanduser().resolve() if args.val_manifest is not None else None
+    source_train_manifest = train_manifest
+    source_val_manifest = val_manifest
     exp_dir = args.exp_dir.expanduser().resolve()
     run_version = time.strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -548,6 +590,69 @@ def main() -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir = run_dir / "checkpoints"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest_normalization_summary: dict[str, Any] | None = None
+    if args.normalize_manifest_text:
+        try:
+            from normalize_manifest_text import (
+                DEFAULT_CONFIG_PATH as DEFAULT_MANIFEST_NORMALIZER_CONFIG,
+                normalize_manifest_file,
+            )
+        except ModuleNotFoundError:  # pragma: no cover - used when imported as tools.*
+            from tools.normalize_manifest_text import (
+                DEFAULT_CONFIG_PATH as DEFAULT_MANIFEST_NORMALIZER_CONFIG,
+                normalize_manifest_file,
+            )
+
+        normalizer_config = (
+            args.manifest_normalizer_config.expanduser().resolve()
+            if args.manifest_normalizer_config is not None
+            else DEFAULT_MANIFEST_NORMALIZER_CONFIG
+        )
+        normalized_manifest_dir = (
+            args.normalized_manifest_dir.expanduser().resolve()
+            if args.normalized_manifest_dir is not None
+            else run_dir / "normalized_manifests"
+        )
+        normalized_manifest_dir.mkdir(parents=True, exist_ok=True)
+
+        def normalize_split_manifest(split: str, source_manifest: Path) -> tuple[Path, dict[str, Any]]:
+            summary = normalize_manifest_file(
+                source_manifest,
+                normalized_manifest_dir / f"{split}.normalized.jsonl",
+                normalized_manifest_dir / f"{split}.rejects.jsonl",
+                config_path=normalizer_config,
+                text_key=args.manifest_normalizer_text_key,
+                language_key=args.manifest_normalizer_language_key,
+                fixed_language=args.manifest_normalizer_language,
+                target_field=args.manifest_normalizer_target,
+                min_chars=args.manifest_normalizer_min_chars,
+                max_chars=args.manifest_normalizer_max_chars,
+                max_words=args.manifest_normalizer_max_words,
+            )
+            if int(summary["kept"]) <= 0:
+                raise SystemExit(f"{split} manifest normalization rejected every row: {source_manifest}")
+            return Path(str(summary["output"])), summary
+
+        train_manifest, train_normalization_summary = normalize_split_manifest("train", train_manifest)
+        manifest_normalization_summary = {
+            "enabled": True,
+            "config": str(normalizer_config),
+            "target_field": args.manifest_normalizer_target,
+            "source_train_manifest": str(source_train_manifest),
+            "train": train_normalization_summary,
+        }
+        if validation_enabled:
+            assert val_manifest is not None
+            val_manifest, val_normalization_summary = normalize_split_manifest("val", val_manifest)
+            manifest_normalization_summary["source_val_manifest"] = str(source_val_manifest)
+            manifest_normalization_summary["val"] = val_normalization_summary
+
+        (run_dir / "manifest_normalization_summary.json").write_text(
+            json.dumps(manifest_normalization_summary, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(json.dumps({"manifest_normalization": manifest_normalization_summary}, ensure_ascii=True, indent=2))
 
     if validation_enabled:
         checkpoint_callback = ModelCheckpoint(
@@ -753,6 +858,8 @@ def main() -> int:
         "model": str(model_path),
         "train_manifest": str(train_manifest),
         "val_manifest": str(val_manifest) if val_manifest is not None else None,
+        "source_train_manifest": str(source_train_manifest),
+        "source_val_manifest": str(source_val_manifest) if source_val_manifest is not None else None,
         "validation_enabled": validation_enabled,
         "monitor": args.monitor if validation_enabled else None,
         "batch_size": args.batch_size,
@@ -791,6 +898,8 @@ def main() -> int:
             "NUMBA_CUDA_USE_NVIDIA_BINDING": os.environ.get("NUMBA_CUDA_USE_NVIDIA_BINDING"),
         },
     }
+    if manifest_normalization_summary is not None:
+        run_config["manifest_normalization"] = manifest_normalization_summary
     if duration_bucketing_summary is not None:
         run_config["duration_bucketing_summary"] = duration_bucketing_summary
     (run_dir / "stable_run_config.json").write_text(

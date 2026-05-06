@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import importlib.util
 import json
 import logging
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -13,7 +14,9 @@ from huggingface_hub import snapshot_download
 import numpy as np
 import torch
 
+from .circuit_breaker import CircuitBreakerOpenError
 from .config import (
+    ASR_DEVICE,
     DEFAULT_LID_FALLBACK_MODEL_DIR,
     DEFAULT_LID_FALLBACK_PROVIDER,
     DEFAULT_LID_FALLBACK_SOURCE,
@@ -160,7 +163,12 @@ class ONNXIndicASRWorker:
         self.lid_cache_max_entries = max(int(lid_cache_max_entries), 1)
         self.max_jobs = max(int(max_jobs), 1)
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Allow forcing CPU via environment variable
+        env_device = os.getenv("ASR_DEVICE", "").strip().lower()
+        if env_device == "cpu":
+            self.device = "cpu"
+        else:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = None
         self.ready = False
         self.init_error = ""
@@ -199,7 +207,7 @@ class ONNXIndicASRWorker:
                 device=self.device,
                 FRAME_DURATION_MS=0.08,
             )
-            self.model = module.IndicASRModel(config)
+            self.model = self._instantiate_indic_asr_model(module, config)
             self._force_preprocessor_cpu()
 
             model_languages = self._load_supported_languages(snapshot_path)
@@ -240,6 +248,25 @@ class ONNXIndicASRWorker:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
+
+    def _instantiate_indic_asr_model(self, module, config):
+        if self.device != "cpu":
+            return module.IndicASRModel(config)
+
+        module_torch = getattr(module, "torch", torch)
+        module_cuda = getattr(module_torch, "cuda", None)
+        is_available = getattr(module_cuda, "is_available", None)
+        if not callable(is_available):
+            return module.IndicASRModel(config)
+
+        # The upstream model_onnx.py selects ONNX Runtime providers from
+        # torch.cuda.is_available(), ignoring config.device. For explicit CPU
+        # runs, mask CUDA only while the ONNX sessions are constructed.
+        module_cuda.is_available = lambda: False
+        try:
+            return module.IndicASRModel(config)
+        finally:
+            module_cuda.is_available = is_available
 
     def _patch_model_onnx_for_cpu_preprocessor(self, model_onnx_path: Path) -> None:
         try:
@@ -646,6 +673,8 @@ class ONNXIndicASRWorker:
                 model_kwargs["compute_timestamps"] = "w"
             with torch.inference_mode():
                 out = self.model(wav_t, resolved_language, **model_kwargs)
+        except CircuitBreakerOpenError as exc:
+            raise ModelNotReadyError(str(exc)) from exc
         except Exception as exc:
             raise InferenceError(str(exc)) from exc
 

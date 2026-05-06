@@ -1,7 +1,7 @@
 # CredResolve – Production-grade Streaming ASR (IndicConformer) over WebSocket
 
 This repo is a production-ready reference implementation for a **streaming-ish** STT service:
-- WebSocket (WSS) ingest of JSON `audio` messages with base64 payloads
+- WebSocket (WSS) ingest of raw PCM binary frames, with legacy JSON/base64 audio still available
 - VAD / endpointing (WebRTC VAD)
 - Worker concurrency caps and request timeouts
 - Split architecture:
@@ -52,13 +52,17 @@ docker compose logs -f gateway
 ```
 
 Frontend UI:
-- Docker Compose now serves the frontend at `http://localhost:5173`
-- The UI connects to the gateway websocket on port `8000` using the current browser hostname
+- On the EC2 host, nginx serves the app at `http://localhost`
+- The frontend dev server is also exposed directly at `http://localhost:5173`
+- Gateway health is available directly at `http://localhost:8000/healthz` and through nginx at `http://localhost/healthz`
+- Gateway WebSocket traffic goes through nginx at `ws://localhost/ws/stt`; the direct gateway port is `8000`
+- No service listens on host port `8080` unless you create the SSH tunnel below
 
 Remote browser microphone access:
 - Browsers will block mic access on `http://<server-ip>` because it is not a secure origin
-- Create a local SSH tunnel: `ssh -L 8080:localhost:80 <user>@<server>`
-- Then open `http://localhost:8080` in your browser
+- From your local machine, create an SSH tunnel to the server's nginx port: `ssh -L 8080:localhost:80 <user>@<server>`
+- Then open `http://localhost:8080` in your local browser
+- Do not expect `curl http://localhost:8080/healthz` to work from the EC2 shell; use `http://localhost/healthz` or `http://localhost:8000/healthz` there
 
 Logs:
 - All services: `docker compose logs -f`
@@ -80,15 +84,20 @@ python3 tools/ws_client_send_wav.py \
   --mode transcribe \
   --sample-rate 16000 \
   --input-audio-codec pcm_s16le \
-  --vad-signals
+  --vad-signals \
+  --flush-signal
 ```
+
+For the legacy JSON/base64 framing, add `--json-base64`. The default PCM path negotiates
+`binary_audio=1` and sends audio chunks as WebSocket binary frames.
 
 Supported languages include `hi`, `en`, `bn`, `ta`, etc. (Check model documentation for full list).
 
 The public STT contract is now Sarvam-like:
 - auth comes from `Api-Subscription-Key: <token>` or browser `Sec-WebSocket-Protocol: token,<token>`
 - session config comes from query params such as `language-code`, `model`, `mode`, `sample_rate`, and `input_audio_codec`
-- clients send JSON audio envelopes and `{"type":"flush"}`
+- clients send raw PCM WebSocket binary frames when `binary_audio=1`, then `{"type":"flush"}`
+- legacy JSON/base64 audio envelopes are still accepted when `binary_audio` is unset or false
 - the server emits final-only `type:"data"` transcript messages and optional `type:"vad"` signals
 
 See [docs/websocket_auth_migration.md](docs/websocket_auth_migration.md) for the full before/after contract and payload examples.
@@ -299,9 +308,11 @@ Evaluation workflow:
 - `ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT`
 - `ASR_SUPPORTED_LANGS`
 - `ASR_BACKEND`
+- `ASR_TRITON_PROTOCOL`
 - `TRITON_URL`
 - `TRITON_MODEL_NAME`
 - `TRITON_MODEL_VERSION`
+- `ASR_TRITON_READY_RETRY_ATTEMPTS`
 
 ---
 

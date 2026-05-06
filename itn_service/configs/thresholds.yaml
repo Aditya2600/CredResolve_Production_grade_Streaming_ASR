@@ -1,0 +1,94 @@
+# thresholds.yaml — single source of truth for confidence gating.
+#
+# Derived from the "Confidence gating and fallback" table in
+# docs/implementation_bluprint_INR.md. Tune on real call data; never
+# hard-code thresholds elsewhere in the codebase.
+#
+# Semantics:
+#   classifier_min: minimum classifier/rule confidence to auto-normalise.
+#   asr_min:        minimum aggregated ASR token confidence over the span.
+#   require_lex_cue: if true, the span must carry an explicit lexical cue
+#                   (currency word, "point/dot/decimal", AM/PM, "baje", etc.)
+#                   before auto-normalisation is permitted.
+#   defer_on_partial: if true, do not rewrite this class on partial
+#                     hypotheses; wait for segment final or endpoint.
+
+version: "0.0.0"
+
+# Streaming partial-hypothesis policy.
+streaming:
+  # Only rewrite a span on partials after it has been stable across this
+  # many consecutive partial hypotheses (see plan, "Confidence gating").
+  partial_stable_min: 2
+  # Classes that may appear in partial display when stable + unambiguous.
+  partial_safe_classes: ["cardinal", "money", "percent"]
+
+classes:
+  cardinal:
+    classifier_min: 0.85
+    asr_min: 0.70
+    require_lex_cue: false
+    defer_on_partial: false
+
+  decimal:
+    classifier_min: 0.85
+    asr_min: 0.75
+    # Explicit "point / dot / decimal" or percent marker required.
+    require_lex_cue: true
+    defer_on_partial: false
+
+  percent:
+    classifier_min: 0.85
+    asr_min: 0.75
+    require_lex_cue: true
+    defer_on_partial: false
+
+  currency:
+    classifier_min: 0.90
+    asr_min: 0.80
+    # Currency symbol or unambiguous word ("rupees", "रुपये", "ರೂಪಾಯಿ", ...).
+    require_lex_cue: true
+    defer_on_partial: false
+
+  time:
+    classifier_min: 0.90
+    asr_min: 0.80
+    # AM/PM or strong cue ("baje", "ghante", "mani", "clock").
+    require_lex_cue: true
+    defer_on_partial: true
+
+  date:
+    classifier_min: 0.90
+    asr_min: 0.80
+    # Month word, year cue, or trusted locale prior. Numeric-only dates
+    # only auto-normalise when locale is known day-first (see locales.yaml).
+    require_lex_cue: true
+    defer_on_partial: true
+
+  phone:
+    classifier_min: 0.95
+    asr_min: 0.85
+    # Phone/mobile/OTP context or stable digit-run span.
+    require_lex_cue: true
+    defer_on_partial: true
+
+  # Identifiers (account, policy, claim, customer ID, etc.). Any
+  # uncertainty defers; normalisation is separator cleanup only — never
+  # digit substitution.
+  id:
+    classifier_min: 0.95
+    asr_min: 0.90
+    require_lex_cue: true
+    defer_on_partial: true
+
+  # Health / dosage spans. Mirror the >=0.95 gate from the streaming
+  # pseudo-code in the plan.
+  health_dose:
+    classifier_min: 0.95
+    asr_min: 0.90
+    require_lex_cue: true
+    defer_on_partial: true
+
+# Permutation cap: aggressive bound on candidate generation to prevent
+# combinatorial slowdowns on long ambiguous spans.
+permutation_cap: 256

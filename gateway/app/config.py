@@ -35,10 +35,12 @@ def getenv_csv_set(name: str, default: str = "") -> frozenset[str]:
     return frozenset(part.strip() for part in raw.split(",") if part.strip())
 
 GATEWAY_MAX_INFLIGHT_WORKER = getenv_int("GATEWAY_MAX_INFLIGHT_WORKER", 4)
-WORKER_TIMEOUT_MS = getenv_int("WORKER_TIMEOUT_MS", 2000)
+WORKER_TIMEOUT_MS = getenv_int("WORKER_TIMEOUT_MS", 15000)
 WORKER_URL = getenv_str("WORKER_URL", "http://localhost:9000")
 PARTIAL_DECODE_INTERVAL_MS = max(100, getenv_int("PARTIAL_DECODE_INTERVAL_MS", 900))
 STREAMING_APM_ENABLED = getenv_bool("STREAMING_APM_ENABLED", False)
+STREAMING_DENOISE_ENABLED = getenv_bool("STREAMING_DENOISE_ENABLED", True)
+STREAMING_VAD_ENABLED = getenv_bool("STREAMING_VAD_ENABLED", False)
 STREAMING_RING_BUFFER_MS = max(600, getenv_int("STREAMING_RING_BUFFER_MS", 600))
 STREAMING_VAD_MODE = getenv_int("STREAMING_VAD_MODE", 3)
 STREAMING_GATE_OPEN_WINDOW_FRAMES = max(1, getenv_int("STREAMING_GATE_OPEN_WINDOW_FRAMES", 3))
@@ -82,4 +84,5 @@ SPEAKER_VERIFICATION_DEBUG_SIMILARITY = max(
 )
 
 LOG_LEVEL = getenv_str("LOG_LEVEL", "INFO")
+GATEWAY_LOG_FILE = getenv_str("GATEWAY_LOG_FILE", "")
 WS_API_KEYS = getenv_csv_set("WS_API_KEYS", "dev")

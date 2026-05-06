@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import base64
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi.testclient import TestClient
+from starlette.datastructures import QueryParams
+from starlette.websockets import WebSocketDisconnect
 
 from gateway.app import main as gateway_main
 from gateway.app.worker_client import WorkerResponse
@@ -80,8 +83,90 @@ def _audio_message(raw_audio: bytes, *, sample_rate: int, encoding: str) -> dict
     }
 
 
-def _prepare_common(_monkeypatch) -> None:
-    return None
+def _assert_ws_closed(ws: Any, code: int) -> None:
+    try:
+        ws.receive_json()
+    except WebSocketDisconnect as exc:
+        assert exc.code == code
+        return
+    raise AssertionError(f"websocket did not close with code {code}")
+
+
+class _TestStreamingPipeline:
+    def __init__(self, session_context: gateway_main.PipelineSessionContext):
+        self.session_context = session_context
+        self.vad = gateway_main.VADSegmenter(
+            sample_rate=session_context.sample_rate,
+            frame_ms=gateway_main.FRAME_MS,
+        )
+
+    async def push_audio(self, pcm_bytes: bytes) -> list[gateway_main.PipelineEvent]:
+        signals, chunk = self.vad.push(pcm_bytes)
+        return await self._events(signals, chunk)
+
+    async def flush(self) -> list[gateway_main.PipelineEvent]:
+        return await self._events([], self.vad.flush())
+
+    def reset(self) -> None:
+        self.vad.buffer.clear()
+
+    async def _events(
+        self, signals: list[str], chunk: bytes | None
+    ) -> list[gateway_main.PipelineEvent]:
+        events: list[gateway_main.PipelineEvent] = [
+            gateway_main.VADSignalEvent(event=signal) for signal in signals
+        ]
+        if chunk:
+            started = gateway_main.time.monotonic()
+            result = await gateway_main.worker.transcribe(
+                chunk,
+                self.session_context.sample_rate,
+                gateway_main.INTERNAL_DECODER,
+                self.session_context.language_code,
+                mode="final",
+                session_id=self.session_context.session_id,
+                utterance_id="utt-test",
+                context_biasing_mode=self.session_context.context_biasing_mode,
+                biasing_context=self.session_context.biasing_context,
+                vad_enabled=self.session_context.vad_enabled,
+                denoise_enabled=self.session_context.denoise_enabled,
+            )
+            processing_latency = max(0.0, gateway_main.time.monotonic() - started)
+            events.append(
+                gateway_main.FinalTranscriptEvent(
+                    result=gateway_main.RNNTFinalResult(
+                        text=result.text,
+                        language=result.language,
+                        language_source=result.language_source,
+                        context_biasing=result.context_biasing,
+                    ),
+                    audio_duration=len(chunk) / (self.session_context.sample_rate * 2),
+                    processing_latency=processing_latency,
+                    final_latency=None,
+                )
+            )
+        return events
+
+
+def _prepare_common(monkeypatch) -> None:
+    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD, raising=False)
+
+    def _build_test_streaming_pipeline(session, *, session_id):
+        session_context = gateway_main.PipelineSessionContext(
+            session_id=session_id,
+            request_id=session.request_id,
+            sample_rate=session.sample_rate,
+            language_code=session.language_code,
+            mode=session.mode,
+            context_biasing_mode=session.context_biasing_mode,
+            biasing_context=session.biasing_context,
+            apm_enabled=session.apm_enabled,
+            vad_enabled=session.vad_enabled,
+            denoise_enabled=session.denoise_enabled,
+        )
+        return _TestStreamingPipeline(session_context), session_context
+
+    monkeypatch.setattr(gateway_main, "build_streaming_pipeline", _build_test_streaming_pipeline)
 
 
 def test_valid_handshake_and_flush_finalizes_transcript(monkeypatch):
@@ -111,6 +196,82 @@ def test_valid_handshake_and_flush_finalizes_transcript(monkeypatch):
     assert message["data"]["language_source"] == "client"
     assert message["data"]["metrics"]["audio_duration"] > 0
     assert message["data"]["metrics"]["processing_latency"] >= 0
+
+
+def test_binary_audio_frame_and_flush_finalizes_transcript(monkeypatch):
+    _prepare_common(monkeypatch)
+    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
+
+    async def _ok_transcribe(audio_bytes, sample_rate, decoder, language, mode, **_kwargs):
+        assert sample_rate == 16000
+        assert decoder == "rnnt"
+        assert language == "hi"
+        assert mode == "final"
+        assert audio_bytes == b"\x00" * 640
+        return WorkerResponse(text="hello sarvam", language="hi", language_source="client")
+
+    monkeypatch.setattr(gateway_main.worker, "transcribe", _ok_transcribe)
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(binary_audio=1), headers=_auth_headers()) as ws:
+            ws.send_bytes(b"\x00" * 640)
+            ws.send_json({"type": "flush"})
+            message = ws.receive_json()
+
+    assert message["type"] == "data"
+    assert message["data"]["request_id"]
+    assert message["data"]["transcript"] == "hello sarvam"
+    assert message["data"]["language_code"] == "hi"
+    assert message["data"]["language_source"] == "client"
+    assert message["data"]["metrics"]["audio_duration"] > 0
+    assert message["data"]["metrics"]["processing_latency"] >= 0
+
+
+def test_binary_audio_frame_without_opt_in_returns_bad_message(monkeypatch):
+    _prepare_common(monkeypatch)
+    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
+            ws.send_bytes(b"\x00" * 640)
+            error = ws.receive_json()
+            _assert_ws_closed(ws, 1003)
+
+    assert error["type"] == "error"
+    assert error["code"] == "BAD_MESSAGE"
+    assert "binary websocket frames are not supported" in error["message"]
+
+
+def test_odd_length_binary_pcm_returns_bad_message(monkeypatch):
+    _prepare_common(monkeypatch)
+    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(binary_audio=1), headers=_auth_headers()) as ws:
+            ws.send_bytes(b"\x00")
+            error = ws.receive_json()
+            _assert_ws_closed(ws, 1003)
+
+    assert error["type"] == "error"
+    assert error["code"] == "BAD_MESSAGE"
+    assert "even number of bytes" in error["message"]
+
+
+def test_lang_alias_and_banking_domain_query_parse_session_config():
+    session = gateway_main.parse_session_config(
+        SimpleNamespace(
+            query_params=QueryParams(
+                "lang=hi&domain=banking&sample_rate=16000&input_audio_codec=pcm_s16le&binary_audio=1"
+            )
+        ),
+        request_id="test-request",
+    )
+
+    assert session.language_code == "hi"
+    assert session.binary_audio is True
+    assert session.context_biasing_mode == "active"
+    assert session.biasing_context["product"] == "banking"
+    assert "loan id" in session.biasing_context["campaign_vocabulary"]
 
 
 def test_missing_language_code_returns_validation_error(monkeypatch):
@@ -338,7 +499,7 @@ def test_supported_sample_rates_forward_to_worker(monkeypatch):
     monkeypatch.setattr(gateway_main.worker, "transcribe", _ok_transcribe)
 
     with TestClient(gateway_main.app) as client:
-        for sample_rate in (8000, 16000):
+        for sample_rate in (16000,):
             frame_bytes = int(sample_rate * 0.02 * 2)
             with client.websocket_connect(
                 _ws_path(sample_rate=sample_rate, input_audio_codec="pcm_s16le"),
@@ -356,5 +517,4 @@ def test_supported_sample_rates_forward_to_worker(monkeypatch):
                 assert message["type"] == "data"
                 assert message["data"]["transcript"] == f"sample-rate-{sample_rate}"
 
-    assert observed_sample_rates == [8000, 16000]
-
+    assert observed_sample_rates == [16000]

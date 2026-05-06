@@ -38,9 +38,14 @@ def pcm_l16_bytes(pcm_s16le: bytes) -> bytes:
     return bytes(swapped)
 
 
-def encode_audio_chunk(raw_audio: bytes, encoding: str) -> str:
+def prepare_audio_chunk(raw_audio: bytes, encoding: str) -> bytes:
     if encoding == "pcm_l16":
         raw_audio = pcm_l16_bytes(raw_audio)
+    return raw_audio
+
+
+def encode_audio_chunk(raw_audio: bytes, encoding: str) -> str:
+    raw_audio = prepare_audio_chunk(raw_audio, encoding)
     return base64.b64encode(raw_audio).decode("ascii")
 
 
@@ -140,6 +145,7 @@ async def run_client(client_id, args, audio_payload: bytes):
     if args.ramp_ms > 0:
         await asyncio.sleep((client_id * args.ramp_ms) / 1000.0)
 
+    binary_audio = args.input_audio_codec != "wav" and not args.json_base64
     ws_url = update_ws_query(
         args.ws,
         {
@@ -151,6 +157,7 @@ async def run_client(client_id, args, audio_payload: bytes):
             "vad_signals": str(args.vad_signals).lower(),
             "flush_signal": str(args.flush_signal).lower(),
             "input_audio_codec": args.input_audio_codec,
+            "binary_audio": "1" if binary_audio else "0",
         },
     )
     auth_headers = {"Api-Subscription-Key": args.api_key}
@@ -194,6 +201,7 @@ async def run_client(client_id, args, audio_payload: bytes):
                         args.frame_ms,
                         args.input_audio_codec,
                         args.sample_rate,
+                        binary_audio,
                     )
                 )
                 await stream_task
@@ -222,6 +230,7 @@ async def stream_audio(
     frame_ms: int,
     encoding: str,
     sample_rate: int,
+    binary_audio: bool,
 ):
     total_len = len(audio_data)
     offset = 0
@@ -232,17 +241,20 @@ async def stream_audio(
             chunk = audio_data[offset : offset + chunk_size]
             if len(chunk) < chunk_size:
                 chunk += b"\x00" * (chunk_size - len(chunk))
-            await ws.send(
-                json.dumps(
-                    {
-                        "audio": {
-                            "data": encode_audio_chunk(chunk, encoding),
-                            "sample_rate": str(sample_rate),
-                            "encoding": encoding,
+            if binary_audio:
+                await ws.send(prepare_audio_chunk(chunk, encoding))
+            else:
+                await ws.send(
+                    json.dumps(
+                        {
+                            "audio": {
+                                "data": encode_audio_chunk(chunk, encoding),
+                                "sample_rate": str(sample_rate),
+                                "encoding": encoding,
+                            }
                         }
-                    }
+                    )
                 )
-            )
             offset += chunk_size
             await asyncio.sleep(sleep_time)
     except (websockets.exceptions.ConnectionClosed, TimeoutError):
@@ -268,6 +280,11 @@ async def main():
     parser.add_argument("--vad-signals", action="store_true")
     parser.add_argument("--high-vad-sensitivity", action="store_true")
     parser.add_argument("--flush-signal", action="store_true")
+    parser.add_argument(
+        "--json-base64",
+        action="store_true",
+        help="Send legacy JSON/base64 PCM frames instead of binary websocket audio frames",
+    )
     parser.add_argument("--ramp-ms", type=int, default=100, help="Ramp-up delay per client (ms)")
     parser.add_argument("--timeout-sec", type=float, default=2.0, help="Inactivity timeout after flush")
     parser.add_argument("--max-audio-sec", type=float, default=30.0, help="Max audio duration to send")

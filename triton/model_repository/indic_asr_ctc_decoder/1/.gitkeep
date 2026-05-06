@@ -1,0 +1,1 @@
+# Place ctc_decoder.onnx (renamed to model.onnx) here at deploy time.

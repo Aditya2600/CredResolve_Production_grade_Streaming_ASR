@@ -1,0 +1,67 @@
+# policy.yaml — runtime invariants and output policy.
+#
+# These knobs are deliberately blunt. Confidence/fallback numbers live in
+# thresholds.yaml; per-locale data lives in locales.yaml.
+
+version: "0.0.0"
+
+# Output-policy invariants. See CONTRIBUTING.md.
+invariants:
+  # raw_asr_text is preserved verbatim. No stage may mutate it.
+  preserve_raw_asr_text: true
+  # No LLM/seq2seq calls in the live request path. LLMs are off-path
+  # tooling for grammar authoring and error analysis only.
+  no_llm_in_live_path: true
+  # No FAR (Pynini archive) compilation in the request path. FARs are
+  # built at deploy time and loaded once at process start.
+  no_far_compile_in_request_path: true
+  # Canonical storage uses Latin digits and ICU-canonical separators.
+  # Native-digit / locale display happens only in the display layer.
+  canonical_storage_latin_digits: true
+
+# Output fields produced for every segment. Mirrors SegmentResult.
+output:
+  fields:
+    - raw_text         # audit, recovery
+    - canonical_text   # search, NER, analytics, CRM ingestion
+    - display_text     # agent UI / customer-facing
+    - spans            # provenance: source tokens, class, rule id, conf
+    - deferred         # true when the segment was skipped pending stability
+    - lang
+    - script
+    - itn_version
+
+# Endpoint-normalisation default. When true, heavy rewriting waits for
+# segment-final / speech endpoint; only low-risk classes (see
+# thresholds.yaml streaming.partial_safe_classes) may render on partials.
+endpoint_normalisation_default: true
+
+# Hot-path safety: classes that never auto-rewrite, only emit
+# canonical-form suggestions for downstream review.
+unsafe_rewrite_classes_blocklist:
+  - account
+  - policy_id
+  - claim_id
+  - medicine_dose
+
+# Caching policy for frequent rewrites (IVR-like phrases, common numeric
+# surfaces). Pure runtime cache; never persisted across restarts.
+rewrite_cache:
+  enabled: true
+  max_entries: 4096
+
+# Provenance logging. Span fields per the plan, "Logging and evaluation".
+logging:
+  log_spans: true
+  span_fields:
+    - raw_span
+    - canonical_span
+    - class
+    - language
+    - script
+    - rule_id
+    - alternatives_count
+    - asr_confidence
+    - classifier_confidence
+    - fallback_reason
+    - ui_display_span

@@ -56,6 +56,10 @@ export function useWebSocket(url: string, protocols?: string[]) {
     return wsRef.current?.sendJSONIfConnected(payload) ?? false;
   }, []);
 
+  const sendBinaryIfConnected = useCallback((payload: ArrayBuffer | ArrayBufferView) => {
+    return wsRef.current?.sendBinary(payload) ?? false;
+  }, []);
+
   const isConnected = useCallback(() => {
     return wsRef.current?.isConnected() ?? false;
   }, []);
@@ -89,6 +93,7 @@ export function useWebSocket(url: string, protocols?: string[]) {
     disconnect,
     sendJSON,
     sendJSONIfConnected,
+    sendBinaryIfConnected,
     isConnected,
     onMessage,
   };

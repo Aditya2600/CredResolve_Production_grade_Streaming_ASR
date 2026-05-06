@@ -47,22 +47,39 @@ function toWebSocketUrl(rawUrl: string): URL {
   return parsed;
 }
 
+function resolveBinaryAudioFlag(): boolean {
+  const raw = import.meta.env?.VITE_BINARY_AUDIO;
+  if (raw === undefined || raw === '') {
+    return true;
+  }
+
+  const normalized = String(raw).trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  if (['0', 'false', 'f', 'no', 'n', 'off'].includes(normalized)) {
+    return false;
+  }
+  return true;
+}
+
 export const DEFAULT_WS_URL = resolveDefaultWsUrl();
 
 export const AUDIO_CONFIG: AudioConfig = {
   sampleRate: 16000,
   encoding: 'pcm_s16le',
   frameMs: 20,
+  binaryAudio: resolveBinaryAudioFlag(),
 };
 
 export const API_KEY = 'dev';
 export const DEFAULT_MODEL = 'credresolve:v1';
 export const DEFAULT_MODE = 'transcribe';
 export const DEFAULT_LANGUAGE = 'hi';
-export const FLUSH_RESULT_TIMEOUT_MS = 1200;
+export const FLUSH_RESULT_TIMEOUT_MS = 8000;
 export const FILE_UPLOAD_FRAME_INTERVAL_MS = 10;
 export const FILE_RESULT_IDLE_TIMEOUT_MS = 900;
-export const FILE_RESULT_TOTAL_TIMEOUT_MS = 4000;
+export const FILE_RESULT_TOTAL_TIMEOUT_MS = 30000;
 export const FILE_UPLOAD_ACCEPT = '.wav,audio/wav,audio/x-wav,audio/wave';
 export const MAX_RETRIES = 3;
 
@@ -106,6 +123,11 @@ export function buildWsUrl(
   url.searchParams.set('vad_signals', 'true');
   url.searchParams.set('flush_signal', 'true');
   url.searchParams.set('input_audio_codec', AUDIO_CONFIG.encoding);
+  if (AUDIO_CONFIG.binaryAudio) {
+    url.searchParams.set('binary_audio', '1');
+  } else {
+    url.searchParams.delete('binary_audio');
+  }
   if (audioProcessing) {
     url.searchParams.set('apm_enabled', String(audioProcessing.apmEnabled));
     url.searchParams.set('vad_enabled', String(audioProcessing.vadEnabled));

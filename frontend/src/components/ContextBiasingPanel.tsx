@@ -1,6 +1,14 @@
 import React from 'react';
+import { 
+  Settings2, 
+  Zap, 
+  Volume2, 
+  Mic2,
+  Info
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { ContextBiasingMetadata } from '../types/ws';
-import type { BiasingFormValues, DemoBiasingSettings } from '../utils/contextBiasing';
+import type { BiasingFormValues } from '../utils/contextBiasing';
 
 export interface AudioProcessingSettings {
   apmEnabled: boolean;
@@ -9,34 +17,43 @@ export interface AudioProcessingSettings {
 }
 
 interface ContextBiasingPanelProps {
-  settings: DemoBiasingSettings;
+  settings: {
+    enabled: boolean;
+    mode: 'shadow' | 'active';
+    values: BiasingFormValues;
+  };
   audioProcessing: AudioProcessingSettings;
   diagnostics: ContextBiasingMetadata | null;
   disabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
-  onModeChange: (mode: DemoBiasingSettings['mode']) => void;
+  onModeChange: (mode: 'shadow' | 'active') => void;
   onFieldChange: (field: keyof BiasingFormValues, value: string) => void;
   onAudioProcessingChange: (field: keyof AudioProcessingSettings, enabled: boolean) => void;
 }
 
-const SINGLE_VALUE_FIELDS: Array<{ key: keyof BiasingFormValues; label: string; placeholder: string }> = [
-  { key: 'debtorName', label: 'Debtor Name', placeholder: 'e.g. John Doe' },
-  { key: 'agentName', label: 'Agent Name', placeholder: 'e.g. Sarah Smith' },
-  { key: 'lender', label: 'Lender', placeholder: 'e.g. Acme Finance' },
-  { key: 'product', label: 'Product', placeholder: 'e.g. Personal Loan' },
-  { key: 'city', label: 'City', placeholder: 'e.g. Mumbai' },
-  { key: 'branch', label: 'Branch', placeholder: 'e.g. Central' },
+type BiasingFieldConfig = {
+  id: keyof BiasingFormValues;
+  label: string;
+  placeholder: string;
+};
+
+type AudioProcessingOption = {
+  id: keyof AudioProcessingSettings;
+  label: string;
+  icon: LucideIcon;
+};
+
+const BIASING_FIELDS: BiasingFieldConfig[] = [
+  { id: 'debtorName', label: 'Debtor Name', placeholder: 'e.g. Rahul Sharma' },
+  { id: 'agentName', label: 'Agent Name', placeholder: 'e.g. Priya' },
+  { id: 'lender', label: 'Lender', placeholder: 'e.g. HDFC Bank' },
+  { id: 'city', label: 'City', placeholder: 'e.g. Mumbai' },
 ];
 
-const LIST_FIELDS: Array<{ key: keyof BiasingFormValues; label: string; placeholder: string }> = [
-  { key: 'accountTerms', label: 'Account Terms', placeholder: 'loan, interest, principal...' },
-  { key: 'campaignVocabulary', label: 'Campaign Terms', placeholder: 'offer, discount, promo...' },
-];
-
-const PROCESSING_TOGGLES: Array<{ key: keyof AudioProcessingSettings; label: string; icon: string }> = [
-  { key: 'apmEnabled', label: 'APM', icon: '🎙️' },
-  { key: 'vadEnabled', label: 'VAD', icon: '⏹️' },
-  { key: 'denoiseEnabled', label: 'Noise', icon: '🔇' },
+const AUDIO_PROCESSING_OPTIONS: AudioProcessingOption[] = [
+  { id: 'apmEnabled', label: 'WebRTC APM', icon: Volume2 },
+  { id: 'vadEnabled', label: 'VAD Gating', icon: Mic2 },
+  { id: 'denoiseEnabled', label: 'Noise Reduction', icon: Volume2 },
 ];
 
 export const ContextBiasingPanel: React.FC<ContextBiasingPanelProps> = ({
@@ -49,99 +66,136 @@ export const ContextBiasingPanel: React.FC<ContextBiasingPanelProps> = ({
   onFieldChange,
   onAudioProcessingChange,
 }) => {
-  const diagnosticsText =
-    diagnostics && diagnostics.dynamic_context_attached
-      ? `${diagnostics.phrase_count_after_pruning ?? 0} active phrases`
-      : 'No active context';
-
   return (
-    <div className="glass-panel rounded-2xl overflow-hidden">
-      <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-white/50">
-        <div>
-          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Contextual Intelligence</h3>
-          <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-tight mt-0.5">{diagnosticsText}</p>
+    <div className="space-y-6">
+      {/* Configuration Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-primary">
+            <Settings2 className="w-4 h-4" />
+          </div>
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Configuration</h3>
         </div>
-        <div className="flex gap-2">
-          {PROCESSING_TOGGLES.map((item) => (
+        <div className="flex bg-slate-100 p-1 rounded-lg">
+          <button
+            onClick={() => onModeChange('shadow')}
+            disabled={disabled}
+            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
+              settings.mode === 'shadow' ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            SHADOW
+          </button>
+          <button
+            onClick={() => onModeChange('active')}
+            disabled={disabled}
+            className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
+              settings.mode === 'active' ? 'bg-white text-primary shadow-sm' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            ACTIVE
+          </button>
+        </div>
+      </div>
+
+      {/* Main Switch */}
+      <div className={`p-4 rounded-2xl border transition-all ${
+        settings.enabled ? 'bg-indigo-100 border-indigo-400' : 'bg-slate-100 border-slate-400'
+      }`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+              settings.enabled ? 'bg-primary text-white' : 'bg-slate-100 text-slate-400'
+            }`}>
+              <Zap className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-800">Context Biasing</p>
+              <p className="text-[10px] text-slate-500">Enhance domain accuracy</p>
+            </div>
+          </div>
+          <button
+            onClick={() => onEnabledChange(!settings.enabled)}
+            disabled={disabled}
+            className={`w-10 h-5 rounded-full relative transition-colors ${
+              settings.enabled ? 'bg-primary' : 'bg-slate-300'
+            }`}
+          >
+            <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${
+              settings.enabled ? 'left-6' : 'left-1'
+            }`} />
+          </button>
+        </div>
+
+        {settings.enabled && (
+          <div className="mt-4 pt-4 border-t border-indigo-100/50 grid grid-cols-1 gap-3">
+            {BIASING_FIELDS.map(field => (
+              <div key={field.id} className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">{field.label}</label>
+                <input
+                  type="text"
+                  value={settings.values[field.id]}
+                  onChange={(e) => onFieldChange(field.id, e.target.value)}
+                  placeholder={field.placeholder}
+                  disabled={disabled}
+                  className="w-full bg-white border-slate-200 focus:border-primary/50 text-xs"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Audio Processing */}
+      <div className="space-y-3">
+        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Audio Stack</h4>
+        <div className="grid grid-cols-1 gap-2">
+          {AUDIO_PROCESSING_OPTIONS.map(opt => (
             <button
-              key={item.key}
+              key={opt.id}
+              onClick={() => onAudioProcessingChange(opt.id, !audioProcessing[opt.id])}
               disabled={disabled}
-              onClick={() => onAudioProcessingChange(item.key, !audioProcessing[item.key])}
-              className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all border ${
-                audioProcessing[item.key]
-                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                  : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300'
+              className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                audioProcessing[opt.id]
+                  ? 'bg-emerald-50/50 border-emerald-100 text-emerald-700' 
+                  : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'
               }`}
             >
-              {item.label}
+              <div className="flex items-center gap-2">
+                <opt.icon className="w-3.5 h-3.5" />
+                <span className="text-xs font-bold">{opt.label}</span>
+              </div>
+              <div className={`w-1.5 h-1.5 rounded-full ${
+                audioProcessing[opt.id] ? 'bg-emerald-500' : 'bg-slate-200'
+              }`} />
             </button>
           ))}
         </div>
       </div>
 
-      <div className="p-4 space-y-5">
-        <div className="flex items-center justify-between">
-          <label className="flex items-center gap-2.5 cursor-pointer group">
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={settings.enabled}
-                disabled={disabled}
-                onChange={(e) => onEnabledChange(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+      {/* Diagnostics */}
+      {diagnostics && (
+        <div className="p-4 rounded-2xl bg-slate-900 text-white space-y-3">
+          <div className="flex items-center gap-2 text-indigo-300">
+            <Info className="w-3.5 h-3.5" />
+            <h4 className="text-[10px] font-bold uppercase tracking-wider">Live Diagnostics</h4>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-[10px]">
+            <div className="bg-white/5 p-2 rounded-lg">
+              <p className="text-slate-400 mb-0.5">Mode</p>
+              <p className="font-mono font-bold">{diagnostics.mode}</p>
             </div>
-            <span className="text-xs font-bold text-slate-700">Enable Biasing</span>
-          </label>
-
-          <select
-            value={settings.mode}
-            disabled={disabled || !settings.enabled}
-            onChange={(e) => onModeChange(e.target.value as any)}
-            className="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
-          >
-            <option value="shadow">Shadow Mode</option>
-            <option value="active">Active Mode</option>
-          </select>
-        </div>
-
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-          {SINGLE_VALUE_FIELDS.map((field) => (
-            <div key={field.key} className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1">
-                {field.label}
-              </label>
-              <input
-                type="text"
-                value={settings.values[field.key]}
-                disabled={disabled || !settings.enabled}
-                onChange={(e) => onFieldChange(field.key, e.target.value)}
-                placeholder={field.placeholder}
-                className="w-full text-xs bg-slate-50/50 border border-slate-100 rounded-xl px-3 py-2 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all placeholder:text-slate-300"
-              />
+            <div className="bg-white/5 p-2 rounded-lg">
+              <p className="text-slate-400 mb-0.5">Phrases</p>
+              <p className="font-mono font-bold">{diagnostics.phrase_count_total}</p>
             </div>
-          ))}
-        </div>
-
-        <div className="space-y-3">
-          {LIST_FIELDS.map((field) => (
-            <div key={field.key} className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide px-1">
-                {field.label}
-              </label>
-              <textarea
-                value={settings.values[field.key]}
-                disabled={disabled || !settings.enabled}
-                onChange={(e) => onFieldChange(field.key, e.target.value)}
-                placeholder={field.placeholder}
-                rows={2}
-                className="w-full text-xs bg-slate-50/50 border border-slate-100 rounded-xl px-3 py-2 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all placeholder:text-slate-300 resize-none"
-              />
+            <div className="bg-white/5 p-2 rounded-lg col-span-2">
+              <p className="text-slate-400 mb-0.5">Latency</p>
+              <p className="font-mono font-bold text-emerald-400">{diagnostics.latency_ms}ms</p>
             </div>
-          ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

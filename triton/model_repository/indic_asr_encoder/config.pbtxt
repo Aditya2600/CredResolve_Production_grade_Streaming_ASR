@@ -1,0 +1,70 @@
+# IndicConformer encoder served as a native TensorRT engine.
+#
+# The model.plan is built inside the Triton+TRT container against the actual
+# production GPU (Tesla T4 / SM 7.5 in this deploy) with:
+#   trtexec --onnx=/models/indic_asr_encoder/1/model.onnx \
+#     --fp16 \
+#     --minShapes=audio_signal:1x80x100,length:1 \
+#     --optShapes=audio_signal:1x80x800,length:1 \
+#     --maxShapes=audio_signal:1x80x3000,length:1 \
+#     --memPoolSize=workspace:4096 \
+#     --saveEngine=/models/indic_asr_encoder/1/model.plan
+#
+# To roll back to the ORT CUDA EP baseline, switch `backend` to "onnxruntime"
+# and `default_model_filename` to "model.onnx" — both files coexist in 1/.
+#
+# Encoder ONNX + external weight blobs (`layers.*`, `Constant_*`, `onnx__*`,
+# `pre*`) must remain alongside model.plan — Triton TRT backend will pick the
+# .plan, but a future re-build of the engine reads from model.onnx.
+
+name: "indic_asr_encoder"
+backend: "tensorrt"
+default_model_filename: "model.plan"
+max_batch_size: 0
+
+input [
+  {
+    name: "audio_signal"
+    data_type: TYPE_FP32
+    dims: [-1, 80, -1]
+  },
+  {
+    name: "length"
+    data_type: TYPE_INT64
+    dims: [-1]
+  }
+]
+
+output [
+  {
+    name: "outputs"
+    data_type: TYPE_FP32
+    dims: [-1, 1024, -1]
+  },
+  {
+    name: "encoded_lengths"
+    data_type: TYPE_INT64
+    dims: [-1]
+  }
+]
+
+instance_group [
+  {
+    kind: KIND_GPU
+    count: 1
+  }
+]
+
+# optimization {
+#   execution_accelerators {
+#     gpu_execution_accelerator: [
+#       {
+#         name: "tensorrt"
+#         parameters { key: "precision_mode" value: "FP16" }
+#         parameters { key: "max_workspace_size_bytes" value: "2147483648" }
+#         parameters { key: "trt_engine_cache_enable" value: "true" }
+#         parameters { key: "trt_engine_cache_path" value: "/var/cache/triton/trt" }
+#       }
+#     ]
+#   }
+# }

@@ -1,0 +1,6 @@
+# Build-time compiled FAR archives. Rebuild via:
+#   python -m itn_service.compile
+# Per CONTRIBUTING.md invariant 3 these are *not* request-path artefacts
+# but they are language-version-specific build output, so we don't
+# check them in.
+compiled_grammars/

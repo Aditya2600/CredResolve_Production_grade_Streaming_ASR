@@ -1,0 +1,36 @@
+# IndicConformer CTC decoder head (ctc_decoder.onnx) served via Triton's
+# onnxruntime backend.
+#
+# Deploy step: copy `assets/ctc_decoder.onnx` from the HF snapshot to
+# `triton/model_repository/indic_asr_ctc_decoder/1/model.onnx`.
+#
+# The graph emits unmasked log-probs over the full 5633-token vocabulary; the
+# worker applies the per-language mask, argmax, dedup and vocab lookup.
+
+name: "indic_asr_ctc_decoder"
+backend: "onnxruntime"
+default_model_filename: "model.onnx"
+max_batch_size: 0
+
+input [
+  {
+    name: "encoder_output"
+    data_type: TYPE_FP32
+    dims: [-1, 1024, -1]
+  }
+]
+
+output [
+  {
+    name: "logprobs"
+    data_type: TYPE_FP32
+    dims: [-1, -1, 5633]
+  }
+]
+
+instance_group [
+  {
+    kind: KIND_GPU
+    count: 1
+  }
+]

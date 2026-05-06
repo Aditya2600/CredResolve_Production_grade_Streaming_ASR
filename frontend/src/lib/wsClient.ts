@@ -3,6 +3,7 @@ import { debugLog, errorLog, infoLog, warnLog } from './debug';
 
 type WSState = Extract<ConnectionStatus, 'connecting' | 'connected' | 'disconnected' | 'error'>;
 type JsonObject = Record<string, unknown>;
+type BinaryPayload = ArrayBuffer | ArrayBufferView;
 type MessageHandler = ((message: JsonObject) => void) | null;
 type StateHandler = ((state: WSState) => void) | null;
 
@@ -57,6 +58,7 @@ export class WebSocketClient {
 
     this.connectPromise = new Promise((resolve, reject) => {
       const ws = this.protocols && this.protocols.length > 0 ? new WebSocket(this.url, this.protocols) : new WebSocket(this.url);
+      ws.binaryType = 'arraybuffer';
       this.ws = ws;
       let settled = false;
 
@@ -80,6 +82,7 @@ export class WebSocketClient {
       }, this.connectTimeoutMs);
 
       ws.onopen = () => {
+        ws.binaryType = 'arraybuffer';
         this.clearConnectTimeout();
         this.reconnectAttempt = 0;
         this.setState('connected');
@@ -183,6 +186,18 @@ export class WebSocketClient {
     return true;
   }
 
+  sendBinary(payload: BinaryPayload): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      debugLog('ws', 'dropping binary because socket is not open');
+      return false;
+    }
+
+    const binary = this.toArrayBuffer(payload);
+    debugLog('ws', `sending binary bytes=${binary.byteLength}`);
+    this.ws.send(binary);
+    return true;
+  }
+
   onMessage(cb: MessageHandler): void {
     this.messageHandler = cb;
   }
@@ -208,6 +223,21 @@ export class WebSocketClient {
       debugLog('ws', 'flushing queued json', queued);
       this.ws.send(JSON.stringify(queued));
     }
+  }
+
+  private toArrayBuffer(payload: BinaryPayload): ArrayBuffer {
+    if (payload instanceof ArrayBuffer) {
+      return payload;
+    }
+    if (
+      payload.buffer instanceof ArrayBuffer &&
+      payload.byteOffset === 0 &&
+      payload.byteLength === payload.buffer.byteLength
+    ) {
+      return payload.buffer;
+    }
+    const bytes = new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength);
+    return bytes.slice().buffer as ArrayBuffer;
   }
 
   private scheduleReconnect(): void {

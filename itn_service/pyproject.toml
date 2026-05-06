@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "itn_service"
+version = "0.0.0"
+description = "Deterministic Indic inverse text normalization for live telephony ASR (IndicConformer 600M)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "ITN Service Team" }]
+
+dependencies = [
+    "pynini>=2.1.6",
+    "regex>=2024.5.15",
+    "PyICU>=2.13",
+    "pydantic>=2.6,<3",
+    "pyyaml>=6.0",
+    "pytest>=8.0",
+    "pytest-benchmark>=4.0",
+    "hypothesis>=6.100",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "types-PyYAML",
+    "nemo-text-processing>=1.0",
+    "torch>=2.0",
+    "nemo_toolkit[asr]>=1.23",
+]
+
+[tool.setuptools]
+package-dir = { "itn_service" = "." }
+packages = [
+    "itn_service",
+    "itn_service.runtime",
+    "itn_service.grammars",
+    "itn_service.grammars.common",
+    "itn_service.grammars.hi",
+    "itn_service.grammars.mr",
+    "itn_service.grammars.bn",
+    "itn_service.grammars.ta",
+    "itn_service.grammars.te",
+    "itn_service.grammars.kn",
+    "itn_service.grammars.ml",
+    "itn_service.grammars.gu",
+    "itn_service.grammars.pa",
+    "itn_service.grammars.ur",
+]
+
+[tool.setuptools.package-data]
+"itn_service" = ["configs/*.yaml", "configs/*.yml"]
+"itn_service.grammars.common" = ["*.tsv"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "slow: opt-in latency / benchmark tests; excluded from default runs",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["N802", "N803"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+files = ["runtime"]
+
+[[tool.mypy.overrides]]
+module = ["pynini.*", "icu.*", "regex.*", "yaml.*"]
+ignore_missing_imports = true

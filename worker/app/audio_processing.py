@@ -31,6 +31,10 @@ class AudioPreprocessor:
             # For this demo/impl, we'll prepare the hook
             from rnnoise_wrapper import RNNoise
             self.rnnoise = RNNoise()
+            if not hasattr(self.rnnoise, "process_frame"):
+                log.warning("RNNoise wrapper does not expose process_frame. Denoising will be skipped.")
+                self.rnnoise = None
+                return
             log.info("RNNoise denoiser loaded successfully")
         except ImportError:
             log.warning("RNNoise wrapper not found. Denoising will be skipped.")

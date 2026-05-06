@@ -79,7 +79,9 @@ def _install_fake_triton_http(monkeypatch):
 
 def test_triton_remote_inference_model_uses_thread_local_clients(monkeypatch):
     clients = _install_fake_triton_http(monkeypatch)
-    model = TritonRemoteInferenceModel(server_url="http://triton:8000", model_name="indic_asr")
+    model = TritonRemoteInferenceModel(
+        server_url="http://triton:8000", model_name="indic_asr", protocol="http"
+    )
 
     model.ensure_ready()
 
@@ -109,7 +111,9 @@ def test_triton_remote_inference_model_uses_thread_local_clients(monkeypatch):
 
 def test_triton_remote_inference_model_returns_timestamps_when_requested(monkeypatch):
     clients = _install_fake_triton_http(monkeypatch)
-    model = TritonRemoteInferenceModel(server_url="triton:8000", model_name="indic_asr")
+    model = TritonRemoteInferenceModel(
+        server_url="triton:8000", model_name="indic_asr", protocol="http"
+    )
 
     result = model(torch.zeros(1, 8), "hi", decoding="ctc", compute_timestamps="w")
 

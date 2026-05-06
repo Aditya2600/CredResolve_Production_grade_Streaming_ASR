@@ -1,0 +1,10 @@
+# Triton model artefacts are staged at deploy time from the HF snapshot
+# (see docs/triton_native_serving_plan.md §"Phase 1 deploy runbook").
+# Keep config.pbtxt under version control; never commit the model bytes.
+*/1/model.onnx
+*/1/model.pt
+*/1/model.plan
+indic_asr_encoder/1/layers.*
+indic_asr_encoder/1/Constant_*
+indic_asr_encoder/1/onnx__*
+indic_asr_encoder/1/pre*

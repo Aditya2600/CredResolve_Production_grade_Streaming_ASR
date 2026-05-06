@@ -4,12 +4,20 @@ services:
     restart: unless-stopped
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
     ports:
       - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.enable-admin-api"
     depends_on:
       - gateway
       - worker
       - node-exporter
+
 
   grafana:
     image: grafana/grafana:11.1.0
@@ -146,6 +154,8 @@ services:
       - WORKER_URL=${WORKER_URL}
       - PARTIAL_DECODE_INTERVAL_MS=${PARTIAL_DECODE_INTERVAL_MS}
       - STREAMING_APM_ENABLED=${STREAMING_APM_ENABLED:-false}
+      - STREAMING_DENOISE_ENABLED=${STREAMING_DENOISE_ENABLED:-true}
+      - STREAMING_VAD_ENABLED=${STREAMING_VAD_ENABLED:-false}
       - STREAMING_RING_BUFFER_MS=${STREAMING_RING_BUFFER_MS:-600}
       - STREAMING_VAD_MODE=${STREAMING_VAD_MODE:-3}
       - STREAMING_GATE_OPEN_WINDOW_FRAMES=${STREAMING_GATE_OPEN_WINDOW_FRAMES:-3}
@@ -161,7 +171,10 @@ services:
       - SPEAKER_VERIFICATION_ENROLLED_EMBEDDING_PATH=${SPEAKER_VERIFICATION_ENROLLED_EMBEDDING_PATH:-}
       - SPEAKER_VERIFICATION_DEBUG_SIMILARITY=${SPEAKER_VERIFICATION_DEBUG_SIMILARITY:-0.95}
       - LOG_LEVEL=${LOG_LEVEL}
+      - GATEWAY_LOG_FILE=${GATEWAY_LOG_FILE}
       - WS_API_KEYS=${WS_API_KEYS:-dev}
+    volumes:
+      - /home/ubuntu/logs:/srv/logs
     ports: ["8000:8000"]
     ulimits:
       nofile:
@@ -198,4 +211,5 @@ services:
     depends_on: ["gateway", "frontend"]
 
 volumes:
+  prom_data: {}
   grafana_data:

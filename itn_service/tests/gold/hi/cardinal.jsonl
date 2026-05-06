@@ -1,0 +1,223 @@
+{"raw": "शून्य", "expected": "0"}
+{"raw": "एक", "expected": "1"}
+{"raw": "दो", "expected": "2"}
+{"raw": "तीन", "expected": "3"}
+{"raw": "चार", "expected": "4"}
+{"raw": "पाँच", "expected": "5"}
+{"raw": "छः", "expected": "6"}
+{"raw": "सात", "expected": "7"}
+{"raw": "आठ", "expected": "8"}
+{"raw": "नौ", "expected": "9"}
+{"raw": "दस", "expected": "10"}
+{"raw": "ग्यारह", "expected": "11"}
+{"raw": "बारह", "expected": "12"}
+{"raw": "तेरह", "expected": "13"}
+{"raw": "चौदह", "expected": "14"}
+{"raw": "पंद्रह", "expected": "15"}
+{"raw": "सोलह", "expected": "16"}
+{"raw": "सत्रह", "expected": "17"}
+{"raw": "अट्ठारह", "expected": "18"}
+{"raw": "उन्नीस", "expected": "19"}
+{"raw": "बीस", "expected": "20"}
+{"raw": "इक्कीस", "expected": "21"}
+{"raw": "बाईस", "expected": "22"}
+{"raw": "तेईस", "expected": "23"}
+{"raw": "चौबीस", "expected": "24"}
+{"raw": "पच्चीस", "expected": "25"}
+{"raw": "छब्बीस", "expected": "26"}
+{"raw": "सत्ताईस", "expected": "27"}
+{"raw": "अट्ठाईस", "expected": "28"}
+{"raw": "उनतीस", "expected": "29"}
+{"raw": "तीस", "expected": "30"}
+{"raw": "इकतीस", "expected": "31"}
+{"raw": "बत्तीस", "expected": "32"}
+{"raw": "तैंतीस", "expected": "33"}
+{"raw": "चौंतीस", "expected": "34"}
+{"raw": "पैंतीस", "expected": "35"}
+{"raw": "छत्तीस", "expected": "36"}
+{"raw": "सैंतीस", "expected": "37"}
+{"raw": "अड़तीस", "expected": "38"}
+{"raw": "उनतालीस", "expected": "39"}
+{"raw": "चालीस", "expected": "40"}
+{"raw": "इकतालीस", "expected": "41"}
+{"raw": "बयालीस", "expected": "42"}
+{"raw": "तैंतालीस", "expected": "43"}
+{"raw": "चौंतालीस", "expected": "44"}
+{"raw": "पैंतालीस", "expected": "45"}
+{"raw": "छियालीस", "expected": "46"}
+{"raw": "सैंतालीस", "expected": "47"}
+{"raw": "अड़तालीस", "expected": "48"}
+{"raw": "उनचास", "expected": "49"}
+{"raw": "पचास", "expected": "50"}
+{"raw": "इक्यावन", "expected": "51"}
+{"raw": "बावन", "expected": "52"}
+{"raw": "तिरेपन", "expected": "53"}
+{"raw": "चौवन", "expected": "54"}
+{"raw": "पचपन", "expected": "55"}
+{"raw": "छप्पन", "expected": "56"}
+{"raw": "सत्तावन", "expected": "57"}
+{"raw": "अट्ठावन", "expected": "58"}
+{"raw": "उनसठ", "expected": "59"}
+{"raw": "साठ", "expected": "60"}
+{"raw": "इकसठ", "expected": "61"}
+{"raw": "बासठ", "expected": "62"}
+{"raw": "तिरेसठ", "expected": "63"}
+{"raw": "चौंसठ", "expected": "64"}
+{"raw": "पैंसठ", "expected": "65"}
+{"raw": "छयासठ", "expected": "66"}
+{"raw": "सरसठ", "expected": "67"}
+{"raw": "अड़सठ", "expected": "68"}
+{"raw": "उनहत्तर", "expected": "69"}
+{"raw": "सत्तर", "expected": "70"}
+{"raw": "इकहत्तर", "expected": "71"}
+{"raw": "बहत्तर", "expected": "72"}
+{"raw": "तिहत्तर", "expected": "73"}
+{"raw": "चौहत्तर", "expected": "74"}
+{"raw": "पचहत्तर", "expected": "75"}
+{"raw": "छिहत्तर", "expected": "76"}
+{"raw": "सतहत्तर", "expected": "77"}
+{"raw": "अठहत्तर", "expected": "78"}
+{"raw": "उन्यासी", "expected": "79"}
+{"raw": "अस्सी", "expected": "80"}
+{"raw": "इक्यासी", "expected": "81"}
+{"raw": "बयासी", "expected": "82"}
+{"raw": "तिरासी", "expected": "83"}
+{"raw": "चौरासी", "expected": "84"}
+{"raw": "पचासी", "expected": "85"}
+{"raw": "छियासी", "expected": "86"}
+{"raw": "सत्तासी", "expected": "87"}
+{"raw": "अठासी", "expected": "88"}
+{"raw": "नवासी", "expected": "89"}
+{"raw": "नब्बे", "expected": "90"}
+{"raw": "इक्यानवे", "expected": "91"}
+{"raw": "बानवे", "expected": "92"}
+{"raw": "तिरानवे", "expected": "93"}
+{"raw": "चौरानवे", "expected": "94"}
+{"raw": "पचानवे", "expected": "95"}
+{"raw": "छियानवे", "expected": "96"}
+{"raw": "सत्तानवे", "expected": "97"}
+{"raw": "अट्ठानवे", "expected": "98"}
+{"raw": "निन्यानवे", "expected": "99"}
+{"raw": "पाँच", "expected": "5"}
+{"raw": "पांच", "expected": "5"}
+{"raw": "छः", "expected": "6"}
+{"raw": "छह", "expected": "6"}
+{"raw": "एक सौ", "expected": "100"}
+{"raw": "दो सौ", "expected": "200"}
+{"raw": "तीन सौ", "expected": "300"}
+{"raw": "चार सौ", "expected": "400"}
+{"raw": "पाँच सौ", "expected": "500"}
+{"raw": "छः सौ", "expected": "600"}
+{"raw": "सात सौ", "expected": "700"}
+{"raw": "आठ सौ", "expected": "800"}
+{"raw": "नौ सौ", "expected": "900"}
+{"raw": "एक सौ एक", "expected": "101"}
+{"raw": "एक सौ पाँच", "expected": "105"}
+{"raw": "एक सौ दस", "expected": "110"}
+{"raw": "एक सौ उन्नीस", "expected": "119"}
+{"raw": "एक सौ पच्चीस", "expected": "125"}
+{"raw": "एक सौ निन्यानवे", "expected": "199"}
+{"raw": "दो सौ पचास", "expected": "250"}
+{"raw": "तीन सौ तैंतीस", "expected": "333"}
+{"raw": "चार सौ चौंतालीस", "expected": "444"}
+{"raw": "पाँच सौ पचपन", "expected": "555"}
+{"raw": "छः सौ छयासठ", "expected": "666"}
+{"raw": "सात सौ पचास", "expected": "750"}
+{"raw": "सात सौ सतहत्तर", "expected": "777"}
+{"raw": "आठ सौ अठासी", "expected": "888"}
+{"raw": "नौ सौ निन्यानवे", "expected": "999"}
+{"raw": "एक हज़ार", "expected": "1000"}
+{"raw": "एक हज़ार पाँच सौ", "expected": "1500"}
+{"raw": "दो हज़ार", "expected": "2000"}
+{"raw": "पाँच हज़ार", "expected": "5000"}
+{"raw": "सात हज़ार सात सौ सतहत्तर", "expected": "7777"}
+{"raw": "दस हज़ार", "expected": "10000"}
+{"raw": "बारह हज़ार तीन सौ पैंतालीस", "expected": "12345"}
+{"raw": "पचास हज़ार", "expected": "50000"}
+{"raw": "निन्यानवे हज़ार नौ सौ निन्यानवे", "expected": "99999"}
+{"raw": "एक लाख", "expected": "100000"}
+{"raw": "दो लाख पचास हज़ार", "expected": "250000"}
+{"raw": "नौ लाख निन्यानवे हज़ार नौ सौ निन्यानवे", "expected": "999999"}
+{"raw": "दस लाख", "expected": "1000000"}
+{"raw": "पचास लाख", "expected": "5000000"}
+{"raw": "निन्यानवे लाख निन्यानवे हज़ार नौ सौ निन्यानवे", "expected": "9999999"}
+{"raw": "एक करोड़", "expected": "10000000"}
+{"raw": "एक करोड़ पच्चीस लाख", "expected": "12500000"}
+{"raw": "दस करोड़", "expected": "100000000"}
+{"raw": "पच्चीस करोड़", "expected": "250000000"}
+{"raw": "पचास करोड़", "expected": "500000000"}
+{"raw": "निन्यानवे करोड़ निन्यानवे लाख निन्यानवे हज़ार नौ सौ निन्यानवे", "expected": "999999999"}
+{"raw": "एक अरब", "expected": "1000000000"}
+{"raw": "सवा सौ", "expected": "125"}
+{"raw": "सवा हज़ार", "expected": "1250"}
+{"raw": "सवा हजार", "expected": "1250"}
+{"raw": "सवा लाख", "expected": "125000"}
+{"raw": "सवा करोड़", "expected": "12500000"}
+{"raw": "सवा करोड", "expected": "12500000"}
+{"raw": "डेढ़ सौ", "expected": "150"}
+{"raw": "डेढ सौ", "expected": "150"}
+{"raw": "डेढ़ हज़ार", "expected": "1500"}
+{"raw": "डेढ़ लाख", "expected": "150000"}
+{"raw": "डेढ़ करोड़", "expected": "15000000"}
+{"raw": "ढाई सौ", "expected": "250"}
+{"raw": "ढाई हज़ार", "expected": "2500"}
+{"raw": "ढाई लाख", "expected": "250000"}
+{"raw": "ढाई करोड़", "expected": "25000000"}
+{"raw": "साढ़े तीन सौ", "expected": "350"}
+{"raw": "साढ़े चार सौ", "expected": "450"}
+{"raw": "साढ़े पाँच सौ", "expected": "550"}
+{"raw": "साढ़े छह सौ", "expected": "650"}
+{"raw": "साढ़े सात सौ", "expected": "750"}
+{"raw": "साढ़े आठ सौ", "expected": "850"}
+{"raw": "साढ़े नौ सौ", "expected": "950"}
+{"raw": "साढ़े तीन हज़ार", "expected": "3500"}
+{"raw": "साढे तीन हज़ार", "expected": "3500"}
+{"raw": "साढ़े चार हज़ार", "expected": "4500"}
+{"raw": "साढ़े पाँच हज़ार", "expected": "5500"}
+{"raw": "साढ़े पांच हज़ार", "expected": "5500"}
+{"raw": "साढ़े दस हज़ार", "expected": "10500"}
+{"raw": "साढ़े पच्चीस हज़ार", "expected": "25500"}
+{"raw": "साढ़े पचास हज़ार", "expected": "50500"}
+{"raw": "साढ़े निन्यानवे हज़ार", "expected": "99500"}
+{"raw": "साढ़े तीन लाख", "expected": "350000"}
+{"raw": "साढ़े पाँच लाख", "expected": "550000"}
+{"raw": "साढ़े दस लाख", "expected": "1050000"}
+{"raw": "साढ़े पच्चीस लाख", "expected": "2550000"}
+{"raw": "साढ़े तीन करोड़", "expected": "35000000"}
+{"raw": "साढ़े पाँच करोड़", "expected": "55000000"}
+{"raw": "साढ़े दस करोड़", "expected": "105000000"}
+{"raw": "पौने एक सौ", "expected": "75"}
+{"raw": "पौने दो सौ", "expected": "175"}
+{"raw": "पौने तीन सौ", "expected": "275"}
+{"raw": "पौने चार सौ", "expected": "375"}
+{"raw": "पौने पाँच सौ", "expected": "475"}
+{"raw": "पौने छह सौ", "expected": "575"}
+{"raw": "पौने सात सौ", "expected": "675"}
+{"raw": "पौने आठ सौ", "expected": "775"}
+{"raw": "पौने नौ सौ", "expected": "875"}
+{"raw": "पौने एक हज़ार", "expected": "750"}
+{"raw": "पौने दो हज़ार", "expected": "1750"}
+{"raw": "पौने तीन हज़ार", "expected": "2750"}
+{"raw": "पौने पाँच हज़ार", "expected": "4750"}
+{"raw": "पौने दस हज़ार", "expected": "9750"}
+{"raw": "पौने पच्चीस हज़ार", "expected": "24750"}
+{"raw": "पौने पचास हज़ार", "expected": "49750"}
+{"raw": "पौने निन्यानवे हज़ार", "expected": "98750"}
+{"raw": "पौने एक लाख", "expected": "75000"}
+{"raw": "पौने दो लाख", "expected": "175000"}
+{"raw": "पौने पाँच लाख", "expected": "475000"}
+{"raw": "पौने दस लाख", "expected": "975000"}
+{"raw": "पौने एक करोड़", "expected": "7500000"}
+{"raw": "पौने दो करोड़", "expected": "17500000"}
+{"raw": "पौने पाँच करोड़", "expected": "47500000"}
+{"raw": "पौने दस करोड़", "expected": "97500000"}
+{"raw": "0", "expected": "0"}
+{"raw": "1", "expected": "1"}
+{"raw": "9", "expected": "9"}
+{"raw": "10", "expected": "10"}
+{"raw": "99", "expected": "99"}
+{"raw": "100", "expected": "100"}
+{"raw": "1234", "expected": "1234"}
+{"raw": "99999", "expected": "99999"}
+{"raw": "999999999", "expected": "999999999"}
+{"raw": "1000000000", "expected": "1000000000"}

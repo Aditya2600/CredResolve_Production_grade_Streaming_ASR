@@ -104,6 +104,7 @@ export interface TranscriptItem {
   role: 'user' | 'assistant';
   text: string;
   timestamp: number;
+  latencyMs?: number;
   isPartial?: boolean;
 }
 
@@ -111,4 +112,5 @@ export interface AudioConfig {
   sampleRate: number;
   encoding: string;
   frameMs: number;
+  binaryAudio: boolean;
 }

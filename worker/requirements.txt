@@ -11,4 +11,4 @@ speechbrain==0.5.16
 tqdm==4.66.5
 prometheus-client==0.20.0
 orjson==3.10.7
-tritonclient[http]>=2.54,<2.67
+tritonclient[grpc,http]>=2.54,<2.67

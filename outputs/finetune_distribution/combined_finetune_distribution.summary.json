@@ -1,0 +1,71 @@
+{
+  "input_files": [
+    "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/Result_7.csv",
+    "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/Result_11.csv",
+    "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/Result_23.csv"
+  ],
+  "output_file": "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/outputs/finetune_distribution/combined_finetune_distribution.csv",
+  "total_rows": 2940,
+  "available_counts": {
+    "HINDI": 906,
+    "TELUGU": 660,
+    "MARATHI": 480,
+    "GUJARATI": 422,
+    "KANNADA": 387,
+    "TAMIL": 330,
+    "BENGALI": 147
+  },
+  "target_counts": {
+    "HINDI": 794,
+    "TELUGU": 588,
+    "MARATHI": 412,
+    "GUJARATI": 382,
+    "KANNADA": 323,
+    "TAMIL": 294,
+    "BENGALI": 147
+  },
+  "sampled_counts": {
+    "BENGALI": 147,
+    "GUJARATI": 382,
+    "HINDI": 794,
+    "KANNADA": 323,
+    "MARATHI": 412,
+    "TAMIL": 294,
+    "TELUGU": 588
+  },
+  "sampled_percentages": {
+    "BENGALI": 5.0,
+    "GUJARATI": 12.9932,
+    "HINDI": 27.0068,
+    "KANNADA": 10.9864,
+    "MARATHI": 14.0136,
+    "TAMIL": 10.0,
+    "TELUGU": 20.0
+  },
+  "train_split": {
+    "output_file": "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/outputs/finetune_distribution/combined_finetune_distribution.train.csv",
+    "total_rows": 2646,
+    "counts": {
+      "BENGALI": 132,
+      "GUJARATI": 344,
+      "HINDI": 714,
+      "KANNADA": 291,
+      "MARATHI": 371,
+      "TAMIL": 265,
+      "TELUGU": 529
+    }
+  },
+  "val_split": {
+    "output_file": "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/outputs/finetune_distribution/combined_finetune_distribution.val.csv",
+    "total_rows": 294,
+    "counts": {
+      "BENGALI": 15,
+      "GUJARATI": 38,
+      "HINDI": 80,
+      "KANNADA": 32,
+      "MARATHI": 41,
+      "TAMIL": 29,
+      "TELUGU": 59
+    }
+  }
+}

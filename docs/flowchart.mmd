@@ -1,0 +1,194 @@
+%% CredResolve Production-grade Streaming ASR - end-to-end block flow
+%% Render with Mermaid. The runtime path is intentionally shown as
+%% "streaming-ish": audio streams over WebSocket, but ASR is finalized per
+%% VAD/flush-delimited utterance before the gateway emits a final transcript.
+
+flowchart TD
+    %% ---------------------------
+    %% Client and ingress plane
+    %% ---------------------------
+    subgraph client["Client and Test Entry Points"]
+        browser["Browser UI<br/>frontend/src/App.tsx<br/>mic streaming or WAV upload"]
+        audio_client["Audio client helpers<br/>permission, PCM16 frames,<br/>file WAV preparation"]
+        partner["Telephony or partner client<br/>JSON audio envelopes"]
+        smoke["Smoke and eval clients<br/>tools/ws_client_send_wav.py<br/>tools/load_ws.py<br/>tools/eval_indicvoices_wer.py"]
+        downstream["Downstream consumers<br/>agent UI, validation view,<br/>reports or integrations"]
+    end
+
+    subgraph ingress["Ingress and Public Contract"]
+        nginx["Nginx reverse proxy<br/>port 80<br/>/ -> frontend<br/>/ws/stt -> gateway"]
+        auth["WebSocket auth and session query<br/>Api-Subscription-Key or token subprotocol<br/>language-code, model, mode,<br/>sample_rate, input_audio_codec"]
+    end
+
+    browser --> audio_client
+    audio_client -->|base64 PCM/WAV JSON frames| nginx
+    partner -->|Sarvam-like WS contract| nginx
+    smoke -->|same WS contract| nginx
+    nginx --> auth
+
+    %% ---------------------------
+    %% Gateway runtime plane
+    %% ---------------------------
+    subgraph gateway["Gateway Service - CPU WebSocket Edge"]
+        gw_accept["Accept WebSocket<br/>assign session_id/request_id"]
+        gw_validate["Validate auth and handshake<br/>language required<br/>sample_rate currently 16000<br/>codec wav, pcm_s16le, pcm_l16, pcm_raw"]
+        gw_session_update["Optional session_config message<br/>context_biasing mode and fields<br/>audio_processing flags"]
+        gw_decode["Decode JSON audio message<br/>base64 decode<br/>codec/rate validation<br/>normalize to PCM16LE"]
+        gw_apm["Gateway audio processor<br/>NoOp by default<br/>WebRTC APM hook when configured"]
+        gw_vad["WebRTC VAD gate<br/>20 ms frames<br/>ring buffer preroll<br/>open, hangover, close"]
+        gw_speaker["Optional speaker gate<br/>disabled, shadow, or enforce<br/>debug backend or external embedding hook"]
+        gw_buffer["Buffered RNNT compatibility stream<br/>collect one utterance of PCM"]
+        gw_flush["Endpointing or client flush<br/>finish utterance"]
+        gw_worker_call["WorkerClient HTTP call<br/>POST /v1/transcribe<br/>X-Sample-Rate, X-Decoder, X-Language,<br/>X-Mode, X-Session-Id, X-Utterance-Id,<br/>X-Context-Biasing-Request,<br/>X-Vad-Enabled, X-Denoise-Enabled"]
+        gw_emit["Emit WebSocket response<br/>final-only type=data transcript<br/>optional type=vad speech_start/speech_end<br/>type=error on failures"]
+    end
+
+    auth --> gw_accept --> gw_validate
+    gw_validate --> gw_session_update
+    gw_validate --> gw_decode
+    gw_session_update -. updates request context .-> gw_decode
+    gw_decode --> gw_apm --> gw_vad --> gw_speaker --> gw_buffer
+    gw_buffer --> gw_flush --> gw_worker_call
+
+    %% ---------------------------
+    %% Worker runtime plane
+    %% ---------------------------
+    subgraph worker["Worker Service - Private ASR Orchestrator"]
+        wk_ingress["FastAPI /v1/transcribe<br/>body is PCM bytes<br/>bounded by WORKER_MAX_JOBS semaphore"]
+        wk_headers["Validate request headers<br/>sample rate, decoder,<br/>timestamp type, biasing request"]
+        wk_preprocess["Optional worker audio preprocessing<br/>Silero VAD silence filtering<br/>RNNoise denoise hook"]
+        wk_lid["Language resolution<br/>explicit client language<br/>or auto via LID chain and cache<br/>or ASR_DEFAULT_LANGUAGE fallback"]
+        wk_audio["Model audio preparation<br/>accept 8 kHz or 16 kHz PCM16<br/>resample to 16 kHz for model"]
+        wk_baseline["Baseline ASR decode<br/>decoder rnnt or ctc<br/>word timestamps only with ctc"]
+        wk_timeout["Timeout, not-ready, and error handling<br/>worker-fallback response<br/>fallback language_source tags"]
+        wk_eval_log["Structured eval logging<br/>request, result, LID, biasing,<br/>latency and text metadata"]
+        wk_response["JSON response<br/>text, language, language_source<br/>optional timestamps<br/>optional context_biasing metadata"]
+    end
+
+    gw_worker_call --> wk_ingress --> wk_headers --> wk_preprocess --> wk_lid --> wk_audio --> wk_baseline
+    wk_baseline --> wk_response --> gw_emit --> downstream
+    wk_baseline -. exceptions .-> wk_timeout --> wk_response
+    wk_response -. sampled events .-> wk_eval_log
+
+    %% ---------------------------
+    %% ASR backend choices
+    %% ---------------------------
+    subgraph backend["ASR Backend Selection"]
+        backend_choice{"ASR_BACKEND"}
+        onnx["ONNXIndicASRWorker<br/>Hugging Face snapshot_download<br/>model_onnx.py<br/>TorchScript preprocessor on CPU<br/>ONNX Runtime CUDA sessions"]
+        triton_worker["TritonIndicASRWorker<br/>thin adapter<br/>validates supported langs<br/>calls Triton HTTP"]
+        triton["NVIDIA Triton Inference Server<br/>triton/model_repository/indic_asr<br/>AUDIO_SIGNAL + LANGUAGE + DECODER<br/>TRANSCRIPT and optional TIMESTAMPS_JSON"]
+        hf_cache["Model artifacts and HF cache<br/>ASR_MODEL_NAME<br/>HUGGINGFACE_HUB_TOKEN<br/>HF_HOME"]
+    end
+
+    wk_baseline --> backend_choice
+    backend_choice -->|default local worker| onnx
+    backend_choice -->|docker-compose.triton.yml| triton_worker --> triton
+    hf_cache --> onnx
+    hf_cache --> triton
+    onnx --> wk_baseline
+    triton --> triton_worker --> wk_baseline
+
+    %% ---------------------------
+    %% Context biasing branch
+    %% ---------------------------
+    subgraph biasing["Optional Context Biasing"]
+        bias_decide["Decision policy<br/>disabled, shadow, active<br/>explicit language only<br/>skip auto language in v1"]
+        static_phrases["Static phrase lexicon<br/>context_biasing/phrases/{lang}.txt<br/>canonical_variant lines"]
+        dynamic_context["Dynamic request context<br/>debtor, agent, lender, product,<br/>city, branch, amounts, dates,<br/>campaign vocabulary"]
+        assembler["Context assembler<br/>normalize values<br/>generate variants<br/>rank and prune phrases<br/>merge with static file"]
+        nemo_bias["NeMo context-biasing runtime<br/>CTC word-spotting decode<br/>request-scoped phrase file<br/>single biasing slot and timeout"]
+        selector["Active-mode selector<br/>prefer biased text only when<br/>phrase hits are preserved or improved<br/>shadow mode returns baseline"]
+        bias_meta["Biasing diagnostics<br/>mode, reason, phrase counts,<br/>top phrases, fallback reason"]
+    end
+
+    wk_baseline --> bias_decide
+    static_phrases --> bias_decide
+    dynamic_context --> assembler --> bias_decide
+    bias_decide -->|eligible| nemo_bias --> selector --> wk_response
+    bias_decide -->|disabled or skipped| bias_meta --> wk_response
+    selector --> bias_meta
+
+    %% ---------------------------
+    %% Observability and operations
+    %% ---------------------------
+    subgraph ops["Observability and Local Deployment"]
+        compose["Docker Compose stack<br/>nginx, frontend, gateway, worker<br/>prometheus, grafana,<br/>node-exporter, dcgm-exporter<br/>optional triton overlay"]
+        env[".env / .env.example<br/>runtime knobs, API keys,<br/>model names, timeouts,<br/>feature flags"]
+        health["Health endpoints<br/>gateway /healthz<br/>worker /healthz<br/>Triton /v2/health/ready"]
+        metrics["Prometheus metrics<br/>gateway /metrics<br/>worker /metrics<br/>node and GPU exporters"]
+        grafana["Grafana dashboards<br/>service latency, fallbacks,<br/>WebSocket connections,<br/>GPU and host metrics"]
+        logs["Structured logs and local files<br/>/home/ubuntu/logs<br/>eval event samples"]
+    end
+
+    compose --> nginx
+    compose --> gw_accept
+    compose --> wk_ingress
+    compose --> backend_choice
+    env --> gw_validate
+    env --> wk_headers
+    env --> backend_choice
+    gw_accept --> health
+    wk_ingress --> health
+    triton --> health
+    gw_emit --> metrics
+    wk_response --> metrics
+    triton -. Triton metrics port 8102 .-> metrics
+    metrics --> grafana
+    gw_emit --> logs
+    wk_response --> logs
+    wk_eval_log --> logs
+
+    %% ---------------------------
+    %% Offline data and ML lifecycle
+    %% ---------------------------
+    subgraph data_loop["Offline Data, Training, and Evaluation Loop"]
+        raw_exports["Raw call exports<br/>CSV rows with audio URLs,<br/>metadata and transcripts"]
+        inventory["build_asr_inventory.py<br/>download audio<br/>ffprobe metadata<br/>MP3/raw retention<br/>mono WAV conversion<br/>stereo channel split<br/>borrower channel audit"]
+        inventory_out["Normalized inventory artifacts<br/>outputs/data_inventory.csv<br/>outputs/data_inventory.parquet<br/>data/raw, data/wav, data/channels"]
+        normalize_text["Transcript normalization<br/>tools/normalize_indic_transcripts.py<br/>tools/asr_text_normalizer.py<br/>language mappings"]
+        segmentation["Silero VAD segmentation<br/>tools/segment_inventory_with_silero.py<br/>ordered transcript grouping<br/>utterance WAV export"]
+        diarization["Optional diarization-aware refinement<br/>tools/diarize_inventory.py<br/>NeMo telephony provider<br/>RTTM turns, speaker metadata,<br/>mixed/overlap flags"]
+        manifests["Training/eval manifests<br/>manifest.jsonl, segments.jsonl<br/>data_inventory_segmented.csv<br/>speaker-aware fields"]
+        external_data["External ASR data<br/>Vaani multilingual exports<br/>IndicVoices eval splits<br/>held-out manifests"]
+        mix_train["Manifest preparation<br/>build_combined_asr_training_manifest.py<br/>prepare bucket manifests<br/>domain + Vaani weighting<br/>clean NeMo JSONL"]
+        peft["Adapter-only PEFT training<br/>scripts/run_vaani_adapter_peft.sh<br/>scripts/run_vaani_adapter_peft_8khz.sh<br/>tools/run_nemo_adapter_peft.py<br/>freeze base IndicConformer<br/>train encoder adapter only"]
+        train_artifacts["Training artifacts<br/>TensorBoard runs<br/>checkpoints<br/>final .nemo model<br/>tokenizer coverage<br/>run config summaries"]
+        export_model["Serving export and validation<br/>tools/export_nemo_asr_to_onnx.py<br/>tools/validate_vaani_model_variants.py<br/>Triton model repository updates<br/>ASR_MODEL_NAME / model cache"]
+        evals["Evaluation and error mining<br/>tools/eval_indicvoices_wer.py via WS<br/>tools/eval_serving_model_manifest_wer.py<br/>tools/eval_nemo_manifest_wer.py<br/>tools/eval_lid.py<br/>compare iterations<br/>mine repeated errors"]
+        phrase_updates["Phrase-pack iteration<br/>context_biasing/phrases/*.txt<br/>keyword precision/recall/F1<br/>domain vocabulary updates"]
+    end
+
+    raw_exports --> inventory --> inventory_out --> normalize_text --> segmentation --> manifests
+    inventory_out --> diarization --> segmentation
+    diarization --> manifests
+    external_data --> mix_train
+    manifests --> mix_train --> peft --> train_artifacts --> export_model
+    export_model --> hf_cache
+    export_model --> triton
+    evals --> phrase_updates --> static_phrases
+    evals --> mix_train
+    downstream -. human review and corrections .-> raw_exports
+    smoke --> evals
+    nginx -. serving benchmark path .-> evals
+
+    %% ---------------------------
+    %% Styling
+    %% ---------------------------
+    classDef client fill:#e8f4ff,stroke:#2563eb,color:#0f172a,stroke-width:1px;
+    classDef ingress fill:#fff7ed,stroke:#f97316,color:#0f172a,stroke-width:1px;
+    classDef gateway fill:#ecfdf5,stroke:#059669,color:#0f172a,stroke-width:1px;
+    classDef worker fill:#f0f9ff,stroke:#0284c7,color:#0f172a,stroke-width:1px;
+    classDef backend fill:#f5f3ff,stroke:#7c3aed,color:#0f172a,stroke-width:1px;
+    classDef bias fill:#fdf2f8,stroke:#db2777,color:#0f172a,stroke-width:1px;
+    classDef ops fill:#f8fafc,stroke:#64748b,color:#0f172a,stroke-width:1px;
+    classDef data fill:#fefce8,stroke:#ca8a04,color:#0f172a,stroke-width:1px;
+
+    class browser,audio_client,partner,smoke,downstream client;
+    class nginx,auth ingress;
+    class gw_accept,gw_validate,gw_session_update,gw_decode,gw_apm,gw_vad,gw_speaker,gw_buffer,gw_flush,gw_worker_call,gw_emit gateway;
+    class wk_ingress,wk_headers,wk_preprocess,wk_lid,wk_audio,wk_baseline,wk_timeout,wk_eval_log,wk_response worker;
+    class backend_choice,onnx,triton_worker,triton,hf_cache backend;
+    class bias_decide,static_phrases,dynamic_context,assembler,nemo_bias,selector,bias_meta bias;
+    class compose,env,health,metrics,grafana,logs ops;
+    class raw_exports,inventory,inventory_out,normalize_text,segmentation,diarization,manifests,external_data,mix_train,peft,train_artifacts,export_model,evals,phrase_updates data;

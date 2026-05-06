@@ -3,9 +3,15 @@ services:
     environment:
       - ASR_BACKEND=${ASR_BACKEND:-triton}
       - ASR_SUPPORTED_LANGS=${ASR_SUPPORTED_LANGS:-hi,en,bn,ta,te}
-      - TRITON_URL=${TRITON_URL:-triton:8000}
+      - ASR_TRITON_PROTOCOL=${ASR_TRITON_PROTOCOL:-grpc}
+      - TRITON_URL=${TRITON_URL:-triton:8001}
       - TRITON_MODEL_NAME=${TRITON_MODEL_NAME:-indic_asr}
       - TRITON_MODEL_VERSION=${TRITON_MODEL_VERSION:-}
+      # Phase 1 native serving: route decoding="ctc" requests to the
+      # preproc + TRT encoder + ctc_decoder ensemble. Empty falls back to
+      # the python backend for both decoders.
+      - TRITON_MODEL_NAME_CTC=${TRITON_MODEL_NAME_CTC:-indic_asr_ctc}
+      - TRITON_MODEL_VERSION_CTC=${TRITON_MODEL_VERSION_CTC:-}
     depends_on:
       triton:
         condition: service_healthy
@@ -23,12 +29,18 @@ services:
       - HF_TOKEN=${HUGGINGFACE_HUB_TOKEN}
       - HF_HOME=${HF_HOME}
       - TRITON_FRAME_DURATION_MS=${TRITON_FRAME_DURATION_MS:-0.08}
+    # Bind-mount the model repo so artefacts staged at deploy time
+    # (encoder.onnx + external weights, ctc_decoder.onnx, preprocessor.ts,
+    #  optional model.plan TRT engine) live on host disk rather than baked
+    # into the image. See docs/triton_native_serving_plan.md.
+    volumes:
+      - ./triton/model_repository:/models
     ports:
       - "8100:8000"
       - "8101:8001"
       - "8102:8002"
     healthcheck:
-      test: ["CMD", "python3", "-c", "import sys, urllib.request; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/v2/health/ready').getcode() == 200 else sys.exit(1)"]
+      test: ["CMD", "python3", "-c", "import socket, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v2/health/ready', timeout=2).read(); socket.create_connection(('127.0.0.1', 8001), timeout=2).close()"]
       interval: 10s
       timeout: 5s
       retries: 18

@@ -76,9 +76,27 @@ ASR_DECODER = getenv_str("ASR_DECODER", "rnnt")
 ASR_INFERENCE_TIMEOUT_MS = getenv_int("ASR_INFERENCE_TIMEOUT_MS", 4000)
 ASR_DEFAULT_LANGUAGE = getenv_str("ASR_DEFAULT_LANGUAGE", "hi")
 ASR_SUPPORTED_LANGS = getenv_csv("ASR_SUPPORTED_LANGS")
-TRITON_URL = getenv_str("TRITON_URL", "triton:8000")
+TRITON_URL = getenv_str("TRITON_URL", "triton")
 TRITON_MODEL_NAME = getenv_str("TRITON_MODEL_NAME", "indic_asr")
 TRITON_MODEL_VERSION = getenv_str("TRITON_MODEL_VERSION", "")
+# Optional native CTC ensemble (preproc + encoder + ctc_decoder). When set, the
+# Triton worker routes `decoding=ctc` requests to this ensemble and runs the
+# language-mask + vocab decode locally; RNNT requests still use TRITON_MODEL_NAME.
+TRITON_MODEL_NAME_CTC = getenv_str("TRITON_MODEL_NAME_CTC", "")
+TRITON_MODEL_VERSION_CTC = getenv_str("TRITON_MODEL_VERSION_CTC", "")
+ASR_TRITON_CIRCUIT_BREAKER_ENABLED = getenv_bool("ASR_TRITON_CIRCUIT_BREAKER_ENABLED", True)
+ASR_TRITON_CIRCUIT_FAILURE_THRESHOLD = max(
+    1,
+    getenv_int("ASR_TRITON_CIRCUIT_FAILURE_THRESHOLD", 3),
+)
+ASR_TRITON_CIRCUIT_RECOVERY_TIMEOUT_SEC = max(
+    0.0,
+    getenv_float("ASR_TRITON_CIRCUIT_RECOVERY_TIMEOUT_SEC", 30.0),
+)
+ASR_TRITON_CIRCUIT_HALF_OPEN_SUCCESS_THRESHOLD = max(
+    1,
+    getenv_int("ASR_TRITON_CIRCUIT_HALF_OPEN_SUCCESS_THRESHOLD", 1),
+)
 ASR_ENABLE_LID = getenv_bool("ASR_ENABLE_LID", False)
 _LEGACY_LID_MODEL_SOURCE = getenv_optional_str("ASR_LID_MODEL_SOURCE")
 _LEGACY_LID_MODEL_DIR = getenv_optional_str("ASR_LID_MODEL_DIR")
@@ -141,6 +159,7 @@ ASR_CONTEXT_BIASING_TIMEOUT_MS = max(
     1,
     getenv_int("ASR_CONTEXT_BIASING_TIMEOUT_MS", ASR_INFERENCE_TIMEOUT_MS),
 )
+ASR_DEVICE = getenv_str("ASR_DEVICE", "cuda")
 ASR_CONTEXT_BIASING_DEVICE = getenv_str("ASR_CONTEXT_BIASING_DEVICE", "cuda")
 ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE = min(
     1.0,

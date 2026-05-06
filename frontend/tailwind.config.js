@@ -4,7 +4,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        white: '#f7f7f7',
+        primary: '#4f46e5',
+        'primary-hover': '#4338ca',
+        secondary: '#e2e8f0',
+        accent: '#7c3aed',
+        destructive: '#dc2626',
+        white: '#ffffff',
         purple: {
           50: '#faf5ff',
           100: '#f3e8ff',

@@ -15,8 +15,8 @@ DEFAULT_DOMAIN_TRAIN = Path(
 DEFAULT_DOMAIN_DEV = Path(
     "artifacts/indicvoices_hindi_train_mined_from_error_both/bucket_manifests/all_dev_clean_t4.jsonl"
 )
-DEFAULT_VAANI_TRAIN = Path("artifacts/vaani_hindi_20h_train/manifest.jsonl")
-DEFAULT_OUTPUT_DIR = Path("artifacts/asr_train_domain_plus_vaani20h")
+DEFAULT_VAANI_TRAIN = Path("artifacts/vaani_50h_multilingual_train/manifest.jsonl")
+DEFAULT_OUTPUT_DIR = Path("artifacts/asr_train_domain_plus_vaani50h")
 
 TEXT_KEY_CANDIDATES = ("text", "reference", "normalized_text", "transcript", "sentence")
 AUDIO_KEY_CANDIDATES = ("audio_filepath", "audio_path", "audio", "path")
@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Build a domain-weighted ASR training manifest by mixing existing in-domain "
-            "manifests with a filtered Hindi Vaani NeMo manifest."
+            "manifests with a filtered multilingual Vaani NeMo manifest."
         )
     )
     parser.add_argument("--domain-train-manifest", type=Path, default=DEFAULT_DOMAIN_TRAIN)
@@ -208,15 +208,24 @@ def interleave_sources(
 
 def summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     by_source: Counter[str] = Counter(str(row.get("mix_source", "unknown")) for row in rows)
+    by_lang: Counter[str] = Counter(str(row.get("lang", "unknown") or "unknown") for row in rows)
     duration_by_source: Counter[str] = Counter()
+    duration_by_lang: Counter[str] = Counter()
     for row in rows:
-        duration_by_source[str(row.get("mix_source", "unknown"))] += float(row.get("duration") or 0.0)
+        duration = float(row.get("duration") or 0.0)
+        duration_by_source[str(row.get("mix_source", "unknown"))] += duration
+        duration_by_lang[str(row.get("lang", "unknown") or "unknown")] += duration
     return {
         "rows": len(rows),
         "rows_by_source": dict(sorted(by_source.items())),
+        "rows_by_lang": dict(sorted(by_lang.items())),
         "duration_hours_by_source": {
             source: round(seconds / 3600.0, 6)
             for source, seconds in sorted(duration_by_source.items())
+        },
+        "duration_hours_by_lang": {
+            lang: round(seconds / 3600.0, 6)
+            for lang, seconds in sorted(duration_by_lang.items())
         },
         "duration_hours_total": round(sum(duration_by_source.values()) / 3600.0, 6),
     }

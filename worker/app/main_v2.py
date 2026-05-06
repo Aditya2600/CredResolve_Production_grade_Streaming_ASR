@@ -41,7 +41,9 @@ from .config import (
     ASR_SUPPORTED_LANGS,
     HUGGINGFACE_HUB_TOKEN,
     TRITON_MODEL_NAME,
+    TRITON_MODEL_NAME_CTC,
     TRITON_MODEL_VERSION,
+    TRITON_MODEL_VERSION_CTC,
     TRITON_URL,
     WORKER_MAX_JOBS,
 )
@@ -114,6 +116,9 @@ def build_worker_model():
             triton_url=TRITON_URL,
             triton_model_name=TRITON_MODEL_NAME,
             triton_model_version=TRITON_MODEL_VERSION,
+            triton_ctc_model_name=TRITON_MODEL_NAME_CTC,
+            triton_ctc_model_version=TRITON_MODEL_VERSION_CTC,
+            asr_asset_repo=ASR_MODEL_NAME,
             **common_kwargs,
         )
 

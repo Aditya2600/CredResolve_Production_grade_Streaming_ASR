@@ -1,0 +1,58 @@
+# IndicConformer log-mel preprocessor (TorchScript) served via Triton libtorch backend.
+#
+# Deploy step: copy `assets/preprocessor.ts` from the HF snapshot to
+# `triton/model_repository/indic_asr_preproc/1/model.pt`.
+#
+# The TorchScript module's forward signature is
+#   forward(input_signal: Tensor[FP32, B, T_samples], length: Tensor[INT64, B])
+#       -> (audio_signal: Tensor[FP32, B, 80, T_frames], length: Tensor[INT64, B])
+# Triton's pytorch backend maps inputs/outputs by positional index using the
+# INPUT__N / OUTPUT__N convention.
+
+name: "indic_asr_preproc"
+backend: "pytorch"
+max_batch_size: 0
+
+input [
+  {
+    name: "INPUT__0"
+    data_type: TYPE_FP32
+    dims: [-1, -1]
+  },
+  {
+    name: "INPUT__1"
+    data_type: TYPE_INT64
+    dims: [-1]
+  }
+]
+
+output [
+  {
+    name: "OUTPUT__0"
+    data_type: TYPE_FP32
+    dims: [-1, 80, -1]
+  },
+  {
+    name: "OUTPUT__1"
+    data_type: TYPE_INT64
+    dims: [-1]
+  }
+]
+
+# Preprocessor stays on CPU to match the python-backend behaviour and avoid
+# duplicating mel-filterbank kernels on GPU.
+instance_group [
+  {
+    kind: KIND_CPU
+    count: 2
+  }
+]
+
+parameters: {
+  key: "INFERENCE_MODE"
+  value: { string_value: "true" }
+}
+
+# Phase 1 keeps batching off until the ensemble is validated end-to-end.
+# Re-enable later once shape stability and latency are measured:
+#   dynamic_batching { preferred_batch_size: [1, 2, 4] max_queue_delay_microseconds: 1500 }

@@ -1,0 +1,2 @@
+# Ensembles have no model artefacts; this directory just satisfies Triton's
+# `<model>/<version>/` layout requirement.

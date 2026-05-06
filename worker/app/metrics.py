@@ -17,6 +17,11 @@ LID_DETECTED = Counter(
 
 # Gauges
 INFLIGHT_REQUESTS = Gauge("asr_worker_inflight_requests", "Current active worker requests")
+CIRCUIT_BREAKER_STATE = Gauge(
+    "asr_worker_circuit_breaker_state",
+    "Circuit breaker state; one series per state is set to 1 for the active state",
+    ["name", "state"],
+)
 
 # Histograms
 LAT = Histogram(
@@ -33,6 +38,22 @@ LID_LAT = Histogram(
     "asr_worker_lid_latency_seconds",
     "LID latency seconds",
     buckets=(0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5),
+)
+TRITON_INFER_LATENCY = Histogram(
+    "asr_worker_triton_infer_seconds",
+    "Triton client.infer() round-trip latency, by protocol and model",
+    ["protocol", "model"],
+    buckets=(0.005, 0.01, 0.02, 0.035, 0.05, 0.075, 0.1, 0.15, 0.25, 0.5, 1.0, 2.5),
+)
+CIRCUIT_BREAKER_CALLS = Counter(
+    "asr_worker_circuit_breaker_calls_total",
+    "Circuit breaker protected calls by observed state and result",
+    ["name", "state", "result"],
+)
+CIRCUIT_BREAKER_TRANSITIONS = Counter(
+    "asr_worker_circuit_breaker_transitions_total",
+    "Circuit breaker state transitions",
+    ["name", "from_state", "to_state", "reason"],
 )
 
 # Legacy/Unused (kept if needed or remove if safe)

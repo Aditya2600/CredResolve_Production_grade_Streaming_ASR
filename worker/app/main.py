@@ -41,8 +41,14 @@ from .config import (
     ASR_SUPPORTED_LANGS,
     HUGGINGFACE_HUB_TOKEN,
     TRITON_MODEL_NAME,
+    TRITON_MODEL_NAME_CTC,
     TRITON_MODEL_VERSION,
+    TRITON_MODEL_VERSION_CTC,
     TRITON_URL,
+    ASR_TRITON_CIRCUIT_BREAKER_ENABLED,
+    ASR_TRITON_CIRCUIT_FAILURE_THRESHOLD,
+    ASR_TRITON_CIRCUIT_HALF_OPEN_SUCCESS_THRESHOLD,
+    ASR_TRITON_CIRCUIT_RECOVERY_TIMEOUT_SEC,
     WORKER_MAX_JOBS,
 )
 from .context_biasing import (
@@ -111,6 +117,13 @@ def build_worker_model():
             triton_url=TRITON_URL,
             triton_model_name=TRITON_MODEL_NAME,
             triton_model_version=TRITON_MODEL_VERSION,
+            triton_ctc_model_name=TRITON_MODEL_NAME_CTC,
+            triton_ctc_model_version=TRITON_MODEL_VERSION_CTC,
+            asr_asset_repo=ASR_MODEL_NAME,
+            triton_circuit_breaker_enabled=ASR_TRITON_CIRCUIT_BREAKER_ENABLED,
+            triton_circuit_failure_threshold=ASR_TRITON_CIRCUIT_FAILURE_THRESHOLD,
+            triton_circuit_recovery_timeout_sec=ASR_TRITON_CIRCUIT_RECOVERY_TIMEOUT_SEC,
+            triton_circuit_half_open_success_threshold=ASR_TRITON_CIRCUIT_HALF_OPEN_SUCCESS_THRESHOLD,
             **common_kwargs,
         )
 
@@ -588,7 +601,7 @@ async def maybe_apply_context_biasing(
 @app.on_event("startup")
 async def startup_event():
     log.info(
-        "Worker startup backend=%s model=%s triton_model=%s triton_url=%s decoder=%s default_language=%s lid_enabled=%s lid_primary_provider=%s lid_primary_source=%s lid_fallback_provider=%s lid_fallback_source=%s lid_confidence_threshold=%.2f timeout_ms=%s max_jobs=%s context_biasing_mode=%s context_biasing_method=%s context_biasing_phrases_dir=%s context_biasing_dynamic_max_phrases=%s",
+        "Worker startup backend=%s model=%s triton_model=%s triton_url=%s decoder=%s default_language=%s lid_enabled=%s lid_primary_provider=%s lid_primary_source=%s lid_fallback_provider=%s lid_fallback_source=%s lid_confidence_threshold=%.2f timeout_ms=%s max_jobs=%s triton_circuit_breaker_enabled=%s triton_circuit_failure_threshold=%s triton_circuit_recovery_timeout_sec=%s triton_circuit_half_open_success_threshold=%s context_biasing_mode=%s context_biasing_method=%s context_biasing_phrases_dir=%s context_biasing_dynamic_max_phrases=%s",
         ASR_BACKEND,
         ASR_MODEL_NAME or "-",
         TRITON_MODEL_NAME,
@@ -603,6 +616,10 @@ async def startup_event():
         ASR_LID_CONFIDENCE_THRESHOLD,
         ASR_INFERENCE_TIMEOUT_MS,
         WORKER_MAX_JOBS,
+        ASR_TRITON_CIRCUIT_BREAKER_ENABLED,
+        ASR_TRITON_CIRCUIT_FAILURE_THRESHOLD,
+        ASR_TRITON_CIRCUIT_RECOVERY_TIMEOUT_SEC,
+        ASR_TRITON_CIRCUIT_HALF_OPEN_SUCCESS_THRESHOLD,
         ASR_CONTEXT_BIASING_MODE,
         ASR_CONTEXT_BIASING_METHOD,
         ASR_CONTEXT_BIASING_PHRASES_DIR or "-",
