@@ -82,7 +82,7 @@ from .model import (
     ONNXIndicASRWorker,
     UnsupportedLanguageError,
 )
-from .audio_processing import AudioPreprocessor
+from .audio_processing import get_audio_preprocessor
 from .triton import TritonIndicASRWorker
 
 setup_logging()
@@ -156,9 +156,6 @@ model = build_worker_model()
 context_biasing = build_context_biasing_runtime()
 
 
-@lru_cache(maxsize=1)
-def get_audio_preprocessor() -> AudioPreprocessor:
-    return AudioPreprocessor()
 sem = asyncio.Semaphore(WORKER_MAX_JOBS)
 
 

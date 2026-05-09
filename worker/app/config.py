@@ -181,3 +181,16 @@ LOG_LEVEL = getenv_str("LOG_LEVEL", "INFO")
 EVAL_LOGS_ENABLED = getenv_bool("EVAL_LOGS_ENABLED", False)
 EVAL_LOG_SAMPLE_RATE = min(1.0, max(0.0, getenv_float("EVAL_LOG_SAMPLE_RATE", 1.0)))
 EVAL_LOG_TEXT_PREVIEW_CHARS = max(0, getenv_int("EVAL_LOG_TEXT_PREVIEW_CHARS", 16))
+
+_VALID_VAD_SELECT_MODES = {"concat", "loudest"}
+_raw_vad_select_mode = getenv_str("VAD_SELECT_MODE", "concat").lower()
+VAD_SELECT_MODE = _raw_vad_select_mode if _raw_vad_select_mode in _VALID_VAD_SELECT_MODES else "concat"
+VAD_CONCAT_PADDING_MS = max(0, getenv_int("VAD_CONCAT_PADDING_MS", 100))
+
+# Denoiser selection. DeepFilterNet3 is the default after the eval in
+# docs/audio/denoiser-eval.md (8pp absolute WER improvement, lower p95 latency
+# than RNNoise on the VAANI fixture). RNNoise stays available for one release
+# as a fallback via DENOISER=rnnoise.
+_VALID_DENOISERS = {"rnnoise", "deepfilternet"}
+_raw_denoiser = getenv_str("DENOISER", "deepfilternet").lower()
+DENOISER = _raw_denoiser if _raw_denoiser in _VALID_DENOISERS else "deepfilternet"

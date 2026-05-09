@@ -2,6 +2,7 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 numpy==1.26.4
 pandas
+soundfile
 torch==2.4.1
 torchaudio==2.4.1
 onnxruntime-gpu==1.20.1
@@ -12,3 +13,9 @@ tqdm==4.66.5
 prometheus-client==0.20.0
 orjson==3.10.7
 tritonclient[grpc,http]>=2.54,<2.67
+websockets
+pyrnnoise==0.4.3
+soxr>=0.3.7
+# Default denoiser; see docs/audio/denoiser-eval.md.
+# RNNoise (pyrnnoise) is kept above as a one-release fallback (DENOISER=rnnoise).
+deepfilternet>=0.5.6

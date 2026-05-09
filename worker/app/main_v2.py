@@ -79,17 +79,13 @@ from .model import (
     UnsupportedLanguageError,
 )
 from .triton import TritonIndicASRWorker
-from .audio_processing import AudioPreprocessor
+from .audio_processing import get_audio_preprocessor
 
 setup_logging()
 log = logging.getLogger("worker")
 
 app = FastAPI()
 VALID_TIMESTAMP_TYPES = frozenset({"none", "word"})
-
-# Initialize Preprocessor
-preprocessor = AudioPreprocessor()
-
 
 def build_worker_model():
     common_kwargs = dict(
@@ -676,7 +672,7 @@ async def transcribe(
             t_pre_0 = time.time()
             sample_rate = int(x_sample_rate)
             original_len = len(pcm)
-            pcm = preprocessor.process(pcm, sample_rate, vad_enabled=vad_on, denoise_enabled=denoise_on)
+            pcm = get_audio_preprocessor().process(pcm, sample_rate, vad_enabled=vad_on, denoise_enabled=denoise_on)
             processed_len = len(pcm)
             log.info("Audio preprocessing completed: original=%s bytes, processed=%s bytes in %sms (vad=%s, denoise=%s)", 
                      original_len, processed_len, int((time.time() - t_pre_0)*1000), vad_on, denoise_on)
