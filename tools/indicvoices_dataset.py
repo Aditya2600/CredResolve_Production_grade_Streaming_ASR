@@ -7,7 +7,7 @@ from typing import Iterable
 
 INDICVOICES_DATASET_ID = "ai4bharat/IndicVoices"
 VAANI_DATASET_ID = "ARTPARK-IISc/Vaani-transcription-part"
-VAANI_HINDI_CONFIG = "Hindi"
+VAANI_HINDI_CONFIG = "audio/Hindi"
 
 # Backward-compatible name used by existing tools.
 DATASET_ID = INDICVOICES_DATASET_ID

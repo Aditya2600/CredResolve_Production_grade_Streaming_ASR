@@ -1,0 +1,35 @@
+# One-off override for running the audio_bench baseline regeneration
+# inside the worker container (which has torchaudio + Silero VAD +
+# tritonclient available, unlike the host .venv-tests).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.triton.yml \
+#       -f tests/fixtures/audio_bench/docker-compose.bench.yml \
+#       up -d triton worker
+#   docker compose -f docker-compose.yml -f docker-compose.triton.yml \
+#       -f tests/fixtures/audio_bench/docker-compose.bench.yml \
+#       exec -T worker bash -lc \
+#       'PYTHONPATH=/repo python /repo/tests/fixtures/audio_bench/regenerate_baseline.py --iterations 20'
+#
+# After: baseline.csv + baseline.json appear under
+# tests/fixtures/audio_bench/baseline/ on the host (because /repo is the
+# bind-mount).
+services:
+  triton:
+    # The working tree can contain Phase 2 RNNT BLS model directories whose
+    # ONNX artifacts are staged later. Load only the Phase 1 serving graph used
+    # by this benchmark so placeholder artifacts cannot keep Triton unhealthy.
+    command:
+      - tritonserver
+      - --model-repository=/models
+      - --model-control-mode=explicit
+      - --load-model=indic_asr_preproc
+      - --load-model=indic_asr_encoder
+      - --load-model=indic_asr_ctc_decoder
+      - --load-model=indic_asr_ctc
+      - --load-model=indic_asr
+      - --strict-readiness=true
+
+  worker:
+    volumes:
+      - ./:/repo

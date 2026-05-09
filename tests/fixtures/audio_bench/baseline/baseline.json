@@ -1,0 +1,71 @@
+{
+  "fixtures": {
+    "01_iisc_vaaniproject_m_biha.wav": {
+      "denoise_p50_ms": 90.831,
+      "denoise_p95_ms": 132.904,
+      "duration_s": 2.24,
+      "n_iterations": 20,
+      "n_segments_mean": 1,
+      "output_duration_ratio": 0.9705,
+      "stt_p50_ms": 36.398,
+      "stt_p95_ms": 40.5,
+      "total_p50_ms": 118.861,
+      "total_p95_ms": 163.355,
+      "vad_p50_ms": 27.893,
+      "vad_p95_ms": 31.046,
+      "wer_mean": 0.0,
+      "wer_n": 20
+    },
+    "02_iisc_vaaniproject_m_biha.wav": {
+      "denoise_p50_ms": 85.096,
+      "denoise_p95_ms": 87.152,
+      "duration_s": 2.12,
+      "n_iterations": 20,
+      "n_segments_mean": 1,
+      "output_duration_ratio": 0.9689,
+      "stt_p50_ms": 35.825,
+      "stt_p95_ms": 37.726,
+      "total_p50_ms": 111.899,
+      "total_p95_ms": 114.231,
+      "vad_p50_ms": 26.656,
+      "vad_p95_ms": 27.22,
+      "wer_mean": 0.0,
+      "wer_n": 20
+    },
+    "03_iisc_vaaniproject_k_utta.wav": {
+      "denoise_p50_ms": 159.506,
+      "denoise_p95_ms": 162.442,
+      "duration_s": 3.966,
+      "n_iterations": 20,
+      "n_segments_mean": 1,
+      "output_duration_ratio": 0.9995,
+      "stt_p50_ms": 60.1,
+      "stt_p95_ms": 81.787,
+      "total_p50_ms": 208.178,
+      "total_p95_ms": 212.914,
+      "vad_p50_ms": 48.604,
+      "vad_p95_ms": 50.201,
+      "wer_mean": 0.4545,
+      "wer_n": 20
+    },
+    "04_iisc_vaaniproject_k_jhar.wav": {
+      "denoise_p50_ms": 126.53,
+      "denoise_p95_ms": 132.399,
+      "duration_s": 3.158,
+      "n_iterations": 20,
+      "n_segments_mean": 1,
+      "output_duration_ratio": 0.9994,
+      "stt_p50_ms": 52.114,
+      "stt_p95_ms": 53.988,
+      "total_p50_ms": 165.805,
+      "total_p95_ms": 174.326,
+      "vad_p50_ms": 39.102,
+      "vad_p95_ms": 41.853,
+      "wer_mean": 0.1667,
+      "wer_n": 20
+    }
+  },
+  "iterations_per_fixture": 20,
+  "schema_version": 1,
+  "stt_enabled": true
+}

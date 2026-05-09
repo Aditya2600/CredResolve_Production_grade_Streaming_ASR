@@ -194,11 +194,11 @@ Relevant file:
 
 - `gateway/app/main.py`
 
-### 4. APM and speaker verification are stubbed
+### 4. Speaker verification backend is stubbed
 
-- Audio processing backend is still TODO.
+- Gateway-side audio processing is intentionally a pass-through; noise suppression / AGC live in the worker `AudioPreprocessor` (denoise + RNNoise) and at the browser capture point (`getUserMedia` constraints). The gateway does **not** run a WebRTC APM. See [docs/audio/apm-decision.md](audio/apm-decision.md) and the end-to-end [noise-cancellation deep dive](audio/noise-cancellation-deep-dive.md).
 - External speaker embedding backend is still TODO / not implemented.
-- These features should not be marketed as production-ready until the real backends exist and are load-tested.
+- Speaker verification should not be marketed as production-ready until the real backend exists and is load-tested.
 
 Relevant file:
 

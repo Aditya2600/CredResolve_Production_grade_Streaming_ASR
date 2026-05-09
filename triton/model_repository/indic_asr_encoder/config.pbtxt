@@ -1,4 +1,4 @@
-# IndicConformer encoder served as a native TensorRT engine.
+# IndicConformer encoder served through ONNX Runtime.
 #
 # The model.plan is built inside the Triton+TRT container against the actual
 # production GPU (Tesla T4 / SM 7.5 in this deploy) with:
@@ -10,16 +10,17 @@
 #     --memPoolSize=workspace:4096 \
 #     --saveEngine=/models/indic_asr_encoder/1/model.plan
 #
-# To roll back to the ORT CUDA EP baseline, switch `backend` to "onnxruntime"
-# and `default_model_filename` to "model.onnx" — both files coexist in 1/.
+# To enable the native TensorRT engine after a WER parity pass, switch
+# `backend` to "tensorrt" and `default_model_filename` to "model.plan" — both
+# files coexist in 1/.
 #
 # Encoder ONNX + external weight blobs (`layers.*`, `Constant_*`, `onnx__*`,
 # `pre*`) must remain alongside model.plan — Triton TRT backend will pick the
 # .plan, but a future re-build of the engine reads from model.onnx.
 
 name: "indic_asr_encoder"
-backend: "tensorrt"
-default_model_filename: "model.plan"
+backend: "onnxruntime"
+default_model_filename: "model.onnx"
 max_batch_size: 0
 
 input [

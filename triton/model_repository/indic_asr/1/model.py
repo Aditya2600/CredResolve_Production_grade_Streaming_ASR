@@ -4,6 +4,8 @@ import importlib.util
 import json
 import logging
 import os
+import random
+import time
 from pathlib import Path
 
 from huggingface_hub import snapshot_download
@@ -12,6 +14,68 @@ import torch
 import triton_python_backend_utils as pb_utils
 
 LOG = logging.getLogger("triton.indic_asr")
+
+
+class _StageTimer:
+    """Lightweight per-stage wall-time accumulator for the RNNT/CTC pipeline.
+
+    Phase-2 decision support: lets us see whether encoder forward dominates
+    end-to-end latency. If it does, decomposing the python backend into a BLS
+    orchestrator that reuses the TRT encoder is worth the complexity. If it
+    doesn't, the decode loop itself is the bottleneck and BLS won't help.
+
+    Side-channel attributes (`num_frames`, `num_tokens`) are populated by the
+    instrumented model during execution and read back by the caller for the
+    report line.
+    """
+
+    def __init__(self, sync_cuda: bool = True):
+        self.stages: dict[str, float] = {}
+        self._t0: float | None = None
+        self._cur: str | None = None
+        self._sync = sync_cuda and torch.cuda.is_available()
+        self._wall_t0 = time.perf_counter()
+        self.num_frames = 0
+        self.num_tokens = 0
+
+    def start(self, name: str) -> None:
+        try:
+            if self._sync:
+                torch.cuda.synchronize()
+            self._t0 = time.perf_counter()
+            self._cur = name
+        except Exception:
+            self._cur = None
+
+    def stop(self) -> None:
+        try:
+            if self._cur is None or self._t0 is None:
+                return
+            if self._sync:
+                torch.cuda.synchronize()
+            elapsed_ms = (time.perf_counter() - self._t0) * 1000.0
+            self.stages[self._cur] = self.stages.get(self._cur, 0.0) + elapsed_ms
+        except Exception:
+            pass
+        finally:
+            self._cur = None
+            self._t0 = None
+
+    def report(self, audio_len_sec: float, num_frames: int, num_tokens: int, lang: str) -> str:
+        try:
+            if self._sync:
+                torch.cuda.synchronize()
+            total = (time.perf_counter() - self._wall_t0) * 1000.0
+            denom = total or 1e-9
+            parts = " | ".join(
+                f"{k}={v:.1f}ms ({100.0 * v / denom:.0f}%)" for k, v in self.stages.items()
+            )
+            return (
+                f"timing audio={audio_len_sec:.2f}s frames={num_frames} "
+                f"tokens={num_tokens} lang={lang} total={total:.1f}ms | {parts}"
+            )
+        except Exception as exc:
+            return f"timing report failed: {exc}"
 
 
 def _decode_string_tensor(tensor, default: str = "") -> str:
@@ -62,6 +126,13 @@ class TritonPythonModel:
         self.model_name = (os.environ.get("ASR_MODEL_NAME") or "").strip()
         if not self.model_name:
             raise RuntimeError("ASR_MODEL_NAME is required for Triton ASR serving")
+
+        try:
+            self._timing_sample_rate = int(os.environ.get("ASR_TIMING_SAMPLE_RATE", "10"))
+        except ValueError:
+            self._timing_sample_rate = 10
+        self._timing_sync_cuda = os.environ.get("ASR_TIMING_CUDA_SYNC", "1") == "1"
+        self._sample_rate_hz = int(os.environ.get("ASR_SAMPLE_RATE_HZ", "16000") or "16000")
 
         self.hf_token = (
             (os.environ.get("HUGGINGFACE_HUB_TOKEN") or "").strip()
@@ -119,8 +190,32 @@ class TritonPythonModel:
                 model_kwargs = {"decoding": decoder}
                 if compute_timestamps:
                     model_kwargs["compute_timestamps"] = compute_timestamps
+
+                timer = None
+                if self._timing_sample_rate > 0 and random.randint(1, self._timing_sample_rate) == 1:
+                    try:
+                        timer = _StageTimer(sync_cuda=self._timing_sync_cuda)
+                        model_kwargs["_timer"] = timer
+                    except Exception as exc:
+                        LOG.warning("timing instrumentation failed to init: %s", exc)
+                        timer = None
+
                 with torch.inference_mode():
                     out = self.model(wav_t, language, **model_kwargs)
+
+                if timer is not None:
+                    try:
+                        audio_len_sec = float(wav_t.shape[-1]) / float(self._sample_rate_hz)
+                        LOG.info(
+                            timer.report(
+                                audio_len_sec=audio_len_sec,
+                                num_frames=int(timer.num_frames),
+                                num_tokens=int(timer.num_tokens),
+                                lang=language,
+                            )
+                        )
+                    except Exception as exc:
+                        LOG.warning("timing instrumentation failed to log: %s", exc)
 
                 raw_timestamps = []
                 if isinstance(out, tuple):

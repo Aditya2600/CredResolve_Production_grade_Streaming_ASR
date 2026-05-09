@@ -1,4 +1,4 @@
-# locales.yaml — per-language locale and script policy.
+# locales.yaml — per-language and per-tenant locale policy.
 #
 # `script` follows ISO 15924. `numbering_systems` lists CLDR numbering
 # system identifiers (see CLDR `numberingSystems` data); the first entry
@@ -11,6 +11,15 @@
 #
 # `currency` is the default ISO 4217 code assumed when an amount carries
 # only a generic currency cue (e.g. "rupees" in an Indian-locale call).
+#
+# Tenant policy:
+#
+# `tenants` maps tenant identifiers to per-tenant locale overrides.
+# `defaults.tenant` is the policy used when no tenant id is supplied or
+# when an unknown tenant id is requested. Per-tenant `date_order`
+# overrides the language default; this is the knob that decides whether
+# the numeric-date branch of the date grammar is allowed to fire on a
+# given call (see grammars/hi/date.py and runtime/locale_policy.py).
 
 version: "0.0.0"
 
@@ -20,6 +29,7 @@ defaults:
   decimal_separator: "."
   group_separator: ","
   group_style: "indian"        # 1,25,000 grouping for Indic locales
+  tenant: "default"            # fallback tenant id when none is supplied
 
 locales:
   hi:
@@ -92,3 +102,30 @@ locales:
     date_order: "DMY"
     currency: "INR"
     bidi: true                # right-to-left UI; do not inject bidi controls into stored text
+
+# Per-tenant overrides. The ITN runtime resolves a tenant policy by
+# tenant id; a missing id falls back to `defaults.tenant` (== "default").
+# Add new tenants here rather than threading policy through code.
+tenants:
+  # Default tenant: India, day-first.
+  default:
+    region: "IN"
+    date_order: "DMY"
+    currency: "INR"
+
+  # Concrete tenants below illustrate how regional policy is set.
+  # The names are placeholders; add real tenants and rename as needed.
+  acme_in:
+    region: "IN"
+    date_order: "DMY"
+    currency: "INR"
+
+  acme_us:
+    region: "US"
+    date_order: "MDY"
+    currency: "USD"
+
+  acme_iso:
+    region: "ZZ"
+    date_order: "YMD"
+    currency: "USD"

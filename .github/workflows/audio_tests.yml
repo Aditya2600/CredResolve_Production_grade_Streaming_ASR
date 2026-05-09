@@ -1,0 +1,114 @@
+name: audio tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "worker/app/audio_processing.py"
+      - "worker/app/_audio_ops.py"
+      - "worker/tests/test_audio_characterization.py"
+      - "worker/requirements.txt"
+      - "tests/test_resample_equivalence.py"
+      - "tests/test_audio_bench_baseline_schema.py"
+      - "tests/regenerate_golden_audio.py"
+      - "tests/golden/audio_processing/**"
+      - "tests/fixtures/audio_bench/baseline/baseline.json"
+      - "tools/benchmarks/audio_bench.py"
+      - "requirements-dev.txt"
+      - ".github/workflows/audio_tests.yml"
+  pull_request:
+    paths:
+      - "worker/app/audio_processing.py"
+      - "worker/app/_audio_ops.py"
+      - "worker/tests/test_audio_characterization.py"
+      - "worker/requirements.txt"
+      - "tests/test_resample_equivalence.py"
+      - "tests/test_audio_bench_baseline_schema.py"
+      - "tests/regenerate_golden_audio.py"
+      - "tests/golden/audio_processing/**"
+      - "tests/fixtures/audio_bench/baseline/baseline.json"
+      - "tools/benchmarks/audio_bench.py"
+      - "requirements-dev.txt"
+      - ".github/workflows/audio_tests.yml"
+  workflow_dispatch:
+
+jobs:
+  equivalence-and-schema:
+    name: equivalence + baseline schema (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      # Lean dependency set: equivalence test needs numpy + soxr + audioop
+      # (stdlib on 3.12, audioop-lts shim on 3.13). The schema test needs
+      # only stdlib + pytest. Avoids pulling worker/requirements.txt, which
+      # carries onnxruntime-gpu and other GPU-only wheels.
+      - name: Install lean test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "pytest>=8" \
+            "numpy>=1.26" \
+            "soxr>=0.3.7"
+          if [ "${{ matrix.python-version }}" = "3.13" ]; then
+            python -m pip install "audioop-lts"
+          fi
+
+      - name: Equivalence tests (audioop vs soxr)
+        run: pytest -m equivalence -v tests/test_resample_equivalence.py
+
+      - name: baseline.json schema tests
+        run: pytest -v tests/test_audio_bench_baseline_schema.py
+
+  characterization:
+    name: characterization (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      # Characterization needs the real Silero VAD (torch.hub) and a real
+      # RNNoise binding. We install a CPU-only subset of worker deps —
+      # onnxruntime-gpu is excluded because the runner has no CUDA, and
+      # speechbrain/transformers aren't reachable from process_with_stats().
+      - name: Install characterization deps (CPU-only)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "pytest>=8" \
+            "numpy>=1.26" \
+            "soxr>=0.3.7" \
+            "torch==2.4.1" "torchaudio==2.4.1" \
+            "pyrnnoise==0.4.3" \
+            "prometheus-client==0.20.0"
+          if [ "${{ matrix.python-version }}" = "3.13" ]; then
+            python -m pip install "audioop-lts"
+          fi
+
+      - name: Pre-cache Silero VAD (torch.hub)
+        run: |
+          python -c "import torch; torch.hub.load('snakers4/silero-vad', 'silero_vad', force_reload=False)"
+
+      - name: Characterization tests
+        run: pytest -m characterization -v worker/tests/test_audio_characterization.py

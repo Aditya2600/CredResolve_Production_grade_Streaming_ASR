@@ -32,6 +32,16 @@ _LANGUAGE_REGISTRY: dict[str, list[tuple[str, list[str]]]] = {
     "hi": [
         ("itn_service.grammars.hi.cardinal", ["CARDINAL", "CARDINAL_CLASSIFIER"]),
         ("itn_service.grammars.hi.decimal", ["DECIMAL", "DECIMAL_CLASSIFIER"]),
+        ("itn_service.grammars.hi.money", ["MONEY", "MONEY_CLASSIFIER"]),
+        ("itn_service.grammars.hi.percent", ["PERCENT", "PERCENT_CLASSIFIER"]),
+        # Date exposes three FAR entries: the always-safe month-word
+        # branch, the DMY-only numeric branch, and the union the runtime
+        # uses for DMY tenants. The classifier wraps the union.
+        (
+            "itn_service.grammars.hi.date",
+            ["DATE", "DATE_MONTHWORD", "DATE_NUMERIC", "DATE_CLASSIFIER"],
+        ),
+        ("itn_service.grammars.hi.time", ["TIME", "TIME_CLASSIFIER"]),
     ],
 }
 

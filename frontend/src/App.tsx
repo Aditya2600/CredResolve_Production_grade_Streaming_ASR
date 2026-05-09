@@ -88,7 +88,6 @@ function App() {
   const baseWsUrl = import.meta.env.VITE_WS_URL || DEFAULT_WS_URL;
   const [language, setLanguage] = useState<string>(DEFAULT_LANGUAGE);
   const [audioProcessing, setAudioProcessing] = useState<AudioProcessingSettings>({
-    apmEnabled: false,
     vadEnabled: false,
     denoiseEnabled: false,
   });

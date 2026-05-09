@@ -29,6 +29,8 @@ services:
       - HF_TOKEN=${HUGGINGFACE_HUB_TOKEN}
       - HF_HOME=${HF_HOME}
       - TRITON_FRAME_DURATION_MS=${TRITON_FRAME_DURATION_MS:-0.08}
+      - ASR_TIMING_SAMPLE_RATE=1
+      - ASR_TIMING_CUDA_SYNC=1
     # Bind-mount the model repo so artefacts staged at deploy time
     # (encoder.onnx + external weights, ctc_decoder.onnx, preprocessor.ts,
     #  optional model.plan TRT engine) live on host disk rather than baked

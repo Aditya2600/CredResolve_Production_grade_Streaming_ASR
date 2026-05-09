@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from gateway.app.speaker_backends import DebugFixedSimilaritySpeakerEmbedder
 
@@ -11,4 +12,4 @@ def test_debug_fixed_similarity_embedder_returns_requested_cosine_shape():
     similarity = float(np.dot(embedding, enrolled) / np.linalg.norm(embedding))
 
     assert embedding.shape == (2,)
-    assert similarity == 0.95
+    assert similarity == pytest.approx(0.95)

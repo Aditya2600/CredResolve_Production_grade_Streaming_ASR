@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import importlib
 import importlib.util
 import json
 import os
@@ -27,7 +26,6 @@ try:
 except ImportError:  # pragma: no cover
     from tools.compute_wer import edit_distance, normalize
 
-from gateway.app.apm import APMConfig, NoOpAudioProcessor, WebRTCAudioProcessor
 from tools.asr_text_normalizer import normalize_asr_text
 from worker.app.audio_processing import AudioPreprocessor
 from worker.app.context_biasing import (
@@ -89,8 +87,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-summary-json", type=Path)
     parser.add_argument("--top-errors", type=int, default=20)
     parser.add_argument("--denoise", action="store_true")
-    parser.add_argument("--apm", action="store_true")
-    parser.add_argument("--apm-backend")
     parser.add_argument("--processed-audio-dir", type=Path)
     parser.add_argument("--context-biasing-mode", choices=("disabled", "shadow", "active"), default="disabled")
     parser.add_argument("--context-biasing-source", default=env_default("ASR_CONTEXT_BIASING_NEMO_SOURCE", ""))
@@ -199,46 +195,12 @@ def read_pcm16_mono(path: str | Path, *, sample_rate: int = 16000) -> tuple[byte
     return float_to_pcm16(audio), sample_rate
 
 
-def load_apm_backend(spec: str | None) -> Any | None:
-    if not spec:
-        return None
-    module_name, sep, attr = spec.partition(":")
-    if not sep:
-        raise SystemExit("--apm-backend must use module.path:ClassName format")
-    return getattr(importlib.import_module(module_name), attr)()
-
-
-def build_apm_processor(enabled: bool, backend_spec: str | None):
-    if not enabled:
-        return None, "disabled"
-    config = APMConfig(enabled=True)
-    backend = load_apm_backend(backend_spec)
-    if backend is None:
-        return NoOpAudioProcessor(config), "noop"
-    return WebRTCAudioProcessor(config, backend), backend_spec or type(backend).__name__
-
-
-def process_pcm_with_apm(pcm16le: bytes, processor) -> bytes:
-    if processor is None or not pcm16le:
-        return pcm16le
-    frame_bytes = int(processor.frame_bytes)
-    full_bytes = (len(pcm16le) // frame_bytes) * frame_bytes
-    processed = bytearray()
-    for start in range(0, full_bytes, frame_bytes):
-        processed.extend(processor.process_frame(pcm16le[start : start + frame_bytes]))
-    processed.extend(pcm16le[full_bytes:])
-    return bytes(processed)
-
-
 def preprocess_audio_paths(
     audio_paths: list[str],
     *,
     denoise: bool,
-    apm: bool,
-    apm_backend: str | None,
     processed_audio_dir: Path | None,
 ) -> tuple[list[bytes], list[str], dict[str, Any]]:
-    apm_processor, apm_backend_name = build_apm_processor(apm, apm_backend)
     denoiser = AudioPreprocessor() if denoise else None
     output_dir = processed_audio_dir.expanduser().resolve() if processed_audio_dir else None
     if output_dir:
@@ -248,7 +210,6 @@ def preprocess_audio_paths(
     effective_paths: list[str] = []
     for index, audio_path in enumerate(audio_paths):
         pcm16le, sample_rate = read_pcm16_mono(audio_path, sample_rate=16000)
-        pcm16le = process_pcm_with_apm(pcm16le, apm_processor)
         if denoiser is not None:
             pcm16le = denoiser.process(pcm16le, sample_rate, vad_enabled=False, denoise_enabled=True)
         pcm_rows.append(pcm16le)
@@ -259,11 +220,7 @@ def preprocess_audio_paths(
         else:
             effective_paths.append(audio_path)
 
-    metadata = {
-        "denoise": bool(denoise),
-        "apm": bool(apm),
-        "apm_backend": apm_backend_name,
-    }
+    metadata: dict[str, Any] = {"denoise": bool(denoise)}
     if output_dir:
         metadata["processed_audio_dir"] = str(output_dir)
     return pcm_rows, effective_paths, metadata
@@ -453,8 +410,6 @@ def main() -> int:
     pcm_rows, effective_audio_paths, preprocessing_metadata = preprocess_audio_paths(
         original_audio_paths,
         denoise=bool(args.denoise),
-        apm=bool(args.apm),
-        apm_backend=args.apm_backend,
         processed_audio_dir=args.processed_audio_dir,
     )
 

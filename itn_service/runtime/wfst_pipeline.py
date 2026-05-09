@@ -12,12 +12,18 @@ Typical use::
     pipe.normalize_span("एक सौ पच्चीस", "cardinal")  # -> "125"
     pipe.normalize_span("बारह दशमलव पाँच", "decimal") # -> "12.5"
     pipe.normalize_span("नमस्ते", "cardinal")          # -> None (no parse)
+
+Date-class spans go through the policy-aware ``normalize_date`` helper
+because purely numeric forms are tenant-locale-sensitive. See
+``runtime/locale_policy.py`` and the implementation blueprint's
+"Date ambiguity deserves a hard policy" section.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
-from typing import Final
+from typing import Final, NamedTuple
 
 import pynini
 
@@ -31,11 +37,25 @@ import pynini
 _BARE_FST_NAME: Final[dict[str, str]] = {
     "cardinal": "CARDINAL",
     "decimal": "DECIMAL",
+    "money": "MONEY",
+    "percent": "PERCENT",
+    # Date has three callable surfaces: the safe always-on month-word
+    # branch, the DMY-only numeric branch, and the union (used when
+    # locale_policy.date_order == "DMY"). See ``normalize_date`` for
+    # the policy-aware entry point that picks between them.
+    "date": "DATE",
+    "date_monthword": "DATE_MONTHWORD",
+    "date_numeric": "DATE_NUMERIC",
+    "time": "TIME",
 }
 
 _CLASSIFIER_FST_NAME: Final[dict[str, str]] = {
     "cardinal": "CARDINAL_CLASSIFIER",
     "decimal": "DECIMAL_CLASSIFIER",
+    "money": "MONEY_CLASSIFIER",
+    "percent": "PERCENT_CLASSIFIER",
+    "date": "DATE_CLASSIFIER",
+    "time": "TIME_CLASSIFIER",
 }
 
 
@@ -132,6 +152,57 @@ class WFSTPipeline:
             ) from e
         return _try_compose(raw, fst)
 
+    def normalize_date(
+        self, raw: str, *, date_order: str,
+    ) -> "DateNormalizationResult":
+        """Policy-aware date normalisation.
+
+        The month-word branch is always safe; the numeric branch is
+        only fired when ``date_order == "DMY"`` because purely numeric
+        ``12/05/2026`` is ambiguous between day-first and month-first
+        readings. Tenants whose policy is not ``DMY`` get a structured
+        rejection (``fallback_reason="ambiguous_numeric_date"``) on
+        any numeric-shaped input that the month-word branch cannot
+        already handle.
+
+        Args:
+            raw: span text.
+            date_order: ``"DMY"``, ``"MDY"``, or ``"YMD"`` from the
+                tenant's :class:`~runtime.locale_policy.TenantPolicy`.
+
+        Returns:
+            :class:`DateNormalizationResult`. ``canonical`` is the
+            ``DD/MM/YYYY`` (or ``DD/MM`` when year is omitted) form on
+            success; ``fallback_reason`` is populated on rejection.
+        """
+        # Always try the safe month-word branch first.
+        month_word = _try_compose(raw, self._bare["date_monthword"])
+        if month_word is not None:
+            return DateNormalizationResult(
+                canonical=month_word, fallback_reason=None,
+            )
+
+        # Numeric branch — gated by tenant policy.
+        if date_order == "DMY":
+            numeric = _try_compose(raw, self._bare["date_numeric"])
+            if numeric is not None:
+                return DateNormalizationResult(
+                    canonical=numeric, fallback_reason=None,
+                )
+            return DateNormalizationResult(
+                canonical=None, fallback_reason=None,
+            )
+
+        # Non-DMY tenant: refuse to auto-resolve a numeric-shape date.
+        if _AMBIGUOUS_NUMERIC_DATE_RE.match(raw):
+            return DateNormalizationResult(
+                canonical=None,
+                fallback_reason="ambiguous_numeric_date",
+            )
+
+        # Not a recognisable date at all.
+        return DateNormalizationResult(canonical=None, fallback_reason=None)
+
     def classify_span(self, raw: str, cls: str) -> str | None:
         """Like :meth:`normalize_span` but returns the NeMo-tagged form
         ``cls { value: "..." }`` directly, for callers that want to
@@ -178,4 +249,27 @@ def _try_compose(raw: str, fst: pynini.Fst) -> str | None:
         return None
 
 
-__all__ = ["WFSTPipeline"]
+class DateNormalizationResult(NamedTuple):
+    """Outcome of :meth:`WFSTPipeline.normalize_date`.
+
+    ``canonical`` is the canonical ``DD/MM/YYYY`` (or ``DD/MM``) form
+    on success. ``fallback_reason`` is ``"ambiguous_numeric_date"``
+    when a non-DMY tenant supplied a numeric-shape date the grammar
+    refused to auto-resolve. Both ``None`` means the span was not a
+    recognisable date at all (caller should defer / try another class).
+    """
+
+    canonical: str | None
+    fallback_reason: str | None
+
+
+# Catch any ``d{1,4}[/-.]d{1,2}[/-.]d{1,4}`` shape so we can attach the
+# ``ambiguous_numeric_date`` reason for non-DMY tenants. Kept lenient
+# on the year side (1- or 4-digit) because that's what we see in
+# real call traffic, including misheard "20" -> "2020".
+_AMBIGUOUS_NUMERIC_DATE_RE: Final[re.Pattern[str]] = re.compile(
+    r"^\s*\d{1,4}\s*[/\-.]\s*\d{1,2}\s*[/\-.]\s*\d{1,4}\s*$"
+)
+
+
+__all__ = ["DateNormalizationResult", "WFSTPipeline"]

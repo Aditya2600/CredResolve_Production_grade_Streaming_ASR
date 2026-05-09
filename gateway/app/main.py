@@ -17,7 +17,7 @@ from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import PlainTextResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from .apm import APMConfig, NoOpAudioProcessor, WebRTCAudioProcessor
+from .apm import NoOpAudioProcessor
 from .config import (
     GATEWAY_MAX_INFLIGHT_WORKER,
     PARTIAL_DECODE_INTERVAL_MS,
@@ -28,7 +28,6 @@ from .config import (
     SPEAKER_VERIFICATION_MODE,
     SPEAKER_VERIFICATION_RESCORE_MS,
     SPEAKER_VERIFICATION_THRESHOLD,
-    STREAMING_APM_ENABLED,
     STREAMING_DENOISE_ENABLED,
     STREAMING_VAD_ENABLED,
     STREAMING_GATE_CLOSE_REQUIRED_UNVOICED_FRAMES,
@@ -124,7 +123,6 @@ class SessionConfig:
     context_biasing_mode: str | None
     biasing_context: dict[str, object] | None
     binary_audio: bool = False
-    apm_enabled: bool = False
     vad_enabled: bool = False
     denoise_enabled: bool = False
 
@@ -150,7 +148,6 @@ class PipelineSessionContext:
     mode: str
     context_biasing_mode: str | None
     biasing_context: dict[str, object] | None
-    apm_enabled: bool = False
     vad_enabled: bool = False
     denoise_enabled: bool = False
 
@@ -240,27 +237,6 @@ def load_enrolled_embedding(path: str) -> np.ndarray:
     return array
 
 
-def build_apm_backend() -> object | None:
-    # TODO: Bind a real WebRTC APM Python backend here.
-    return None
-
-
-def build_audio_processor(session: SessionConfig):
-    config = APMConfig(
-        enabled=session.apm_enabled,
-        sample_rate=session.sample_rate,
-    )
-    if not config.enabled:
-        return NoOpAudioProcessor(config)
-    backend = build_apm_backend()
-    if backend is None:
-        log.warning(
-            "APM enabled but no backend is configured; falling back to no-op audio processor"
-        )
-        return NoOpAudioProcessor(config)
-    return WebRTCAudioProcessor(config, backend)
-
-
 def build_speaker_embedder() -> SpeakerEmbedder:
     if SPEAKER_VERIFICATION_BACKEND == "debug_fixed_similarity":
         return DebugFixedSimilaritySpeakerEmbedder(SPEAKER_VERIFICATION_DEBUG_SIMILARITY)
@@ -326,7 +302,6 @@ def build_streaming_pipeline(
         mode=session.mode,
         context_biasing_mode=session.context_biasing_mode,
         biasing_context=session.biasing_context,
-        apm_enabled=session.apm_enabled,
         vad_enabled=session.vad_enabled,
         denoise_enabled=session.denoise_enabled,
     )
@@ -346,7 +321,7 @@ def build_streaming_pipeline(
                 hangover_ms=STREAMING_HANGOVER_MS,
             ),
         ),
-        audio_processor=build_audio_processor(session),
+        audio_processor=NoOpAudioProcessor(sample_rate=session.sample_rate),
         speaker_gate=build_speaker_gate(session.sample_rate),
         rnnt_stream_factory=build_rnnt_stream_factory(session_context=session_context),
         session_id=session_id,
@@ -494,7 +469,6 @@ def parse_session_config(ws: WebSocket, request_id: str) -> SessionConfig:
         context_biasing_mode=context_biasing_mode,
         biasing_context=biasing_context,
         binary_audio=binary_audio,
-        apm_enabled=parse_bool_query("apm_enabled", params.get("apm_enabled"), STREAMING_APM_ENABLED),
         vad_enabled=parse_bool_query("vad_enabled", params.get("vad_enabled"), STREAMING_VAD_ENABLED),
         denoise_enabled=parse_bool_query("denoise_enabled", params.get("denoise_enabled"), STREAMING_DENOISE_ENABLED),
     )
@@ -591,7 +565,9 @@ def parse_context_biasing_mode(value: Any) -> str | None:
     return mode
 
 
-def parse_session_update(payload: dict[str, Any], session: SessionConfig) -> SessionConfig:
+def parse_session_update(
+    payload: dict[str, Any], session: SessionConfig
+) -> SessionConfig:
     context_biasing = payload.get("context_biasing")
     if context_biasing is not None and not isinstance(context_biasing, dict):
         raise BadMessageError("context_biasing must be an object")
@@ -622,7 +598,6 @@ def parse_session_update(payload: dict[str, Any], session: SessionConfig) -> Ses
         session,
         context_biasing_mode=requested_mode,
         biasing_context=parse_biasing_context_payload(payload.get("biasing_context")),
-        apm_enabled=audio_processing_bool("apm_enabled", session.apm_enabled),
         vad_enabled=audio_processing_bool("vad_enabled", session.vad_enabled),
         denoise_enabled=audio_processing_bool("denoise_enabled", session.denoise_enabled),
     )
@@ -762,7 +737,7 @@ async def ws_stt(ws: WebSocket):
         pipeline, pipeline_session_context = build_streaming_pipeline(session, session_id=session_id)
 
         log.info(
-            "WS session started session_id=%s request_id=%s language=%s model=%s mode=%s sample_rate=%s codec=%s binary_audio=%s vad_signals=%s speaker_verification_mode=%s speaker_verification_backend=%s apm_enabled=%s",
+            "WS session started session_id=%s request_id=%s language=%s model=%s mode=%s sample_rate=%s codec=%s binary_audio=%s vad_signals=%s speaker_verification_mode=%s speaker_verification_backend=%s",
             session_id,
             session.request_id,
             session.language_code,
@@ -774,7 +749,6 @@ async def ws_stt(ws: WebSocket):
             session.vad_signals,
             SPEAKER_VERIFICATION_MODE,
             SPEAKER_VERIFICATION_BACKEND,
-            session.apm_enabled,
         )
         if session.high_vad_sensitivity:
             log.info(
@@ -944,13 +918,12 @@ async def ws_stt(ws: WebSocket):
                     return
 
                 log.info(
-                    "WS session config updated session_id=%s request_id=%s context_biasing_mode=%s dynamic_context_present=%s fields=%s apm_enabled=%s vad_enabled=%s denoise_enabled=%s",
+                    "WS session config updated session_id=%s request_id=%s context_biasing_mode=%s dynamic_context_present=%s fields=%s vad_enabled=%s denoise_enabled=%s",
                     session_id,
                     session.request_id,
                     session.context_biasing_mode or "-",
                     bool(session.biasing_context),
                     sorted(session.biasing_context.keys()) if session.biasing_context else [],
-                    session.apm_enabled,
                     session.vad_enabled,
                     session.denoise_enabled,
                 )
@@ -960,7 +933,6 @@ async def ws_stt(ws: WebSocket):
                     pipeline_session_context.mode = session.mode
                     pipeline_session_context.context_biasing_mode = session.context_biasing_mode
                     pipeline_session_context.biasing_context = session.biasing_context
-                    pipeline_session_context.apm_enabled = session.apm_enabled
                     pipeline_session_context.vad_enabled = session.vad_enabled
                     pipeline_session_context.denoise_enabled = session.denoise_enabled
                 continue

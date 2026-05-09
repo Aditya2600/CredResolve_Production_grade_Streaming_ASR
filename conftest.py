@@ -35,3 +35,12 @@ except Exception:
     fake_module.CONTENT_TYPE_LATEST = "text/plain"
     fake_module.generate_latest = lambda: b""
     sys.modules["prometheus_client"] = fake_module
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "equivalence: numeric equivalence checks between two implementations "
+        "(e.g. audioop.ratecv vs soxr.resample). Run by default; skip with "
+        "`pytest -m \"not equivalence\"`.",
+    )

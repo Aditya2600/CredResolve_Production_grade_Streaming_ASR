@@ -21,6 +21,7 @@ frontend/.vscode/*
 __pycache__/
 *.py[cod]
 .venv/
+.venv-tests/
 venv/
 env/
 .tox/

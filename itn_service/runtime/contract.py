@@ -34,6 +34,11 @@ class Span(BaseModel):
     text (`unicode_clean.working_copy`). Prefilter and downstream stages
     populate them; the contract permits them to be absent for early
     pipeline producers that do not yet track positions.
+
+    `fallback_reason` is populated by `runtime.confidence_gate` when a
+    span fails the gating thresholds: in that case `canonical` is reset
+    to `raw` and `fallback_reason` carries a `;`-joined list of which
+    checks failed (see `policy.yaml § logging.span_fields`).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -46,6 +51,7 @@ class Span(BaseModel):
     ambiguous: bool = False
     start: int | None = Field(default=None, ge=0)
     end: int | None = Field(default=None, ge=0)
+    fallback_reason: str | None = None
 
 
 class SegmentResult(BaseModel):

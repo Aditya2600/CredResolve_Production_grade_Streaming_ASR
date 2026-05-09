@@ -1,0 +1,9 @@
+## Repo-root dev/test dependencies. NOT shipped to runtime images.
+## Runtime requirements live in worker/requirements.txt and gateway/requirements.txt.
+-r requirements.txt
+pytest>=8
+# Test-only bridge: tests/test_resample_equivalence.py imports the stdlib
+# `audioop` module to compare it against soxr. Python 3.13 removed `audioop`
+# from stdlib, so the equivalence-test machinery needs the audioop-lts
+# backport on 3.13+. Production code no longer uses audioop.
+audioop-lts; python_version >= "3.13"

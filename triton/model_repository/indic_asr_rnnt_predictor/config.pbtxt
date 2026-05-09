@@ -1,0 +1,14 @@
+name: "indic_asr_rnnt_predictor"
+backend: "onnxruntime"
+max_batch_size: 0
+input [
+  { name: "tokens"   data_type: TYPE_INT64 dims: [-1, 1] },
+  { name: "state_h"  data_type: TYPE_FP32  dims: [1, -1, 640] },
+  { name: "state_c"  data_type: TYPE_FP32  dims: [1, -1, 640] }
+]
+output [
+  { name: "pred_out"     data_type: TYPE_FP32 dims: [-1, 1, 640] },
+  { name: "state_h_new"  data_type: TYPE_FP32 dims: [1, -1, 640] },
+  { name: "state_c_new"  data_type: TYPE_FP32 dims: [1, -1, 640] }
+]
+instance_group [{ kind: KIND_GPU count: 1 }]

@@ -1,0 +1,32 @@
+[tool.pytest.ini_options]
+markers = [
+    "characterization: pin numerical output of process() against committed goldens (loads real Silero VAD + RNNoise; opt out with -m \"not characterization\")",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B"]
+"**/tests/**" = ["B"]
+"conftest.py" = ["B"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true

@@ -160,7 +160,6 @@ def _prepare_common(monkeypatch) -> None:
             mode=session.mode,
             context_biasing_mode=session.context_biasing_mode,
             biasing_context=session.biasing_context,
-            apm_enabled=session.apm_enabled,
             vad_enabled=session.vad_enabled,
             denoise_enabled=session.denoise_enabled,
         )

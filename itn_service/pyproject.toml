@@ -37,6 +37,7 @@ package-dir = { "itn_service" = "." }
 packages = [
     "itn_service",
     "itn_service.runtime",
+    "itn_service.runtime.formatters",
     "itn_service.grammars",
     "itn_service.grammars.common",
     "itn_service.grammars.hi",

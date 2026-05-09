@@ -18,21 +18,17 @@ DEFAULT_BASE_MODEL = "ai4bharat/indic-conformer-600m-multilingual"
 
 
 VARIANTS: tuple[dict[str, Any], ...] = (
-    {"name": "baseline", "denoise": False, "apm": False, "context_biasing": False},
-    {"name": "denoise", "denoise": True, "apm": False, "context_biasing": False},
-    {"name": "apm", "denoise": False, "apm": True, "context_biasing": False},
-    {"name": "context_biasing", "denoise": False, "apm": False, "context_biasing": True},
-    {"name": "denoise_apm", "denoise": True, "apm": True, "context_biasing": False},
-    {"name": "denoise_context_biasing", "denoise": True, "apm": False, "context_biasing": True},
-    {"name": "apm_context_biasing", "denoise": False, "apm": True, "context_biasing": True},
-    {"name": "denoise_apm_context_biasing", "denoise": True, "apm": True, "context_biasing": True},
+    {"name": "baseline", "denoise": False, "context_biasing": False},
+    {"name": "denoise", "denoise": True, "context_biasing": False},
+    {"name": "context_biasing", "denoise": False, "context_biasing": True},
+    {"name": "denoise_context_biasing", "denoise": True, "context_biasing": True},
 )
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Validate a direct NeMo model on a Vaani manifest across baseline, denoise, APM, "
+            "Validate a direct NeMo model on a Vaani manifest across baseline, denoise, "
             "context-biasing, and combination variants."
         )
     )
@@ -72,7 +68,6 @@ def parse_args() -> argparse.Namespace:
         help="Context-biasing mode for variants that include context biasing. Default: active",
     )
     parser.add_argument("--context-biasing-phrases-dir", type=Path, default=Path("context_biasing/phrases"))
-    parser.add_argument("--apm-backend", help="Optional module.path:ClassName backend for --apm variants.")
     parser.add_argument("--top-errors", type=int, default=20)
     parser.add_argument(
         "--variants",
@@ -183,10 +178,6 @@ def build_eval_command(
         command.extend(["--limit", str(args.limit)])
     if variant["denoise"]:
         command.append("--denoise")
-    if variant["apm"]:
-        command.append("--apm")
-        if args.apm_backend:
-            command.extend(["--apm-backend", args.apm_backend])
     if variant["context_biasing"]:
         command.extend(
             [

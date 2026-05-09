@@ -1,8 +1,8 @@
 import React from 'react';
-import { 
-  Settings2, 
-  Zap, 
-  Volume2, 
+import {
+  Settings2,
+  Zap,
+  Volume2,
   Mic2,
   Info
 } from 'lucide-react';
@@ -11,7 +11,6 @@ import type { ContextBiasingMetadata } from '../types/ws';
 import type { BiasingFormValues } from '../utils/contextBiasing';
 
 export interface AudioProcessingSettings {
-  apmEnabled: boolean;
   vadEnabled: boolean;
   denoiseEnabled: boolean;
 }
@@ -51,7 +50,6 @@ const BIASING_FIELDS: BiasingFieldConfig[] = [
 ];
 
 const AUDIO_PROCESSING_OPTIONS: AudioProcessingOption[] = [
-  { id: 'apmEnabled', label: 'WebRTC APM', icon: Volume2 },
   { id: 'vadEnabled', label: 'VAD Gating', icon: Mic2 },
   { id: 'denoiseEnabled', label: 'Noise Reduction', icon: Volume2 },
 ];

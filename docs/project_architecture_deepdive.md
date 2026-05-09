@@ -76,8 +76,8 @@ flowchart TD
     Accept["Accept WS<br/>assign session_id"] --> Validate["Validate auth + handshake<br/>language, sample_rate, codec"]
     Validate --> Decode["Decode JSON audio frame<br/>base64 → PCM16LE"]
     Validate -.-> Session["Optional session_config<br/>biasing/audio flags"]
-    Decode --> APM["Audio processor<br/>(NoOp default; WebRTC APM hook)"]
-    APM --> VAD["WebRTC VAD<br/>20ms frames<br/>preroll + hangover"]
+    Decode --> Frame["Frame to 10ms<br/>(NoOp pass-through)"]
+    Frame --> VAD["WebRTC VAD<br/>20ms frames<br/>preroll + hangover"]
     VAD --> Speaker["Optional speaker gate<br/>(disabled / shadow / enforce)"]
     Speaker --> Buffer["Buffer one utterance"]
     Buffer --> Flush{"Endpoint or<br/>client flush?"}
@@ -116,6 +116,8 @@ The worker contract is **header-driven**; the body is raw PCM. This keeps the ga
 ### Why VAD lives in the gateway, not the worker
 
 The gateway VAD has **two jobs**: gate audio (don't waste worker GPU on silence) and **define utterance boundaries**. Pushing VAD downstream would either lose the boundary semantics or force the worker to also own the WebSocket. Keeping VAD at the edge lets the worker stay stateless across utterances.
+
+For the full gateway VAD + worker Silero/RNNoise flow, see [docs/audio/noise-cancellation-deep-dive.md](audio/noise-cancellation-deep-dive.md).
 
 ---
 
@@ -419,7 +421,6 @@ The pattern: **never fail the request because of an optional optimization**. Opt
 | Term | Meaning |
 |---|---|
 | **VAD** | Voice Activity Detection. WebRTC VAD on gateway; Silero VAD on worker (optional). |
-| **APM** | Audio Processing Module — noise suppression / AGC hook in gateway. |
 | **LID** | Language Identification — predicts language when client doesn't send one. |
 | **PEFT** | Parameter-Efficient Fine-Tuning. Here: encoder-adapter only, base model frozen. |
 | **Adapter** | Small trainable module inserted into a frozen backbone. NeMo-native concept. |

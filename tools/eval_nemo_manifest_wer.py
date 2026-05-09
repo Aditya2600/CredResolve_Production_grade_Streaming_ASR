@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import importlib
 import json
 import os
 import re
@@ -29,7 +28,6 @@ except ImportError:  # pragma: no cover
     from tools.compute_wer import edit_distance, normalize
 
 from tools.asr_text_normalizer import normalize_asr_text
-from gateway.app.apm import APMConfig, NoOpAudioProcessor, WebRTCAudioProcessor
 from worker.app.context_biasing import (
     ContextBiasingConfig,
     NeMoContextBiasingRuntime,
@@ -128,21 +126,9 @@ def parse_args() -> argparse.Namespace:
         help="Apply the existing worker AudioPreprocessor denoise hook before direct model transcription.",
     )
     parser.add_argument(
-        "--apm",
-        action="store_true",
-        help="Apply the existing gateway WebRTC APM hook before direct model transcription.",
-    )
-    parser.add_argument(
-        "--apm-backend",
-        help=(
-            "Optional import spec for a WebRTCAPMBackend implementation, e.g. package.module:ClassName. "
-            "When omitted, --apm uses the existing no-op APM processor and reports apm_backend=noop."
-        ),
-    )
-    parser.add_argument(
         "--processed-audio-dir",
         type=Path,
-        help="Optional directory for preprocessed WAVs. Defaults to a temp directory when --denoise or --apm is used.",
+        help="Optional directory for preprocessed WAVs. Defaults to a temp directory when --denoise is used.",
     )
     parser.add_argument(
         "--context-biasing-mode",
@@ -275,58 +261,14 @@ def read_pcm16_mono(path: str | Path, *, sample_rate: int = 16000) -> tuple[byte
     return float_to_pcm16(audio), sample_rate
 
 
-def load_apm_backend(spec: str | None) -> Any | None:
-    if not spec:
-        return None
-    module_name, sep, attr = spec.partition(":")
-    if not sep or not module_name.strip() or not attr.strip():
-        raise SystemExit("--apm-backend must use module.path:ClassName format")
-    module = importlib.import_module(module_name)
-    factory = getattr(module, attr)
-    return factory()
-
-
-def build_apm_processor(enabled: bool, backend_spec: str | None):
-    if not enabled:
-        return None, "disabled"
-
-    config = APMConfig(enabled=True)
-    backend = load_apm_backend(backend_spec)
-    if backend is None:
-        return NoOpAudioProcessor(config), "noop"
-    return WebRTCAudioProcessor(config, backend), backend_spec or type(backend).__name__
-
-
-def process_pcm_with_apm(pcm16le: bytes, processor) -> bytes:
-    if processor is None or not pcm16le:
-        return pcm16le
-    frame_bytes = int(processor.frame_bytes)
-    if frame_bytes <= 0:
-        return pcm16le
-
-    processed = bytearray()
-    full_bytes = (len(pcm16le) // frame_bytes) * frame_bytes
-    for start in range(0, full_bytes, frame_bytes):
-        processed.extend(processor.process_frame(pcm16le[start : start + frame_bytes]))
-    processed.extend(pcm16le[full_bytes:])
-    return bytes(processed)
-
-
 def prepare_audio_paths(
     audio_paths: list[str],
     *,
     denoise: bool,
-    apm: bool,
-    apm_backend: str | None,
     processed_audio_dir: Path | None,
 ) -> tuple[list[str], dict[str, Any], tempfile.TemporaryDirectory[str] | None]:
-    apm_processor, apm_backend_name = build_apm_processor(apm, apm_backend)
-    metadata: dict[str, Any] = {
-        "denoise": bool(denoise),
-        "apm": bool(apm),
-        "apm_backend": apm_backend_name,
-    }
-    if not denoise and not apm:
+    metadata: dict[str, Any] = {"denoise": bool(denoise)}
+    if not denoise:
         return audio_paths, metadata, None
 
     temp_dir: tempfile.TemporaryDirectory[str] | None = None
@@ -337,18 +279,16 @@ def prepare_audio_paths(
         output_dir = processed_audio_dir.expanduser().resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    denoiser = AudioPreprocessor() if denoise else None
+    denoiser = AudioPreprocessor()
     processed_paths: list[str] = []
     for index, audio_path in enumerate(audio_paths):
         pcm16le, sample_rate = read_pcm16_mono(audio_path, sample_rate=16000)
-        pcm16le = process_pcm_with_apm(pcm16le, apm_processor)
-        if denoiser is not None:
-            pcm16le = denoiser.process(
-                pcm16le,
-                sample_rate,
-                vad_enabled=False,
-                denoise_enabled=True,
-            )
+        pcm16le = denoiser.process(
+            pcm16le,
+            sample_rate,
+            vad_enabled=False,
+            denoise_enabled=True,
+        )
         processed_audio = pcm16_to_float(pcm16le)
         output_path = output_dir / f"{index:06d}.wav"
         sf.write(output_path, processed_audio, sample_rate, subtype="PCM_16")
@@ -882,8 +822,6 @@ def main() -> int:
     audio_paths, preprocessing_metadata, temp_audio_dir = prepare_audio_paths(
         original_audio_paths,
         denoise=bool(args.denoise),
-        apm=bool(args.apm),
-        apm_backend=args.apm_backend,
         processed_audio_dir=args.processed_audio_dir,
     )
     try:

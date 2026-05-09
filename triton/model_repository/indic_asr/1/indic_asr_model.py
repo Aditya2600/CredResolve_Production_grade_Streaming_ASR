@@ -40,6 +40,28 @@ _INPROC_COMPONENT_NAMES = (
 _ENCODER_BLS_MODEL_NAME = 'indic_asr_encoder'
 
 
+def _pb_tensor_to_numpy(tensor, name):
+    if tensor is None:
+        raise pb_utils.TritonModelException(f'Missing encoder output tensor: {name}')
+
+    try:
+        if tensor.is_cpu():
+            return tensor.as_numpy()
+    except AttributeError:
+        return tensor.as_numpy()
+
+    # TensorRT outputs can stay in GPU memory when returned through BLS.
+    # The remaining RNNT/CTC decode path still uses in-process ORT sessions
+    # with NumPy inputs, so copy to host at this boundary.
+    try:
+        torch_tensor = torch.utils.dlpack.from_dlpack(tensor.to_dlpack())
+        return torch_tensor.detach().cpu().numpy()
+    except Exception as exc:
+        raise pb_utils.TritonModelException(
+            f'Failed to copy GPU encoder output {name!r} to NumPy: {exc}'
+        ) from exc
+
+
 class IndicASRConfig(PretrainedConfig):
     model_type = "iasr"
 
@@ -92,21 +114,34 @@ class IndicASRModel(PreTrainedModel):
         with open(f'{config.ts_folder}/assets/language_masks.json') as reader:
             self.language_masks = json.load(reader)
 
-    def forward(self, wav, lang, decoding='ctc', compute_timestamps=None):
-        encoder_outputs, encoded_lengths = self.encode(wav)
+    def forward(self, wav, lang, decoding='ctc', compute_timestamps=None, _timer=None):
+        encoder_outputs, encoded_lengths = self.encode(wav, _timer=_timer)
+        if _timer is not None:
+            try:
+                _timer.num_frames = int(np.asarray(encoded_lengths).reshape(-1)[0])
+            except Exception:
+                pass
         if decoding == 'ctc':
-            return self._ctc_decode(encoder_outputs, encoded_lengths, lang, compute_timestamps)
+            return self._ctc_decode(encoder_outputs, encoded_lengths, lang, compute_timestamps, _timer=_timer)
         if decoding == 'rnnt':
-            return self._rnnt_decode(encoder_outputs, encoded_lengths, lang)
+            return self._rnnt_decode(encoder_outputs, encoded_lengths, lang, _timer=_timer)
 
-    def encode(self, wav):
+    def encode(self, wav, _timer=None):
+        # Stage 1: preprocessing (TorchScript log-mel filterbank, CPU)
+        if _timer is not None:
+            _timer.start('preproc')
         audio_signal, length = self.models['preprocessor'](
             input_signal=wav.to(self.d),
             length=torch.tensor([wav.shape[-1]]).to(self.d),
         )
         audio_signal_np = np.ascontiguousarray(audio_signal.cpu().numpy().astype(np.float32, copy=False))
         length_np = np.ascontiguousarray(length.cpu().numpy().astype(np.int64, copy=False))
+        if _timer is not None:
+            _timer.stop()
 
+        # Stage 2: encoder forward (BLS into TRT/ORT-CUDA)
+        if _timer is not None:
+            _timer.start('encoder')
         encoder_request = pb_utils.InferenceRequest(
             model_name=_ENCODER_BLS_MODEL_NAME,
             requested_output_names=['outputs', 'encoded_lengths'],
@@ -117,27 +152,52 @@ class IndicASRModel(PreTrainedModel):
         )
         encoder_response = encoder_request.exec()
         if encoder_response.has_error():
+            if _timer is not None:
+                _timer.stop()
             raise pb_utils.TritonModelException(
                 f'indic_asr_encoder BLS error: {encoder_response.error().message()}'
             )
 
-        outputs = pb_utils.get_output_tensor_by_name(encoder_response, 'outputs').as_numpy()
-        encoded_lengths = pb_utils.get_output_tensor_by_name(encoder_response, 'encoded_lengths').as_numpy()
+        outputs = _pb_tensor_to_numpy(pb_utils.get_output_tensor_by_name(encoder_response, 'outputs'), 'outputs')
+        encoded_lengths = _pb_tensor_to_numpy(
+            pb_utils.get_output_tensor_by_name(encoder_response, 'encoded_lengths'),
+            'encoded_lengths',
+        )
+        if _timer is not None:
+            _timer.stop()
         return outputs, encoded_lengths
 
-    def _ctc_decode(self, encoder_outputs, encoded_lengths, lang, compute_timestamps=None):
+    def _ctc_decode(self, encoder_outputs, encoded_lengths, lang, compute_timestamps=None, _timer=None):
+        # Stage 3: CTC decode (decoder ONNX run + log_softmax + argmax + collapse)
+        if _timer is not None:
+            _timer.start('decode')
         logprobs = self.models['ctc_decoder'].run(['logprobs'], {'encoder_output': encoder_outputs})[0]
         logprobs = torch.from_numpy(logprobs[:, :, self.language_masks[lang]]).log_softmax(dim=-1)
 
         # currently no batching
         indices = torch.argmax(logprobs[0], dim=-1)
         collapsed_indices = torch.unique_consecutive(indices, dim=-1)
+        if _timer is not None:
+            try:
+                _timer.num_tokens = int((collapsed_indices != self.config.BLANK_ID).sum().item())
+            except Exception:
+                pass
+            _timer.stop()
+
+        # Stage 4: postprocessing (vocab lookup + text assembly + optional timestamps)
+        if _timer is not None:
+            _timer.start('postproc')
         hyp = ''.join([self.vocab[lang][x] for x in collapsed_indices if x != self.config.BLANK_ID]).replace('▁', ' ').strip()
 
         if compute_timestamps:
-            return hyp, self.compute_timestamps(logprobs, encoded_lengths, lang, _type=compute_timestamps)
+            result = (hyp, self.compute_timestamps(logprobs, encoded_lengths, lang, _type=compute_timestamps))
+            if _timer is not None:
+                _timer.stop()
+            return result
         else:
             del logprobs, indices, collapsed_indices
+            if _timer is not None:
+                _timer.stop()
             return hyp
 
     def compute_timestamps(self, batch_logprobs, lens, lang, _type='w'):
@@ -196,7 +256,10 @@ class IndicASRModel(PreTrainedModel):
             results_word.append(segments_word)
         return results if _type == 'c' else results_word
 
-    def _rnnt_decode(self, encoder_outputs, encoded_lengths, lang):
+    def _rnnt_decode(self, encoder_outputs, encoded_lengths, lang, _timer=None):
+        # Stage 3: RNNT decode (joint_enc projection + greedy loop over rnnt_decoder/joint_pred/joint_pre_net/joint_post_net)
+        if _timer is not None:
+            _timer.start('decode')
         joint_enc = self.models['joint_enc'].run(['output'], {'input': encoder_outputs.transpose(0, 2, 1)})[0]
         joint_enc = torch.from_numpy(joint_enc)
         hyp = [self.config.SOS]
@@ -236,5 +299,17 @@ class IndicASRModel(PreTrainedModel):
 
                 symbols_added += 1
 
+        if _timer is not None:
+            try:
+                _timer.num_tokens = max(0, len(hyp) - 1)  # exclude SOS
+            except Exception:
+                pass
+            _timer.stop()
+
+        # Stage 4: postprocessing (vocab lookup + text assembly)
+        if _timer is not None:
+            _timer.start('postproc')
         pred_text = ''.join([self.vocab[lang][x] for x in hyp if x != self.config.SOS]).replace('▁', ' ').strip()
+        if _timer is not None:
+            _timer.stop()
         return pred_text

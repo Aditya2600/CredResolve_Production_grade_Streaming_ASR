@@ -23,7 +23,6 @@ export interface DemoBiasingSettings {
   mode: Extract<ContextBiasingMode, 'shadow' | 'active'>;
   values: BiasingFormValues;
   audioProcessing?: {
-    apm_enabled: boolean;
     vad_enabled: boolean;
     denoise_enabled: boolean;
   };

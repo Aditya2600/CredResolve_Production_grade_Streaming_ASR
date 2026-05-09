@@ -74,3 +74,30 @@ CONTEXT_BIASING_FALLBACKS = Counter(
     "Context-biasing fallback count",
     ["reason"],
 )
+
+# Audio preprocessing (VAD + denoise) instrumentation. Labels are kept low
+# cardinality so swapping the denoiser/VAD can be evaluated against measurable
+# criteria without dashboard explosions.
+AUDIO_STAGE_LATENCY = Histogram(
+    "asr_worker_audio_stage_seconds",
+    "AudioPreprocessor.process() per-stage latency in seconds",
+    ["stage", "vad_select_mode", "denoise_enabled"],
+    buckets=(0.001, 0.0025, 0.005, 0.01, 0.02, 0.035, 0.05, 0.075, 0.1, 0.2, 0.35, 0.5, 1.0, 2.0),
+)
+AUDIO_VAD_SEGMENTS = Histogram(
+    "asr_worker_audio_vad_segments",
+    "Number of VAD speech segments detected per process() call",
+    ["vad_select_mode"],
+    buckets=(0, 1, 2, 3, 5, 8, 13, 21, 34),
+)
+AUDIO_FRAMES = Counter(
+    "asr_worker_audio_frames_total",
+    "Audio sample counts entering/leaving each preprocessing stage",
+    ["stage", "direction"],
+)
+AUDIO_SPEECH_RATIO = Histogram(
+    "asr_worker_audio_speech_ratio",
+    "Per-call ratio of post-VAD speech samples to input samples",
+    ["vad_select_mode"],
+    buckets=(0.0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.85, 0.95, 1.0),
+)

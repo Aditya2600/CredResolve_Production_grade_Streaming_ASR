@@ -22,7 +22,6 @@ export interface ContextBiasingConfigPayload {
 }
 
 export interface AudioProcessingConfigPayload {
-  apm_enabled?: boolean;
   vad_enabled?: boolean;
   denoise_enabled?: boolean;
 }

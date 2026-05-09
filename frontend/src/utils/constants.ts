@@ -1,7 +1,6 @@
 import type { AudioConfig } from '../types/ws';
 
 export interface WsAudioProcessingOptions {
-  apmEnabled: boolean;
   vadEnabled: boolean;
   denoiseEnabled: boolean;
 }
@@ -129,7 +128,6 @@ export function buildWsUrl(
     url.searchParams.delete('binary_audio');
   }
   if (audioProcessing) {
-    url.searchParams.set('apm_enabled', String(audioProcessing.apmEnabled));
     url.searchParams.set('vad_enabled', String(audioProcessing.vadEnabled));
     url.searchParams.set('denoise_enabled', String(audioProcessing.denoiseEnabled));
   }

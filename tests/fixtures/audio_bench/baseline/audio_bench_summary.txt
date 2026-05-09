@@ -1,0 +1,21 @@
+Audio bench summary
+========================================
+wav_dir              : /repo/tests/fixtures/audio_bench
+files                : 80
+vad_enabled          : True
+denoise_enabled      : True
+vad_select_mode      : concat
+stt_enabled          : True
+
+Latency (ms):
+  vad     mean=36.23ms  p50=38.21ms  p95=49.18ms  n=80
+  denoise mean=125.99ms  p50=125.66ms  p95=161.84ms  n=80
+  total   mean=162.30ms  p50=164.57ms  p95=210.84ms  n=80
+  stt     mean=47.13ms  p50=46.79ms  p95=64.21ms  n=80
+
+WER:
+  per-file mean : 0.1553 (n=80)
+  aggregate     : 0.2400
+
+CSV: /repo/tests/fixtures/audio_bench/baseline/audio_bench_results.csv
+Summary: /repo/tests/fixtures/audio_bench/baseline/audio_bench_summary.txt
