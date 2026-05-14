@@ -1,0 +1,19 @@
+name: simplismart-bench
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - scipy
+  - libsndfile
+  - pip:
+      - soundfile
+      - datasets
+      - huggingface_hub
+      - websockets
+      - httpx
+      - requests
+      - torch
+      - torchaudio
+      - sounddevice

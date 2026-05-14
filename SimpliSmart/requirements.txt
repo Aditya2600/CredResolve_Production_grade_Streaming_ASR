@@ -1,0 +1,10 @@
+numpy
+requests
+torch
+torchaudio
+websockets
+packaging
+onnxruntime
+soundfile
+httpx
+scipy
