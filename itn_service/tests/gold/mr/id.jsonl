@@ -1,0 +1,30 @@
+{"raw": "ABCDE1234F", "expected": "ABCDE1234F"}
+{"raw": "abcde1234f", "expected": "ABCDE1234F"}
+{"raw": "ABCDE 1234 F", "expected": "ABCDE1234F"}
+{"raw": "PQRS T1234V", "expected": "PQRST1234V"}
+{"raw": "AAAPL1234C", "expected": "AAAPL1234C"}
+{"raw": "AAAAA0000A", "expected": "AAAAA0000A"}
+{"raw": "1234 5678 9012", "expected": "1234 5678 9012"}
+{"raw": "123456789012", "expected": "1234 5678 9012"}
+{"raw": "१२३४ ५६७८ ९०१२", "expected": "1234 5678 9012"}
+{"raw": "१२३४५६७८९०१२", "expected": "1234 5678 9012"}
+{"raw": "Aadhaar 1234 5678 9012", "expected": "Aadhaar 1234 5678 9012"}
+{"raw": "आधार 1234 5678 9012", "expected": "आधार 1234 5678 9012"}
+{"raw": "9999 8888 7777", "expected": "9999 8888 7777"}
+{"raw": "0000 1111 2222", "expected": "0000 1111 2222"}
+{"raw": "SBIN0001234", "expected": "SBIN0001234"}
+{"raw": "sbin0001234", "expected": "SBIN0001234"}
+{"raw": "HDFC0000001", "expected": "HDFC0000001"}
+{"raw": "ICIC0001234", "expected": "ICIC0001234"}
+{"raw": "AXIS0001234", "expected": "AXIS0001234"}
+{"raw": "PUNB0001234", "expected": "PUNB0001234"}
+{"raw": "BARB0BBAY01", "expected": "BARB0BBAY01"}
+{"raw": "00001234567", "expected": "00001234567"}
+{"raw": "01234567890", "expected": "01234567890"}
+{"raw": "12345678", "expected": "12345678"}
+{"raw": "policy 1234567890", "expected": "policy 1234567890"}
+{"raw": "policy १२३४५६७८९०", "expected": "policy 1234567890"}
+{"raw": "क्लेम नंबर 1234567", "expected": "क्लेम नंबर 1234567"}
+{"raw": "क्लेम नंबर १२३४५६७", "expected": "क्लेम नंबर 1234567"}
+{"raw": "PAN ABCDE1234F", "expected": "PAN ABCDE1234F"}
+{"raw": "पॅन ABCDE1234F", "expected": "पॅन ABCDE1234F"}

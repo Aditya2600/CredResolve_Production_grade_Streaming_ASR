@@ -43,6 +43,17 @@ _LANGUAGE_REGISTRY: dict[str, list[tuple[str, list[str]]]] = {
         ),
         ("itn_service.grammars.hi.time", ["TIME", "TIME_CLASSIFIER"]),
     ],
+    "mr": [
+        ("itn_service.grammars.mr.cardinal", ["CARDINAL", "CARDINAL_CLASSIFIER"]),
+        ("itn_service.grammars.mr.decimal", ["DECIMAL", "DECIMAL_CLASSIFIER"]),
+        ("itn_service.grammars.mr.money", ["MONEY", "MONEY_CLASSIFIER"]),
+        ("itn_service.grammars.mr.percent", ["PERCENT", "PERCENT_CLASSIFIER"]),
+        (
+            "itn_service.grammars.mr.date",
+            ["DATE", "DATE_MONTHWORD", "DATE_NUMERIC", "DATE_CLASSIFIER"],
+        ),
+        ("itn_service.grammars.mr.time", ["TIME", "TIME_CLASSIFIER"]),
+    ],
 }
 
 

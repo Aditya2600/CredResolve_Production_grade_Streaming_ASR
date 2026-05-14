@@ -1,0 +1,102 @@
+// itn.proto — bidirectional-streaming ITN service contract.
+//
+// Mirrors the Pydantic contract in itn_service/runtime/contract.py
+// (Token, Span, SegmentResult). Schema version is pinned to the
+// ITN_CONTRACT_VERSION constant in that module; bump both when you
+// add or rename a field.
+//
+// Stream shape:
+//   Client streams NormalizeRequest messages, one per ASR hypothesis
+//   (partial or final). Server replies with one NormalizeResponse per
+//   request, on the same stream, preserving order. One stream == one
+//   call session; the server holds a StreamState per stream.
+
+syntax = "proto3";
+
+package itn.v1;
+
+option go_package = "itn_service/service/itn;itnv1";
+
+// ---------------------------------------------------------------------------
+// Service.
+// ---------------------------------------------------------------------------
+
+service ItnService {
+  // Bidi streaming normalisation. See docs/implementation_bluprint_INR.md
+  // ("Recommended architecture and output policy") for the why behind
+  // the three-surface response (raw / canonical / display).
+  rpc StreamNormalize(stream NormalizeRequest) returns (stream NormalizeResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Messages.
+// ---------------------------------------------------------------------------
+
+// One ASR token with timing + confidence. Mirrors runtime.contract.Token.
+message Token {
+  string text = 1;
+  int32 start_ms = 2;   // >= 0
+  int32 end_ms = 3;     // >= 0
+  float conf = 4;       // [0.0, 1.0]
+}
+
+// One normalised span. Mirrors runtime.contract.Span. `start` / `end`
+// are codepoint offsets into the *working copy* of the segment text
+// (not raw_text), so callers that want to highlight spans in the UI
+// should use display_text (which is rendered from canonical, not raw).
+message Span {
+  string cls = 1;
+  string raw = 2;
+  string canonical = 3;
+  string rule_id = 4;
+  float conf = 5;        // [0.0, 1.0]
+  bool ambiguous = 6;
+  // start/end are present iff has_position is true. proto3 does not
+  // distinguish "absent" from "0" for ints, so we explicitly flag it.
+  bool has_position = 7;
+  int32 start = 8;
+  int32 end = 9;
+  // Empty string means "no fallback applied". Populated by the
+  // confidence gate when a check fails (see runtime/confidence_gate.py).
+  string fallback_reason = 10;
+}
+
+message NormalizeRequest {
+  // Verbatim ASR hypothesis. Never mutated by the server.
+  string text = 1;
+  // Optional per-token timing/confidence. May be empty for text-only
+  // callers; the server treats absent tokens as asr_conf = 1.0.
+  repeated Token tokens = 2;
+  // True when this is a segment-final hypothesis. Partials run the
+  // restricted pipeline (cardinal/money/percent only, stable spans
+  // only); finals run the full classify + gate.
+  bool is_final = 3;
+  // BCP-47-ish ASR language hint (e.g. "hi", "mr"). Empty string ==
+  // "no hint"; the script router will fall back to script-majority
+  // routing.
+  string lang_hint = 4;
+  // Tenant id resolved via runtime.locale_policy. Drives date order
+  // and default currency. Empty string == default tenant.
+  string locale_policy = 5;
+}
+
+message NormalizeResponse {
+  // Verbatim copy of the request text. Audit / legal review surface.
+  string raw_text = 1;
+  // Stable machine-friendly form: Latin digits + ICU-canonical
+  // separators. Use this for search, NER, analytics, CRM ingestion.
+  string canonical_text = 2;
+  // Locale-rendered surface for UI. May equal canonical_text when no
+  // shaping applies (or when the display renderer is not yet wired).
+  string display_text = 3;
+  repeated Span spans = 4;
+  // True when the partial was unstable and the segment was deferred.
+  // Deferred responses mirror raw text on every surface.
+  bool deferred = 5;
+  // Routed language (2-letter code) and detected script (long name,
+  // e.g. "Devanagari"). Both are derived inside the server.
+  string lang = 6;
+  string script = 7;
+  // Snapshot of ITN_CONTRACT_VERSION at server start.
+  string itn_version = 8;
+}

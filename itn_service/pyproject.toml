@@ -31,6 +31,13 @@ dev = [
     "torch>=2.0",
     "nemo_toolkit[asr]>=1.23",
 ]
+# gRPC streaming server (itn_service.service). grpcio-tools is only
+# needed at build time to regenerate the proto stubs; grpcio is needed
+# both at build and at runtime.
+service = [
+    "grpcio>=1.62",
+    "grpcio-tools>=1.62",
+]
 
 [tool.setuptools]
 package-dir = { "itn_service" = "." }

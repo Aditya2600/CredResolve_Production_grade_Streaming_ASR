@@ -1,0 +1,23 @@
+# Keep the build context small and reproducible.
+
+# Tests and benchmarks: shipped via the source repo, not the image.
+tests/
+**/__pycache__/
+*.pyc
+
+# Local-only artefacts.
+.venv/
+.env
+*.egg-info/
+build/
+dist/
+
+# Note: compiled_grammars/ is intentionally NOT excluded — it is the
+# default value of the FARS_DIR build arg, used by local builds. CI
+# should override FARS_DIR to point at a freshly produced artefact
+# directory so stale local FARs never ship in a release image.
+
+# Editor noise.
+.vscode/
+.idea/
+.DS_Store
