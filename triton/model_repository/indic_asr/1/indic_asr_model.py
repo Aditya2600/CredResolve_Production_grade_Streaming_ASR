@@ -38,6 +38,7 @@ _INPROC_COMPONENT_NAMES = (
 )
 
 _ENCODER_BLS_MODEL_NAME = 'indic_asr_encoder'
+_ENCODER_MIN_FRAMES = 100
 
 
 def _pb_tensor_to_numpy(tensor, name):
@@ -136,6 +137,19 @@ class IndicASRModel(PreTrainedModel):
         )
         audio_signal_np = np.ascontiguousarray(audio_signal.cpu().numpy().astype(np.float32, copy=False))
         length_np = np.ascontiguousarray(length.cpu().numpy().astype(np.int64, copy=False))
+        feature_frames = int(audio_signal_np.shape[-1])
+        if feature_frames < _ENCODER_MIN_FRAMES:
+            # TensorRT validates the physical input shape against the engine
+            # profile (`minShapes=...x100`) before it looks at `length`.
+            # Pad only the feature tensor; keep `length_np` untouched so decode
+            # and timestamps still reflect the original utterance duration.
+            audio_signal_np = np.ascontiguousarray(
+                np.pad(
+                    audio_signal_np,
+                    ((0, 0), (0, 0), (0, _ENCODER_MIN_FRAMES - feature_frames)),
+                    mode='constant',
+                )
+            )
         if _timer is not None:
             _timer.stop()
 

@@ -16,6 +16,11 @@ tritonclient[grpc,http]>=2.54,<2.67
 websockets
 pyrnnoise==0.4.3
 soxr>=0.3.7
+# Silero VAD — PyPI package ships bundled model weights so no git/network is
+# needed at container startup. audio_processing.py prefers this over torch.hub.
+silero-vad>=5.1.2
 # Default denoiser; see docs/audio/denoiser-eval.md.
 # RNNoise (pyrnnoise) is kept above as a one-release fallback (DENOISER=rnnoise).
+# deepfilterlib (the Rust extension inside deepfilternet) requires Cargo at build
+# time — the Dockerfile installs rustup before pip install, then removes it.
 deepfilternet>=0.5.6

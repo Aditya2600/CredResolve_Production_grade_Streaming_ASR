@@ -191,6 +191,6 @@ VAD_CONCAT_PADDING_MS = max(0, getenv_int("VAD_CONCAT_PADDING_MS", 100))
 # docs/audio/denoiser-eval.md (8pp absolute WER improvement, lower p95 latency
 # than RNNoise on the VAANI fixture). RNNoise stays available for one release
 # as a fallback via DENOISER=rnnoise.
-_VALID_DENOISERS = {"rnnoise", "deepfilternet"}
+_VALID_DENOISERS = {"rnnoise", "deepfilternet", "none"}
 _raw_denoiser = getenv_str("DENOISER", "deepfilternet").lower()
 DENOISER = _raw_denoiser if _raw_denoiser in _VALID_DENOISERS else "deepfilternet"

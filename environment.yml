@@ -1,0 +1,23 @@
+name: credresolve-asr
+
+# Keep conda-forge first (and only) so solves stay consistent across machines.
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.11
+  - pip
+  - ffmpeg
+  - libsndfile
+  - git
+  - git-lfs
+  - curl
+  - pip:
+      # Repo-root utilities and tests.
+      - -r requirements-dev.txt
+
+      # Host-side operational helpers used by scripts in this repo.
+      - huggingface_hub==0.24.6
+      - soundfile
+      - websockets
+      - httpx==0.27.2

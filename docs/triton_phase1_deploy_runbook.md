@@ -6,12 +6,12 @@ Companion to [triton_native_serving_plan.md](triton_native_serving_plan.md). The
 
 ## 1. What got deployed
 
-Phase 1 — CTC ensemble running on Triton's native backends, with the encoder served as a FP16 TensorRT engine. The Python backend stays as the RNNT path until Phase 2.
+Phase 1 — CTC ensemble running on Triton's native backends, with the encoder served as a parity-safe FP32 TensorRT engine. The Python backend stays as the RNNT path until Phase 2.
 
 | Triton model | Backend | Device | Artifact in `1/` |
 |---|---|---|---|
 | `indic_asr_preproc` | `pytorch` (LibTorch) | CPU | `model.pt` (TorchScript log-mel filterbank) |
-| `indic_asr_encoder` | `tensorrt` | GPU | `model.plan` (FP16, A40-specific) + `model.onnx` + 367 external weight blobs |
+| `indic_asr_encoder` | `tensorrt` | GPU | `model.plan` (FP32, GPU-specific) + `model.onnx` + 367 external weight blobs |
 | `indic_asr_ctc_decoder` | `onnxruntime` | GPU | `model.onnx` (single Linear projection) |
 | `indic_asr_ctc` | `ensemble` | — | wires preproc → encoder → ctc_decoder |
 | `indic_asr` | `python` | GPU | RNNT path (untouched in Phase 1) |
@@ -41,6 +41,7 @@ bash scripts/stage_triton_model_repo.sh
 ```
 
 The script does not build the TRT engine — that step needs the GPU and the Triton+TRT container.
+For standalone shell use, the script reads `ASR_MODEL_NAME`, `HF_HOME`, and Hugging Face credentials from repo-root `.env` when they are not already exported; if any blob is missing from the local cache, the token must have access to the gated model repo.
 
 **Note on the HF cache.** This box's HF snapshot directory had been clobbered into 0-byte regular files (not symlinks into `blobs/`). The blobs were intact (~2.4 GB of real content); the snapshot dir was just broken pointers. The staging script bypasses the snapshot dir entirely: it queries `HfApi.repo_info(files_metadata=True)` for filename → blob hash mapping, then copies directly from `<HF_HOME>/models--<org>--<name>/blobs/<hash>`. Falls back to a fresh `hf_hub_download` if any blob is missing or the wrong size.
 
@@ -62,7 +63,7 @@ docker compose -f docker-compose.yml -f docker-compose.triton.yml \
     run --rm --no-deps --entrypoint bash triton -c '
       /usr/src/tensorrt/bin/trtexec \
         --onnx=/models/indic_asr_encoder/1/model.onnx \
-        --fp16 \
+        --noTF32 \
         --minShapes=audio_signal:1x80x100,length:1 \
         --optShapes=audio_signal:1x80x800,length:1 \
         --maxShapes=audio_signal:1x80x3000,length:1 \
@@ -71,14 +72,13 @@ docker compose -f docker-compose.yml -f docker-compose.triton.yml \
     '
 ```
 
-5–20 min on A40. Produces `model.plan` (~1.2 GB FP16, vs ~2.5 GB FP32 ONNX weights).
+On the L40S host this build completes in about 20 seconds and produces a ~2.4 GB FP32 plan.
 
-#### Why FP16 (not FP32 or BF16)
+#### Why the baseline is FP32
 
-- **A40 has FP16 Tensor Cores.** FP32 bypasses Tensor Cores entirely, costing the speedup.
-- **A40 has BF16 Tensor Cores too** — `--bf16` is a valid alternative. FP16 is preferred because the conformer was trained in FP16 and TRT's auto-precision logic for FP16 is the most battle-tested path.
-- **TRT auto-promotes numerically sensitive ops** (layernorm, softmax) to FP32 internally. No calibration step needed (unlike INT8).
-- **On T4 (Turing, SM 7.5)** there's no BF16 hardware, so FP16 is the only Tensor Core option there. If you ever need to deploy on T4, the `--fp16` flag is portable; `--bf16` is not.
+- **A real FP16 parity failure was observed on 2026-05-15.** The FP16 engine loaded and served normally, but both RNNT and CTC returned blank transcripts for known-good Hindi speech. Direct encoder probes showed materially compressed activations versus ONNX Runtime.
+- **The FP32 TensorRT plan matches the ONNX Runtime baseline.** The same encoder probes and live Hindi fixtures recover under `--noTF32`.
+- **Reduced precision remains an optimization experiment, not the serving baseline.** If FP16 or BF16 is revisited, build it as a separate candidate artifact and require transcript/WER parity before promotion. TensorRT readiness proves loadability, not semantic correctness.
 
 #### Shape ranges
 
@@ -110,6 +110,84 @@ done
 Expected output: each model `200`.
 
 If anything is non-200, check `docker compose ... logs --tail=120 triton` — the most common failure modes are (a) `model.plan` missing (rebuild step 2.2), (b) opset mismatch between the ONNX and TRT version (re-run trtexec with `--verbose` and check the failing op), (c) external weights not co-located with `model.onnx` (re-run staging step 2.1).
+
+### 2.4 Validate semantics, not only readiness
+
+Before promoting a newly built plan, run one known-good worker smoke and then the serving WER harness. The smoke should fail the deploy if either decoder returns an empty transcript for clear speech:
+
+```bash
+cat > /tmp/triton_smoke.jsonl <<'EOF'
+{"utt_id":"vaani-000","language":"hi","bucket":"smoke","wav":"artifacts/vaani_hindi_10s_c50_seed20260515/vaani_000.wav"}
+EOF
+
+python tools/benchmarks/bench_worker_sequential.py \
+  --manifest /tmp/triton_smoke.jsonl \
+  --worker-url http://127.0.0.1:9000 \
+  --decoder rnnt \
+  --warmup 0 \
+  --out /tmp/triton_smoke_rnnt.csv
+
+python tools/benchmarks/bench_worker_sequential.py \
+  --manifest /tmp/triton_smoke.jsonl \
+  --worker-url http://127.0.0.1:9000 \
+  --decoder ctc \
+  --warmup 0 \
+  --out /tmp/triton_smoke_ctc.csv
+```
+
+Then run the existing parity sweep from `docs/triton_native_serving_plan.md` before promoting any reduced-precision candidate. A Triton model can be `READY` and still be wrong.
+
+### 2.5 Inspect live VRAM ownership
+
+After startup, capture both the whole-card view and the per-process view:
+
+```bash
+# Total VRAM per GPU
+nvidia-smi --query-gpu=index,name,memory.total,memory.used,memory.free --format=csv
+
+# Exact CUDA-process split
+nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory --format=csv
+```
+
+Example from the L40S deploy host:
+
+```text
+index, name, memory.total [MiB], memory.used [MiB], memory.free [MiB]
+0, NVIDIA L40S, 46068 MiB, 9123 MiB, 36346 MiB
+
+pid, process_name, used_gpu_memory [MiB]
+44378, tritonserver, 1836 MiB
+44966, /opt/tritonserver/backends/python/triton_python_backend_stub, 974 MiB
+52114, /usr/bin/python3, 6294 MiB
+```
+
+Read that snapshot as:
+
+| Owner | VRAM |
+|---|---:|
+| Triton main process | `1836 MiB` |
+| Triton Python backend stub | `974 MiB` |
+| Other Python GPU process | `6294 MiB` |
+| **Process-accounted total** | **`9104 MiB`** |
+| **GPU-reported used total** | **`9123 MiB`** |
+
+The small gap between the process-accounted total and `memory.used` is expected GPU/driver accounting overhead. For service-level attribution, group `tritonserver` and `triton_python_backend_stub` together; in the example above Triton owns `2810 MiB`, while the separate Python process owns the majority of VRAM.
+
+To map a GPU PID back to its Docker container:
+
+```bash
+for pid in $(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits); do
+    echo "PID $pid"
+    ps -fp "$pid"
+    cid=$(grep -aoE '[0-9a-f]{64}' /proc/$pid/cgroup | head -1)
+    [ -n "$cid" ] && \
+        docker ps --no-trunc --filter "id=$cid" \
+            --format 'container={{.Names}} image={{.Image}}'
+    echo
+done
+```
+
+`nvidia-smi` can attribute memory to processes, not to individual models inside one process. If exact model-level attribution is needed inside Triton, use Triton-side metrics/profiling in addition to GPU-level tooling.
 
 ---
 
@@ -295,6 +373,12 @@ Hand-crafted lines like the above have `total` exactly equal to stage_sum, so th
 ## 7. Phase 2 — RNNT BLS sketch (deferred until benchmark verdict)
 
 Don't build any of this until the benchmark from §5 produces a GO verdict on the buckets that matter for production traffic.
+
+Phase 2 is intentionally documentation-only during the Phase 1 deploy. Do **not**
+drop placeholder `indic_asr_rnnt*` directories into the live
+`triton/model_repository/` until their versioned ONNX artifacts exist: Triton
+loads every top-level model directory at startup, and config-only placeholders
+make the whole server fail readiness under `--strict-readiness=true`.
 
 ### 7.1 Why an ensemble doesn't work for RNNT
 

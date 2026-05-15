@@ -79,8 +79,6 @@ def load_hf_speech_stream(
     cache_dir: Path | str | None,
     force_explicit_parquet: bool = False,
 ):
-    from datasets import load_dataset
-
     resolved_cache_dir = _resolve_cache_dir(cache_dir)
     common_kwargs = {
         "token": token,
@@ -90,6 +88,8 @@ def load_hf_speech_stream(
         common_kwargs["cache_dir"] = resolved_cache_dir
 
     if not force_explicit_parquet:
+        from datasets import load_dataset
+
         try:
             dataset = load_dataset(
                 dataset_id,

@@ -9,7 +9,7 @@ ARTPARK @ IISc Bangalore, redistributed under the original
 - Dataset: `ARTPARK-IISc/Vaani-transcription-part` (HuggingFace Hub, gated)
 - Config: `audio/Hindi`
 - Split: `train`
-- Snapshot fetched: 2026-05-08 (UTC)
+- Snapshot fetched: 2026-05-15 (UTC)
 - Selection: deterministic, seed=20250507, scan_limit=400, n=4, duration ∈ [2.0, 5.0] s
 - Audio decoded to 16 kHz mono PCM16 WAV (no other processing).
 
@@ -21,9 +21,9 @@ ARTPARK-IISc, *Vaani — A bilingual, code-mixed Indian speech dataset*. https:/
 
 | WAV | Vaani index | Duration (s) | Transcript |
 |---|---|---|---|
-| `01_iisc_vaaniproject_m_biha.wav` | 73 | 2.24 | <noise> विद्यापति आश्रम है-- </noise> |
-| `02_iisc_vaaniproject_m_biha.wav` | 120 | 2.12 | <noise> घर नजर आ रहा है। </noise> |
-| `03_iisc_vaaniproject_k_utta.wav` | 259 | 3.966 | <noise> यह [unintelligible] लाल रंग की एक किताब है जो कि पंडित लोग-- </noise> |
-| `04_iisc_vaaniproject_k_jhar.wav` | 292 | 3.158 | कुछ लोग क्रिकेट {cricate} खेल रहे है। |
+| `01_iisc_vaaniproject_m_biha.wav` | 73 | 2.24 | विद्यापति आश्रम है |
+| `02_iisc_vaaniproject_m_biha.wav` | 120 | 2.12 | घर नजर आ रहा है |
+| `03_iisc_vaaniproject_k_utta.wav` | 259 | 3.966 | यह लाल रंग की एक किताब है जो कि पंडित लोग |
+| `04_iisc_vaaniproject_k_jhar.wav` | 292 | 3.158 | कुछ लोग क्रिकेट खेल रहे है |
 
 Refer to `_fetch_vaani_fixtures.py` to regenerate this set.

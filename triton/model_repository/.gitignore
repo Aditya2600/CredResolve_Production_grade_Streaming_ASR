@@ -4,6 +4,7 @@
 */1/model.onnx
 */1/model.pt
 */1/model.plan
+*/1/*.plan
 indic_asr_encoder/1/layers.*
 indic_asr_encoder/1/Constant_*
 indic_asr_encoder/1/onnx__*

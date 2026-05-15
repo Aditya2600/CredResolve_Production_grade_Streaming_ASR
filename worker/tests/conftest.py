@@ -3,9 +3,10 @@
 The characterization tests in test_audio_characterization.py need the real
 Silero VAD and a real RNNoise binding loaded once per session. These fixtures:
 
-- Verify the Silero VAD model cache exists locally and SKIP cleanly with a
-  clear setup hint if it is missing. Tests must NOT touch the network at
-  collect or run time, so we never call ``torch.hub.load(force_reload=True)``.
+- Verify that Silero VAD is available, either via the `silero-vad` PyPI package
+  (preferred, bundled weights) or via the legacy torch.hub cache directory.
+  Tests SKIP cleanly with a clear hint when neither is present.
+  We never call ``torch.hub.load(force_reload=True)`` so tests stay offline.
 - Probe whether ``pyrnnoise`` or ``rnnoise_wrapper`` is importable so denoise
   combinations can be skipped in environments that lack the C binding.
 - Build one ``AudioPreprocessor`` per session and yield a per-test view that
@@ -25,19 +26,31 @@ import pytest
 
 _TORCH_HOME = Path(os.environ.get("TORCH_HOME", str(Path.home() / ".cache" / "torch")))
 _SILERO_HUB_DIR = _TORCH_HOME / "hub" / "snakers4_silero-vad_master"
-_SILERO_REQUIRED_FILES = (
+_SILERO_HUB_REQUIRED_FILES = (
     _SILERO_HUB_DIR / "hubconf.py",
     _SILERO_HUB_DIR / "src" / "silero_vad" / "data" / "silero_vad.jit",
 )
 _SILERO_SETUP_HINT = (
-    "Pre-cache the model once with internet access:\n"
+    "Install the silero-vad PyPI package (preferred, no git needed):\n"
+    "    pip install 'silero-vad>=5.1.2'\n"
+    "Or pre-cache the hub model once with internet access:\n"
     "    python -c 'import torch; torch.hub.load(\"snakers4/silero-vad\", \"silero_vad\")'\n"
-    f"This populates {_SILERO_HUB_DIR}. After that, characterization tests run offline."
+    f"The hub path would be {_SILERO_HUB_DIR}."
 )
 
 
-def _silero_vad_cached() -> bool:
-    return all(p.is_file() for p in _SILERO_REQUIRED_FILES)
+def _silero_vad_available() -> bool:
+    """Return True if Silero VAD can be loaded without network access.
+
+    Checks the PyPI package first (always available once pip-installed),
+    then the legacy torch.hub cache directory.
+    """
+    try:
+        import silero_vad  # noqa: F401
+        return True
+    except Exception:
+        pass
+    return all(p.is_file() for p in _SILERO_HUB_REQUIRED_FILES)
 
 
 def _detect_rnnoise() -> str | None:
@@ -65,13 +78,14 @@ def rnnoise_available() -> bool:
 def _real_session_preprocessor():
     """Load Silero VAD + RNNoise once and return a real AudioPreprocessor.
 
-    Skips the dependent tests with a clear hint if the local Silero cache is
-    missing — we deliberately do not network at test time.
+    Skips the dependent tests with a clear hint if Silero VAD is unavailable
+    (neither the PyPI package nor the torch.hub cache exists).
+    We deliberately do not touch the network at test time.
     """
-    if not _silero_vad_cached():
+    if not _silero_vad_available():
         pytest.skip(
-            "Silero VAD model cache not found at "
-            f"{_SILERO_HUB_DIR}.\n{_SILERO_SETUP_HINT}"
+            "Silero VAD not available (neither silero-vad PyPI package nor "
+            f"hub cache at {_SILERO_HUB_DIR}).\n{_SILERO_SETUP_HINT}"
         )
     from worker.app.audio_processing import (
         AudioPreprocessor,

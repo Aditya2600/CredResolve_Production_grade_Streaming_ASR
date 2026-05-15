@@ -6,7 +6,9 @@ locale rendering. No LLM in the live path.
 
 See [docs/implementation_bluprint_INR.md](../docs/implementation_bluprint_INR.md)
 for the full design and `CONTRIBUTING.md` for the invariants this service
-maintains.
+maintains. For the current gap between the intended design and the live
+request path, see
+[docs/itn_live_path_gap_analysis.md](../docs/itn_live_path_gap_analysis.md).
 
 ## Layout
 

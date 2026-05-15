@@ -146,26 +146,50 @@ class AudioPreprocessor:
             else max(0, int(vad_concat_padding_ms))
         )
         self.vad_model = None
-        self.utils = None
+        self._get_speech_timestamps = None
         self.rnnoise = None
         self._denoise_lock = threading.Lock()
         self._load_models()
 
     def _load_models(self):
+        self._load_silero_vad()
+        self.rnnoise = self._load_denoiser()
+
+    def _load_silero_vad(self) -> None:
+        """Load Silero VAD, preferring the `silero-vad` PyPI package (bundled
+        weights, no git or network access required at runtime) and falling back
+        to the legacy ``torch.hub.load`` path for pre-cached hub directories.
+        """
+        # --- preferred path: silero-vad PyPI package ---
         try:
-            self.vad_model, self.utils = torch.hub.load(
+            from silero_vad import load_silero_vad, get_speech_timestamps
+
+            self.vad_model = load_silero_vad(onnx=False)
+            self._get_speech_timestamps = get_speech_timestamps
+            log.info("Silero VAD model loaded via silero-vad PyPI package")
+            return
+        except Exception as e:
+            log.debug("silero-vad PyPI package unavailable (%s); trying torch.hub fallback", e)
+
+        # --- legacy fallback: torch.hub (requires git on first pull) ---
+        try:
+            vad_model, utils = torch.hub.load(
                 repo_or_dir="snakers4/silero-vad",
                 model="silero_vad",
                 force_reload=False,
             )
-            log.info("Silero VAD model loaded successfully")
+            self.vad_model = vad_model
+            # torch.hub returns (get_speech_timestamps, ...) as a tuple in utils
+            self._get_speech_timestamps = utils[0]
+            log.info("Silero VAD model loaded via torch.hub (legacy path)")
         except Exception as e:
-            log.warning(f"Failed to load Silero VAD: {e}")
-
-        self.rnnoise = self._load_denoiser()
+            log.warning("Failed to load Silero VAD: %s", e)
 
     def _load_denoiser(self):
         choice = (getattr(config, "DENOISER", "rnnoise") or "rnnoise").strip().lower()
+        if choice == "none":
+            log.info("DENOISER=none: denoising disabled")
+            return None
         if choice == "deepfilternet":
             try:
                 denoiser = _DeepFilterNetDenoiser()
@@ -279,12 +303,11 @@ class AudioPreprocessor:
             except Exception:
                 log.debug("AUDIO_STAGE_LATENCY[total] emit failed", exc_info=True)
 
-        if vad_enabled and self.vad_model is not None:
+        if vad_enabled and self.vad_model is not None and self._get_speech_timestamps is not None:
             t_vad_0 = time.perf_counter()
             audio_float32 = audio_int16.astype(np.float32) / 32768.0
             audio_tensor = torch.from_numpy(audio_float32)
-            get_speech_timestamps = self.utils[0]
-            speech_timestamps = get_speech_timestamps(
+            speech_timestamps = self._get_speech_timestamps(
                 audio_tensor, self.vad_model, sampling_rate=16000
             )
             num_segments = len(speech_timestamps) if speech_timestamps else 0

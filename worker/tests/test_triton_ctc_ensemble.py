@@ -7,7 +7,11 @@ import types
 import numpy as np
 import torch
 
-from worker.app.triton import TritonCTCEnsembleClient, _TritonDispatchModel
+from worker.app.triton import (
+    TritonCTCEnsembleClient,
+    _TRITON_CTC_MIN_AUDIO_SAMPLES,
+    _TritonDispatchModel,
+)
 
 
 def _install_fake_triton_http(monkeypatch, logprobs: np.ndarray, encoded_lengths: np.ndarray):
@@ -163,6 +167,30 @@ def test_ctc_ensemble_rejects_non_ctc_decoding(monkeypatch):
         assert "ctc" in str(exc)
     else:  # pragma: no cover - assertion aid
         raise AssertionError("expected ValueError for decoding != 'ctc'")
+
+
+def test_ctc_ensemble_pads_short_audio_before_infer(monkeypatch):
+    logprobs = np.zeros((1, 1, 1), dtype=np.float32)
+    encoded_lengths = np.asarray([1], dtype=np.int64)
+    clients = _install_fake_triton_http(monkeypatch, logprobs, encoded_lengths)
+    client = TritonCTCEnsembleClient(
+        server_url="triton:8000",
+        model_name="indic_asr_ctc",
+        vocab={"hi": ["<blank>"]},
+        language_masks={"hi": [0]},
+        blank_id=0,
+        protocol="http",
+    )
+
+    client(torch.ones(1, 8), "hi", decoding="ctc")
+
+    infer_inputs = clients[0].infer_calls[0]["inputs"]
+    audio_input, length_input = infer_inputs
+    assert audio_input.name == "AUDIO_SIGNAL"
+    assert audio_input.shape == [1, _TRITON_CTC_MIN_AUDIO_SAMPLES]
+    assert audio_input.data.shape == (1, _TRITON_CTC_MIN_AUDIO_SAMPLES)
+    assert length_input.name == "LENGTH"
+    assert length_input.data.tolist() == [8]
 
 
 def test_dispatch_model_routes_ctc_to_ensemble_and_falls_back(monkeypatch):

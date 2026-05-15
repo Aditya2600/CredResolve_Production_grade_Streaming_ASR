@@ -24,6 +24,12 @@ log = logging.getLogger("worker.triton")
 
 _BLANK_ID = 256
 _FRAME_DURATION_MS = 0.08
+_TRITON_ENCODER_MIN_FRAMES = 100
+# The native CTC ensemble exposes only waveform -> preproc -> encoder as a
+# static graph, so the worker pads the waveform just enough for the current
+# preprocessor to emit the encoder's 100-frame minimum. `LENGTH` still carries
+# the original sample count so downstream encoded lengths remain semantic.
+_TRITON_CTC_MIN_AUDIO_SAMPLES = 15_840
 
 _VALID_PROTOCOLS = ("http", "grpc")
 
@@ -73,6 +79,29 @@ def _load_triton_client(protocol: str):
         raise ModelNotReadyError(
             f"Unknown Triton protocol: {protocol!r} (expected 'http' or 'grpc')"
         )
+
+
+def _pad_short_audio_for_ctc_ensemble(wav_t: torch.Tensor) -> torch.Tensor:
+    """Right-pad CTC-ensemble waveforms without changing semantic length.
+
+    `indic_asr_ctc` is a static ensemble, so there is no programmable hook
+    between the TorchScript preprocessor and the TensorRT encoder. Padding the
+    waveform to 15,840 samples makes the current preprocessor emit exactly 100
+    feature frames; the separately-sent `LENGTH` tensor remains the *original*
+    sample count, so Triton still returns the original encoded length.
+    """
+    samples = int(wav_t.shape[-1])
+    if samples >= _TRITON_CTC_MIN_AUDIO_SAMPLES:
+        return wav_t
+
+    padded = torch.nn.functional.pad(wav_t, (0, _TRITON_CTC_MIN_AUDIO_SAMPLES - samples))
+    log.debug(
+        "Padded short CTC-ensemble audio samples=%s padded_samples=%s min_encoder_frames=%s",
+        samples,
+        _TRITON_CTC_MIN_AUDIO_SAMPLES,
+        _TRITON_ENCODER_MIN_FRAMES,
+    )
+    return padded
 
 
 class TritonRemoteInferenceModel:
@@ -328,12 +357,14 @@ class TritonCTCEnsembleClient:
                 f"language `{resolved_language}` has no mask in the CTC ensemble bundle"
             )
 
+        original_samples = int(wav_t.shape[-1])
+        wav_t = _pad_short_audio_for_ctc_ensemble(wav_t)
         audio = wav_t.detach().cpu().numpy().astype(np.float32, copy=False)
         if audio.ndim == 1:
             audio = np.expand_dims(audio, axis=0)
         if audio.ndim != 2:
             raise ValueError(f"expected wav rank 2 [B,T], got shape {audio.shape}")
-        length = np.asarray([audio.shape[-1]] * audio.shape[0], dtype=np.int64)
+        length = np.asarray([original_samples] * audio.shape[0], dtype=np.int64)
 
         audio_input = self._InferInput("AUDIO_SIGNAL", list(audio.shape), "FP32")
         length_input = self._InferInput("LENGTH", list(length.shape), "INT64")

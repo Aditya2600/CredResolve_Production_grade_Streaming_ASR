@@ -12,6 +12,54 @@ reference when checking where adapters are inserted, when choosing module-name
 patterns for inspection, or when comparing a future model export against the
 known IndicConformer structure.
 
+## End-to-End RNNT Inference Flow
+
+At inference time, the RNNT path is best understood as two halves: an
+**acoustic encoder** that turns audio into frame-level representations, and an
+**autoregressive decoder** that turns those representations into text.
+
+```mermaid
+flowchart LR
+    Audio["Raw audio waveform"] --> Preproc["Preprocessor\nlog-mel filterbank features"]
+    Preproc --> Encoder["Conformer encoder"]
+    Encoder --> Frames["Encoder output frames\nacoustic embeddings over time"]
+    Frames --> Joint["Joint network"]
+    History["Previously emitted tokens"] --> Predictor["Predictor network"]
+    Predictor --> Joint
+    Joint --> Decision{"Token or blank?"}
+    Decision -->|token| Text["Transcript tokens"]
+    Text --> History
+    Decision -->|blank| Next["Advance to next encoder frame"]
+    Next --> Joint
+```
+
+A shorter mental model is:
+
+```text
+audio
+  -> preprocessor / log-mel features
+  -> Conformer encoder
+  -> encoder output frames
+  -> RNNT decoder: predictor + joint network
+  -> text
+```
+
+| Stage | What it does |
+| --- | --- |
+| **Audio waveform** | The input signal, typically PCM samples. |
+| **Preprocessor** | Converts the waveform into log-mel filterbank features that are easier for the acoustic model to consume. |
+| **Conformer encoder** | Reads the acoustic feature sequence and produces a shorter sequence of learned frame embeddings that carry phonetic and contextual information. |
+| **Encoder output frames** | The time-indexed representations consumed by the decoder side of the model. These are the shared acoustic backbone for both RNNT and CTC heads. |
+| **Predictor network** | Tracks the label history: what the model has emitted so far. In RNNT terms, it behaves like a small language-model-like state machine over prior tokens. |
+| **Joint network** | Combines one encoder frame with the predictor state and scores the next output symbol, including the special `<blank>` symbol. |
+| **Text generation** | If the joint network emits a token, that token is appended to the transcript and fed back into the predictor. If it emits `<blank>`, decoding advances to the next encoder frame. |
+
+The important distinction is that the **encoder is frame-synchronous**, while the
+RNNT decoder is **label-synchronous and autoregressive**. One encoder frame can
+produce zero, one, or several output tokens before the decoder emits `<blank>`
+and moves on. That data-dependent loop is the reason RNNT decoding cannot be
+represented as a simple static graph in the same way as the CTC path.
+
 ## Inspect Command
 
 Run this from the repo root in an environment with NeMo ASR installed:

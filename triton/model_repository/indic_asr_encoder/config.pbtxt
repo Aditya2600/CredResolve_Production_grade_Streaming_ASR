@@ -1,26 +1,27 @@
-# IndicConformer encoder served through ONNX Runtime.
+# IndicConformer encoder served through TensorRT.
 #
 # The model.plan is built inside the Triton+TRT container against the actual
-# production GPU (Tesla T4 / SM 7.5 in this deploy) with:
+# production GPU with the parity-safe FP32 baseline:
 #   trtexec --onnx=/models/indic_asr_encoder/1/model.onnx \
-#     --fp16 \
+#     --noTF32 \
 #     --minShapes=audio_signal:1x80x100,length:1 \
 #     --optShapes=audio_signal:1x80x800,length:1 \
 #     --maxShapes=audio_signal:1x80x3000,length:1 \
 #     --memPoolSize=workspace:4096 \
 #     --saveEngine=/models/indic_asr_encoder/1/model.plan
 #
-# To enable the native TensorRT engine after a WER parity pass, switch
-# `backend` to "tensorrt" and `default_model_filename` to "model.plan" — both
-# files coexist in 1/.
+# Do not replace this baseline with an FP16 engine without a real transcript
+# parity pass. On 2026-05-15, the FP16 plan loaded successfully but compressed
+# encoder activations enough that both RNNT and CTC returned blank transcripts.
+# `model.onnx` remains beside the plan for an immediate ORT rollback path.
 #
 # Encoder ONNX + external weight blobs (`layers.*`, `Constant_*`, `onnx__*`,
 # `pre*`) must remain alongside model.plan — Triton TRT backend will pick the
 # .plan, but a future re-build of the engine reads from model.onnx.
 
 name: "indic_asr_encoder"
-backend: "onnxruntime"
-default_model_filename: "model.onnx"
+backend: "tensorrt"
+default_model_filename: "model.plan"
 max_batch_size: 0
 
 input [

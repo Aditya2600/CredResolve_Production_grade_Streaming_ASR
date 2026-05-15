@@ -293,6 +293,204 @@ Immediate gateway log checks after the run found:
 | `fallback_timeout` | 0 |
 | `worker-fallback` | 0 |
 
+## 50-Client Distinct-Audio Run With Observability Capture
+
+On 2026-05-15, a fresh deterministic 50-clip Vaani Hindi sample was fetched
+outside the SimpliSmart path and used for a 50-client barrier burst:
+
+```text
+artifacts/vaani_hindi_10s_c50_seed20260515/
+```
+
+All 50 WAVs were unique, mono PCM16, 16 kHz, and exactly 10 seconds long.
+The run used the current compose-published gateway port and stored the client
+output plus exported Prometheus window here:
+
+```text
+artifacts/ws50_20260515T105208Z/
+```
+
+Command:
+
+```bash
+PYTHONPATH=/tmp/vaani_deps310 python3 tools/ws_burst_barrier.py \
+  --ws ws://localhost:8001/ws/stt \
+  --n 50 \
+  --wav-dir artifacts/vaani_hindi_10s_c50_seed20260515 \
+  --audio-seed 20260515 \
+  --max-audio-sec 10 \
+  --send-mode realtime \
+  --language-code hi \
+  --response-timeout 120 \
+  --idle-timeout 20 \
+  --expect-data
+```
+
+Client-side results:
+
+```text
+Clients: 50
+Connected: 50
+Successful: 50
+Failures: 0
+First-audio release spread: 2.79ms
+Flush send spread: 1.16ms
+Bytes sent total: 16000000
+Data messages: 140
+Pre-flush data messages: 89
+Post-flush data messages: 51
+VAD messages: 0
+Connect: avg=22.3ms p50=22.3ms p95=24.8ms min=18.8ms max=31.8ms
+Stream send: avg=10000.8ms p50=10000.9ms p95=10001.5ms min=10000.0ms max=10001.6ms
+Flush barrier wait: avg=2.0ms p50=1.9ms p95=3.0ms min=0.1ms max=3.0ms
+Response wait: avg=22375.8ms p50=22298.9ms p95=24637.6ms min=20140.1ms max=24961.8ms
+Total session: avg=32404.6ms p50=32326.7ms p95=34663.6ms min=30166.8ms max=34991.0ms
+Wall time: 35003.1ms
+```
+
+The Prometheus export confirms the distinction between session concurrency and
+backend-job concurrency for this run:
+
+| Metric from exported window | Observation |
+|---|---:|
+| Peak `sum(asr_ws_connections)` | 50 |
+| Peak `sum(asr_worker_inflight_requests)` | 4 |
+| Worker latency p95 over the captured 1-minute window | ~0.62-0.69 s |
+| Triton client round-trip p95 over the captured 1-minute window | ~4.75-4.82 ms |
+| GPU VRAM used | 9,108 -> 9,738 MiB |
+
+Interpretation:
+
+- The test successfully validated 50 synchronized WebSocket sessions.
+- It did **not** create 50 simultaneous worker jobs: 89 of 140 transcript
+  messages arrived before the synchronized flush, so natural pauses in the
+  distinct clips spread the ASR work across the stream.
+- The exported `asr_worker_fallback_total[5m]` query should not be treated as a
+  per-run fallback count here because it is a rolling five-minute window that
+  includes earlier traffic.
+- `histogram_quantile(... asr_e2e_seconds_bucket ...)` saturated at the
+  histogram's top `8s` bucket during this run, so it is a bucket ceiling rather
+  than an exact p95 latency.
+
+### Compared With The Prior `n=50 latest` Row
+
+The earlier `n=50 latest` row and this fresh distinct-audio run are both useful,
+but they describe different workload shapes:
+
+| Test | Success | Data msgs | Pre-flush | Post-flush | Response wait avg | Est. real avg latency | Est. P95 latency | Est. max / approx P99 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Prior `n=50 latest` | 50/50 | 116 | 67 | 49 | 20,130.7 ms | ~131 ms | ~186 ms | ~189 ms |
+| 2026-05-15 distinct-audio + Prometheus capture | 50/50 | 140 | 89 | 51 | 22,375.8 ms | ~2,376 ms | ~4,638 ms | ~4,962 ms |
+
+The new run is the harsher mixed-utterance session-level validation. It should
+not replace the prior row as a direct latency headline, because the fresh random
+clips produced substantially more utterance finalization work and only reached
+4 observed in-flight worker requests despite 50 live sockets.
+
+## 50-Client True Worker-Concurrency Run
+
+After the mixed-audio run above, the service concurrency limits were raised and
+the timeout rails restored:
+
+| Setting | Value |
+|---|---:|
+| `GATEWAY_MAX_INFLIGHT_WORKER` | `50` |
+| `WORKER_MAX_JOBS` | `50` |
+| `ASR_INFERENCE_TIMEOUT_MS` | `30000` |
+| `WORKER_TIMEOUT_MS` | `35000` |
+
+The worker and gateway containers were force-recreated so the new environment
+was live before the next burst.
+
+The first probe against `vaani_042.wav` with `n=1` showed that the clip was not
+a single-final clip:
+
+```text
+Data messages: 3
+Pre-flush data messages: 2
+Post-flush data messages: 1
+```
+
+That means it was not a perfect "all work waits until flush" forcing function.
+However, the subsequent `n=50` run still reached true backend concurrency,
+which the worker metric proves directly.
+
+Artifacts:
+
+```text
+artifacts/ws50_true_20260515T110840Z/
+```
+
+Command:
+
+```bash
+PYTHONPATH=/tmp/vaani_deps310 python3 tools/ws_burst_barrier.py \
+  --ws ws://localhost:8001/ws/stt \
+  --n 50 \
+  --wav artifacts/vaani_hindi_10s_c50_seed20260515/vaani_042.wav \
+  --max-audio-sec 10 \
+  --send-mode realtime \
+  --language-code hi \
+  --response-timeout 120 \
+  --idle-timeout 20 \
+  --expect-data
+```
+
+Client-side results:
+
+```text
+Clients: 50
+Connected: 50
+Successful: 50
+Failures: 0
+First-audio release spread: 0.86ms
+Flush send spread: 1.00ms
+Bytes sent total: 16000000
+Data messages: 150
+Pre-flush data messages: 45
+Post-flush data messages: 105
+VAD messages: 0
+Connect: avg=33.5ms p50=25.1ms p95=49.6ms min=18.1ms max=53.6ms
+Stream send: avg=10000.4ms p50=10000.2ms p95=10001.0ms min=10000.1ms max=10001.0ms
+Flush barrier wait: avg=1.5ms p50=1.7ms p95=1.8ms min=0.1ms max=1.8ms
+Response wait: avg=30118.8ms p50=30178.7ms p95=30629.9ms min=29226.1ms max=30681.0ms
+Total session: avg=40172.8ms p50=40228.8ms p95=40684.9ms min=39279.5ms max=40735.5ms
+Wall time: 40747.9ms
+```
+
+Prometheus validation from the exported window
+`2026-05-15T11:08:40Z -> 2026-05-15T11:09:31Z`:
+
+| Metric | Observation |
+|---|---:|
+| Peak `sum(asr_ws_connections)` | 50 |
+| Peak `sum(asr_worker_inflight_requests)` | 50 |
+| `asr_worker_inflight_requests` samples at peak | 50 at `11:08:50Z`, `11:08:55Z`, and `11:09:00Z` |
+| `sum(increase(asr_worker_fallback_total[5m]))` | 0 throughout the captured window |
+| Worker inference p95 | reached the histogram top bucket at `5s` |
+| Worker latency p95 | reached the histogram top bucket at `8s` |
+| Triton client round-trip p95 | reached the histogram top bucket at `2.5s` |
+| Triton average queue duration | peaked at ~`1.95s` |
+| GPU VRAM used | 9,852 -> 9,910 MiB |
+
+Interpretation:
+
+- This is the first run in this series that validates **50 simultaneous worker
+  jobs**, not only 50 live WebSocket sessions.
+- The proof is the worker-side gauge itself: `asr_worker_inflight_requests`
+  reached 50 and remained at 50 across three consecutive 5-second Prometheus
+  scrapes.
+- The run stayed clean at the session level: 50/50 clients succeeded and the
+  rolling fallback query remained at 0 for the captured window.
+- Several latency histograms saturated at their current top buckets during the
+  run. That means this run proves concurrency, but the existing histogram bucket
+  layout is too shallow to report exact p95 tails once the system is stressed at
+  50-way worker concurrency.
+- A separately started 100 ms direct sampler under
+  `artifacts/ws50_true_20260515T110941Z/worker_inflight_100ms.csv` captured only
+  zeros because it was started after the burst had already completed; it should
+  not be used as evidence for or against the run.
+
 ## Validated Concurrency Comparison
 
 Latency validation rule:
@@ -313,7 +511,9 @@ run is not dominated by fallback or non-inference responses.
 | n=6 latest before correction | No inference / not valid | 6 | 20s | 6/6 | 12 | 6 | 6 | 20,019.9 ms | ~20 ms | ~21 ms | ~21 ms | No |
 | n=16 earlier | No inference / not valid | 16 | 20s | 16/16 | 40 | 25 | 15 | 20,051.0 ms | ~51 ms | ~60 ms | ~61 ms | No |
 | n=30 earlier | No inference / not valid | 30 | 20s | 30/30 | 69 | 40 | 29 | 20,085.6 ms | ~86 ms | ~106 ms | ~107 ms | No |
-| n=50 latest | Inference on | 50 | 20s | 50/50 | 116 | 67 | 49 | 20,130.7 ms | ~131 ms | ~186 ms | ~189 ms | Yes |
+| n=50 prior latest | Inference on | 50 | 20s | 50/50 | 116 | 67 | 49 | 20,130.7 ms | ~131 ms | ~186 ms | ~189 ms | Yes |
+| n=50 distinct-audio + Prometheus capture | Inference on | 50 | 20s | 50/50 | 140 | 89 | 51 | 22,375.8 ms | ~2,376 ms | ~4,638 ms | ~4,962 ms | Yes for session-level inference; no for a 50-way worker-concurrency claim |
+| n=50 true worker-concurrency run | Inference on | 50 | 20s | 50/50 | 150 | 45 | 105 | 30,118.8 ms | ~10,119 ms | ~10,630 ms | ~10,681 ms | Yes; Prometheus observed 50 in-flight worker requests |
 
 Validation notes:
 
@@ -321,9 +521,17 @@ Validation notes:
   the first utterance fell back for 17 of 30 clients.
 - Rows marked `No inference / not valid` are useful as transport/session
   checks, but should not be used to claim ASR inference latency.
-- The `n=50 latest` row is the valid ASR inference claim in this comparison:
-  inference was on, all 50 sessions succeeded, and the estimated latency is
-  computed after removing the 20-second idle grace.
+- The `n=50 prior latest` row remains the cleanest low-latency ASR inference
+  claim in this comparison: inference was on, all 50 sessions succeeded, and
+  the estimated latency is computed after removing the 20-second idle grace.
+- The newer 50-client distinct-audio run is also an inference-on session-level
+  validation, but exported Prometheus telemetry shows it is **not** evidence of
+  50 simultaneous worker jobs: `asr_ws_connections` peaked at 50 while
+  `asr_worker_inflight_requests` peaked at 4.
+- The newest 50-client run is the valid **true worker-concurrency** claim:
+  inference was on, all 50 sessions succeeded, fallbacks stayed at 0 in the
+  captured window, and Prometheus observed
+  `asr_worker_inflight_requests = 50`.
 
 ## What This Proves
 
@@ -335,8 +543,11 @@ Validation notes:
   `fallback_timeout` responses for this 30-client Vaani burst.
 - The updated barrier script can run a reproducible 30-client burst using 30
   different Vaani WAV files instead of replaying one shared file.
-- The validated comparison table identifies the latest 50-client inference-on
-  run as the valid ASR inference claim among the listed runs.
+- The validated comparison table now separates the prior low-latency 50-client
+  inference-on row, the distinct-audio 50-client session-level run, and the
+  newest 50-client true worker-concurrency run.
+- With `GATEWAY_MAX_INFLIGHT_WORKER=50` and `WORKER_MAX_JOBS=50`, the deployment
+  executed 50 simultaneous worker jobs during the latest same-WAV burst.
 - The barrier script produced a tight concurrency probe: audio start and flush
   spread were both within roughly 5 ms in the final verification run.
 

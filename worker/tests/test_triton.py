@@ -130,3 +130,18 @@ def test_triton_remote_inference_model_returns_timestamps_when_requested(monkeyp
         "TIMESTAMP_TYPE",
     ]
     assert [tensor.name for tensor in infer_outputs] == ["TRANSCRIPT", "TIMESTAMPS_JSON"]
+
+
+def test_triton_remote_inference_model_keeps_original_audio_length(monkeypatch):
+    clients = _install_fake_triton_http(monkeypatch)
+    model = TritonRemoteInferenceModel(
+        server_url="triton:8000", model_name="indic_asr", protocol="http"
+    )
+
+    model(torch.ones(1, 8), "hi", decoding="rnnt")
+
+    audio_input = clients[0].infer_calls[0]["inputs"][0]
+    assert audio_input.name == "AUDIO_SIGNAL"
+    assert audio_input.shape == [1, 8]
+    assert audio_input.data.shape == (1, 8)
+    np.testing.assert_array_equal(audio_input.data, np.ones((1, 8), dtype=np.float32))

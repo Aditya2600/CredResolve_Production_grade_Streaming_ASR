@@ -10,6 +10,7 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.enable-admin-api"
@@ -104,6 +105,9 @@ services:
       - ASR_CONTEXT_BIASING_CONTEXT_SCORE=${ASR_CONTEXT_BIASING_CONTEXT_SCORE:-3.0}
       - ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT=${ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT:-0.6}
       - ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES=${ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES:-32}
+      - DENOISER=${DENOISER:-deepfilternet}
+      - VAD_SELECT_MODE=${VAD_SELECT_MODE:-concat}
+      - VAD_CONCAT_PADDING_MS=${VAD_CONCAT_PADDING_MS:-100}
       - WORKER_MAX_JOBS=${WORKER_MAX_JOBS}
       - HUGGINGFACE_HUB_TOKEN=${HUGGINGFACE_HUB_TOKEN}
       - HF_TOKEN=${HUGGINGFACE_HUB_TOKEN}
@@ -128,6 +132,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
+              count: all
               capabilities: ["gpu"]
 
   gateway:
@@ -174,7 +179,7 @@ services:
       - WS_API_KEYS=${WS_API_KEYS:-dev}
     volumes:
       - /home/ubuntu/logs:/srv/logs
-    ports: ["8000:8000"]
+    ports: ["8001:8000"]
     ulimits:
       nofile:
         soft: 65535
