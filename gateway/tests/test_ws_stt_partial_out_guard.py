@@ -197,6 +197,70 @@ def test_valid_handshake_and_flush_finalizes_transcript(monkeypatch):
     assert message["data"]["metrics"]["processing_latency"] >= 0
 
 
+def test_data_sent_log_includes_transcript_only_when_enabled(monkeypatch):
+    _prepare_common(monkeypatch)
+    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
+    monkeypatch.setattr(gateway_main, "LOG_TRANSCRIPTS", True)
+
+    async def _ok_transcribe(audio_bytes, sample_rate, decoder, language, mode, **_kwargs):
+        return WorkerResponse(text="hello sarvam", language="hi", language_source="client")
+
+    info_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def _capture_info(*args: Any, **kwargs: Any) -> None:
+        info_calls.append((args, kwargs))
+
+    monkeypatch.setattr(gateway_main.worker, "transcribe", _ok_transcribe)
+    monkeypatch.setattr(gateway_main.log, "info", _capture_info)
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
+            ws.send_json(_audio_message(b"\x00" * 640, sample_rate=16000, encoding="pcm_s16le"))
+            ws.send_json({"type": "flush"})
+            ws.receive_json()
+
+    data_sent_calls = [
+        args
+        for args, _kwargs in info_calls
+        if args and args[0].startswith("Data sent session_id=%s")
+    ]
+    assert len(data_sent_calls) == 1
+    assert "text=%s" in data_sent_calls[0][0]
+    assert data_sent_calls[0][5] == '"hello sarvam"'
+
+
+def test_data_sent_log_omits_transcript_when_disabled(monkeypatch):
+    _prepare_common(monkeypatch)
+    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
+    monkeypatch.setattr(gateway_main, "LOG_TRANSCRIPTS", False)
+
+    async def _ok_transcribe(audio_bytes, sample_rate, decoder, language, mode, **_kwargs):
+        return WorkerResponse(text="hello sarvam", language="hi", language_source="client")
+
+    info_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def _capture_info(*args: Any, **kwargs: Any) -> None:
+        info_calls.append((args, kwargs))
+
+    monkeypatch.setattr(gateway_main.worker, "transcribe", _ok_transcribe)
+    monkeypatch.setattr(gateway_main.log, "info", _capture_info)
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
+            ws.send_json(_audio_message(b"\x00" * 640, sample_rate=16000, encoding="pcm_s16le"))
+            ws.send_json({"type": "flush"})
+            ws.receive_json()
+
+    data_sent_calls = [
+        args
+        for args, _kwargs in info_calls
+        if args and args[0].startswith("Data sent session_id=%s")
+    ]
+    assert len(data_sent_calls) == 1
+    assert "text=%s" not in data_sent_calls[0][0]
+    assert '"hello sarvam"' not in data_sent_calls[0]
+
+
 def test_binary_audio_frame_and_flush_finalizes_transcript(monkeypatch):
     _prepare_common(monkeypatch)
     monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)

@@ -349,7 +349,7 @@ function App() {
             type="button"
             onClick={() => handleWorkspaceViewChange('validation')}
           >
-            Error Review
+            Transcript Review
           </button>
           <button
             className={`rounded px-3 py-1.5 text-xs font-black transition ${
@@ -362,7 +362,7 @@ function App() {
           </button>
         </div>
         <div className="hidden text-[10px] font-black uppercase tracking-widest text-slate-400 sm:block">
-          Vaani denoise_apm validation
+          Vaani artifact review
         </div>
       </div>
 

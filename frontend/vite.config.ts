@@ -6,9 +6,9 @@ import react from '@vitejs/plugin-react';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(__dirname, '..');
-const validationErrorsPath = path.join(
+const validationErrorsPath = path.resolve(
   workspaceRoot,
-  'artifacts/vaani_model_validation_rerun/variants/denoise_apm/errors.jsonl',
+  process.env.VALIDATION_REVIEW_ARTIFACT ?? 'artifacts/ws50_rnnt_dfn_20260516/review.jsonl',
 );
 
 function isInsideWorkspace(filePath: string): boolean {

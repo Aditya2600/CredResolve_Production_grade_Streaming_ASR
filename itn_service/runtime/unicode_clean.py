@@ -47,6 +47,43 @@ _HALANTS: frozenset[int] = frozenset(
 _ZWJ = "‍"
 _ZWNJ = "‌"
 
+# Gurmukhi (Punjabi) bindi-fold.
+#
+# Per Indic NLP / IndicTrans normalisation conventions and the
+# Bengali / Gujarati / Punjabi onboarding spec, Gurmukhi text is
+# folded to its non-bindi (no-nukta) base letters in the working
+# copy so the Punjabi grammar sees a single canonical form for each
+# letter family. Five pairs are in scope:
+#
+#   ਫ਼ (PHA + NUKTA, 0A2B 0A3C) -> ਫ (PHA, 0A2B)
+#   ਜ਼ (JA  + NUKTA, 0A1C 0A3C) -> ਜ (JA,  0A1C)
+#   ਗ਼ (GA  + NUKTA, 0A17 0A3C) -> ਗ (GA,  0A17)
+#   ਖ਼ (KHA + NUKTA, 0A16 0A3C) -> ਖ (KHA, 0A16)
+#   ਸ਼ (SA  + NUKTA, 0A38 0A3C) -> ਸ (SA,  0A38)
+#
+# NFC (applied earlier in :func:`working_copy`) already decomposes
+# the precomposed legacy codepoints U+0A59 / U+0A5A / U+0A5B / U+0A5E
+# / U+0A36 to their <base> + U+0A3C canonical equivalents — see the
+# Unicode NormalizationCorrections table — so by the time the fold
+# runs every bindi-letter is the decomposed pair. The fold therefore
+# only needs to strip U+0A3C when it immediately follows one of the
+# five base codepoints above.
+#
+# We deliberately do NOT include U+0A33 (LLA + NUKTA) in the fold,
+# even though the precomposed ਲ਼ exists, because ਲ / ਲ਼ is a meaningful
+# phonemic contrast in the dialects the model serves and folding it
+# would conflate two distinct lexemes. Same logic for U+0A36 (SHA):
+# kept in scope per the explicit BNGP spec, but reviewers should
+# flag any false-merge they spot in the Punjabi gold set.
+#
+# The fold runs unconditionally in :func:`working_copy`; non-Gurmukhi
+# text never contains a (base, U+0A3C) pair at these codepoints, so
+# this is a no-op for other scripts.
+_GURMUKHI_BINDI_BASES: frozenset[int] = frozenset(
+    {0x0A2B, 0x0A1C, 0x0A17, 0x0A16, 0x0A38}
+)
+_GURMUKHI_NUKTA: int = 0x0A3C
+
 # Full-width ASCII digits (U+FF10..U+FF19) -> ASCII 0..9.
 _FULLWIDTH_DIGITS: dict[int, str] = {0xFF10 + i: str(i) for i in range(10)}
 
@@ -86,6 +123,40 @@ _TRANSLATION_TABLE: dict[int, str] = {
     **_DASH_FOLDS,
     **_CURRENCY_FOLDS,
 }
+
+
+def _fold_gurmukhi_bindi(text: str) -> str:
+    """Drop the nukta from the five Gurmukhi bindi-letter pairs.
+
+    Walks the string left-to-right and skips any U+0A3C that
+    immediately follows one of the in-scope base codepoints. Does
+    nothing for non-Gurmukhi text because those base codepoints are
+    Gurmukhi-only — the function is safe to call unconditionally.
+
+    Runs AFTER ``unicodedata.normalize("NFC", text)``: NFC has
+    already turned every precomposed bindi-letter into the decomposed
+    pair, so the only thing this pass needs to do is delete the
+    trailing nukta.
+    """
+    if chr(_GURMUKHI_NUKTA) not in text:
+        return text
+    out: list[str] = []
+    prev: int | None = None
+    for ch in text:
+        cp = ord(ch)
+        if (
+            cp == _GURMUKHI_NUKTA
+            and prev is not None
+            and prev in _GURMUKHI_BINDI_BASES
+        ):
+            # drop the nukta — the base char was already appended
+            # last iteration. Do NOT update prev to the nukta; keep
+            # the base char so a hypothetical double-nukta (illegal
+            # but defensive) would also collapse.
+            continue
+        out.append(ch)
+        prev = cp
+    return "".join(out)
 
 
 def _scrub_zwj_zwnj(text: str) -> str:
@@ -131,6 +202,14 @@ def working_copy(text: str) -> str:
         return text
     nfc = unicodedata.normalize("NFC", text)
     folded = nfc.translate(_TRANSLATION_TABLE)
+    # Gurmukhi bindi-fold runs AFTER NFC (so precomposed legacy
+    # codepoints have already collapsed to <base, nukta>) and AFTER
+    # the codepoint translate (which doesn't touch Gurmukhi). The
+    # ZWJ/ZWNJ scrub runs last because the bindi-fold can change the
+    # halant-adjacency invariant the scrubber depends on (it can't,
+    # in practice — none of the five bases is a halant — but the
+    # ordering keeps the contract explicit).
+    folded = _fold_gurmukhi_bindi(folded)
     return _scrub_zwj_zwnj(folded)
 
 

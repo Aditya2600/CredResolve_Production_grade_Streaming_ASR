@@ -341,6 +341,18 @@ return self._load_rnnoise()    # tries pyrnnoise, then rnnoise_wrapper
 
 If `DENOISER=deepfilternet` but the package isn't installed (or DFN init throws), the loader logs a warning and falls through to `_load_rnnoise()`. If no backend imports, `self.rnnoise` is `None`, the worker logs a warning, and the denoise stage is silently skipped (audio passes through unchanged).
 
+#### Build-time Rust toolchain (worker image)
+
+`deepfilterlib` (the Rust extension inside `deepfilternet`) is compiled from
+source during `docker build` because the PyTorch CUDA base image does not
+include Rust/Cargo. `worker/Dockerfile` installs rustup, runs `pip install`
+with Cargo on `PATH`, then removes the entire toolchain in the same `RUN`
+layer so it never lands in the runtime image. Full details — dependency chain,
+Dockerfile layer rationale, all rustup flags, runtime adapter behaviour, thread
+safety model, fallback chain, and verification steps — are in
+[deepfilternet-build.md](deepfilternet-build.md). End-to-end image validation
+is in [`scripts/verify_worker_image.sh`](../../scripts/verify_worker_image.sh).
+
 #### Resampler note
 
 `audioop` was previously used for 16 ↔ 48 kHz conversion but has been replaced with [`worker/app/_audio_ops.py`](../../worker/app/_audio_ops.py) (`soxr`-backed `resample_int16`). The shared helper is also used by `tools/benchmarks/audio_bench` so the production path and the bench path cannot drift. This unblocks Python 3.13 (where `audioop` is removed) and yields higher-quality resampling than `audioop.ratecv`'s linear interpolation.

@@ -157,6 +157,105 @@ def test_script_characters_preserved_byte_for_byte_when_already_nfc(
     assert out == nfc
 
 
+# --- Gurmukhi bindi-fold ------------------------------------------------------
+#
+# Added with bn/gu/pa support: Punjabi (Gurmukhi) text is folded to its
+# non-bindi (no-nukta) base letters in the working copy. Five pairs are
+# in scope per the spec:
+#
+#   ਫ਼ -> ਫ      ਜ਼ -> ਜ      ਗ਼ -> ਗ      ਖ਼ -> ਖ      ਸ਼ -> ਸ
+#
+# NFC (which runs first in `working_copy`) decomposes the precomposed
+# legacy codepoints into <base, U+0A3C>, so the fold only has to drop
+# the trailing nukta. Pre-composed inputs and decomposed inputs must
+# both fold identically.
+
+
+@pytest.mark.parametrize(
+    "bindi,plain",
+    [
+        ("ਫ਼", "ਫ"),
+        ("ਜ਼", "ਜ"),
+        ("ਗ਼", "ਗ"),
+        ("ਖ਼", "ਖ"),
+        ("ਸ਼", "ਸ"),
+    ],
+)
+def test_gurmukhi_bindi_letters_fold_to_non_bindi(
+    bindi: str, plain: str,
+) -> None:
+    """Every in-scope bindi-letter folds to its non-bindi base.
+
+    Verifies both the decomposed input form (NFC turns precomposed
+    glyphs into <base, U+0A3C> first) and the codepoint identity of
+    the result (single base codepoint, no nukta).
+    """
+    assert working_copy(bindi) == plain
+    assert "਼" not in working_copy(bindi)
+
+
+def test_gurmukhi_precomposed_legacy_codepoints_fold() -> None:
+    """The legacy precomposed codepoints (U+0A59 / U+0A5A / U+0A5B /
+    U+0A5E / U+0A36) must fold even when emitted directly by an ASR
+    that does not honour NFC. The working-copy NFC pass decomposes
+    them to <base, U+0A3C> first, then the bindi-fold strips the
+    nukta."""
+    precomposed = "".join(
+        chr(cp) for cp in (0x0A5E, 0x0A5B, 0x0A5A, 0x0A59, 0x0A36)
+    )
+    out = working_copy(precomposed)
+    assert out == "ਫਜਗਖਸ"
+
+
+def test_gurmukhi_la_with_nukta_is_NOT_folded() -> None:
+    """U+0A33 (LLA + NUKTA -> ਲ਼) is deliberately OUT of scope: ਲ vs
+    ਲ਼ is a meaningful phonemic contrast in the dialects we serve and
+    folding it would conflate two distinct lexemes. This test pins
+    the explicit exclusion so a future contributor can't widen the
+    fold set without seeing this rationale."""
+    lla = unicodedata.normalize("NFC", "ਲ਼")  # decomposes to <0x0A32, 0x0A3C>
+    out = working_copy(lla)
+    assert "਼" in out  # nukta NOT stripped
+    assert out == lla
+
+
+def test_bindi_fold_is_noop_for_non_gurmukhi_text() -> None:
+    """Other scripts must pass through untouched even when they
+    happen to contain a U+0A3C-shaped sequence (they cannot, in
+    practice — the fold targets pairs at specific Gurmukhi base
+    codepoints — but the safety property matters)."""
+    for s in (
+        "नमस्ते",         # Devanagari
+        "নমস্কাৰ",        # Bengali (note: Bengali has its own nukta U+09BC)
+        "السلام عليكم",    # Arabic
+        "hello world",     # ASCII
+    ):
+        assert working_copy(s) == unicodedata.normalize("NFC", s)
+
+
+def test_bindi_fold_inside_a_word() -> None:
+    """The fold must work in the middle of a word, not just on bare
+    letters — the typical case is currency or month vocabulary that
+    embeds a bindi letter (e.g. ``ਪੈਸ਼ੇ``, ``ਖ਼ਾਸ``)."""
+    # ਖ਼ਾਸ ("khaas") -> ਖਾਸ after fold.
+    assert working_copy("ਖ਼ਾਸ") == "ਖਾਸ"
+    # Mixed word with multiple folds.
+    assert working_copy("ਖ਼ਜ਼ਾਨਾ") == "ਖਜਾਨਾ"
+
+
+def test_orphan_gurmukhi_nukta_outside_letter_pair_kept() -> None:
+    """A U+0A3C that does NOT follow one of the five in-scope base
+    codepoints is left in place. This is defensive: malformed input
+    shouldn't get silently mutated beyond the targeted fold. The
+    most likely case in practice is a leading nukta or one after
+    another script's letter, both of which are noise the prefilter
+    will handle separately."""
+    # Leading nukta — no preceding base.
+    assert working_copy("਼ਕ") == "਼ਕ"
+    # Nukta after ਕ (U+0A15) which is NOT in the fold set.
+    assert working_copy("ਕ਼") == "ਕ਼"
+
+
 # --- combined case ------------------------------------------------------------
 
 

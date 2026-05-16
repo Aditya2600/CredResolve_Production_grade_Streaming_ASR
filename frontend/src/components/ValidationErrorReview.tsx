@@ -207,7 +207,7 @@ export function ValidationErrorReview() {
       <section className="flex flex-1 items-center justify-center bg-slate-100">
         <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm">
           <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
-          Loading validation errors
+          Loading transcript review
         </div>
       </section>
     );
@@ -221,11 +221,11 @@ export function ValidationErrorReview() {
           <div>
             <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-slate-500">
               <FileText className="h-3.5 w-3.5 text-indigo-600" />
-              denoise_apm/errors.jsonl
+              transcript review artifact
             </div>
-            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">Vaani Validation Error Review</h2>
+            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">Vaani Transcript Review</h2>
             <p className="mt-1 max-w-3xl text-sm font-medium leading-relaxed text-slate-600">
-              Click play to hear each sample. Compare normalized reference, raw reference, and model hypothesis below.
+              Click play to hear each sample. Compare normalized ground truth, raw ground truth, and generated transcript below.
             </p>
           </div>
 
@@ -303,8 +303,8 @@ export function ValidationErrorReview() {
             ))
           ) : (
             <div className="rounded-lg border border-slate-200 bg-white px-4 py-16 text-center shadow-sm">
-              <div className="text-sm font-black text-slate-900">No matching errors</div>
-              <div className="mt-1 text-sm font-medium text-slate-500">Clear the filters to return to the full validation set.</div>
+              <div className="text-sm font-black text-slate-900">No matching samples</div>
+              <div className="mt-1 text-sm font-medium text-slate-500">Clear the filters to return to the full review set.</div>
             </div>
           )}
         </div>
@@ -398,9 +398,9 @@ function SampleCard({
 
       {/* ── Transcript blocks ── */}
       <div className="grid gap-3 p-5 md:grid-cols-3">
-        <TranscriptBlock label="Reference" tone="reference" text={row.reference} />
-        <TranscriptBlock label="Raw Reference" tone="raw" text={row.raw_reference} />
-        <TranscriptBlock label="Hypothesis" tone="hypothesis" text={row.hypothesis} />
+        <TranscriptBlock label="Ground Truth" tone="reference" text={row.reference} />
+        <TranscriptBlock label="Raw Ground Truth" tone="raw" text={row.raw_reference} />
+        <TranscriptBlock label="Generated Transcript" tone="hypothesis" text={row.hypothesis} />
       </div>
     </article>
   );

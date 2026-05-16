@@ -38,7 +38,7 @@ What changes in this mode:
 Important constraints:
 - `ASR_SUPPORTED_LANGS` must be set in Triton mode because the remote model does not expose vocab metadata back to the worker.
 - The Triton image is pinned via `TRITON_SERVER_IMAGE` in `.env.example`; adjust it if your fleet standard differs.
-- The Triton backend currently uses a Python backend model that wraps the existing Hugging Face ONNX bundle, so this is operationally cleaner than the old single-process worker but not yet a pure TensorRT/ensemble deployment.
+- The RNNT path still uses a Triton Python backend for the data-dependent decode loop, but its heavy encoder stage is delegated to the shared `indic_asr_encoder` TensorRT model. That keeps RNNT semantics while still exercising the TensorRT encoder in production-style serving.
 
 ---
 
@@ -72,6 +72,7 @@ Logs:
 - Last 100 lines for a service: `docker compose logs --tail=100 -f gateway`
 - Browser logs: open DevTools Console for frontend WebSocket/audio tracing (`VITE_DEBUG_LOGS=true` in Docker build by default)
 - Increase backend verbosity with `LOG_LEVEL=DEBUG` in `.env` before `docker compose up --build -d`
+- Print client-visible final transcripts in gateway logs with `LOG_TRANSCRIPTS=true` (off by default in `.env.example` because transcript text may contain PII)
 
 Smoke test (put a 16kHz mono PCM16 wav at `sample_data/sample_16k_mono.wav`):
 ```bash

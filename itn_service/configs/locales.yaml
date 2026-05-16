@@ -12,6 +12,18 @@
 # `currency` is the default ISO 4217 code assumed when an amount carries
 # only a generic currency cue (e.g. "rupees" in an Indian-locale call).
 #
+# `currency_cues` (optional) lists the per-language lemmas that the
+# money grammar accepts as a currency cue. `accept` is the recognition
+# vocabulary (any of these surface forms triggers the money branch);
+# `canonical` is the symbol that the canonical Latin-digit output is
+# prefixed with regardless of which cue was recognised. When the
+# locale has regional variants (e.g. bn-IN vs bn-BD) the variant
+# entries override the base locale; consumers should call
+# locale_policy.currency_cues_for(lang, tenant) which walks
+# region -> base-lang -> defaults in that order. This block is the
+# single source of truth for cue alternatives — money grammars must
+# not hard-code their lemma list.
+#
 # Tenant policy:
 #
 # `tenants` maps tenant identifiers to per-tenant locale overrides.
@@ -38,6 +50,10 @@ locales:
     numbering_systems: ["latn", "deva"]
     date_order: "DMY"
     currency: "INR"
+    currency_cues:
+      accept: ["रुपये", "रुपया", "रू", "₹", "Rs", "Rs.", "INR"]
+      canonical: "₹"
+      paise_accept: ["पैसे", "पैसा"]
 
   mr:
     name: "Marathi"
@@ -45,6 +61,10 @@ locales:
     numbering_systems: ["latn", "deva"]
     date_order: "DMY"
     currency: "INR"
+    currency_cues:
+      accept: ["रुपये", "रुपया", "रू", "₹", "Rs", "Rs.", "INR"]
+      canonical: "₹"
+      paise_accept: ["पैसे", "पैसा"]
 
   bn:
     name: "Bengali"
@@ -52,6 +72,37 @@ locales:
     numbering_systems: ["latn", "beng"]
     date_order: "DMY"
     currency: "INR"
+    # Bengali speakers in India and Bangladesh use different default
+    # currency lemmas. For India tenants the default policy accepts
+    # either টাকা ("taka", historically retained as a colloquial rupee
+    # word) or রুপি ("rupee"); the canonical output is always ₹ — the
+    # tenant's ISO currency is what defines storage, not the spoken
+    # cue. Bangladesh tenants must override via the bn-BD regional
+    # entry below (canonical ৳ / BDT). See currency_cues docs above.
+    currency_cues:
+      accept: ["টাকা", "রুপি", "রুপী", "রুপিয়া", "₹", "Rs", "Rs.", "INR"]
+      canonical: "₹"
+      paise_accept: ["পয়সা", "পয়সে"]
+
+  bn-IN:
+    name: "Bengali (India)"
+    script: "Beng"
+    numbering_systems: ["latn", "beng"]
+    date_order: "DMY"
+    currency: "INR"
+    inherits: "bn"
+
+  bn-BD:
+    name: "Bengali (Bangladesh)"
+    script: "Beng"
+    numbering_systems: ["latn", "beng"]
+    date_order: "DMY"
+    currency: "BDT"
+    inherits: "bn"
+    currency_cues:
+      accept: ["টাকা", "৳", "BDT", "Tk", "Tk."]
+      canonical: "৳"
+      paise_accept: ["পয়সা", "পয়সে"]
 
   ta:
     name: "Tamil"
@@ -87,6 +138,10 @@ locales:
     numbering_systems: ["latn", "gujr"]
     date_order: "DMY"
     currency: "INR"
+    currency_cues:
+      accept: ["રૂપિયા", "રૂપિયો", "રૂ", "₹", "Rs", "Rs.", "INR"]
+      canonical: "₹"
+      paise_accept: ["પૈસા", "પૈસો"]
 
   pa:
     name: "Punjabi"
@@ -94,6 +149,17 @@ locales:
     numbering_systems: ["latn", "guru"]
     date_order: "DMY"
     currency: "INR"
+    # The bindi-folding pass in unicode_clean.working_copy means the
+    # money grammar sees the non-bindi forms regardless of which
+    # variant the ASR emitted. The accept list below is the
+    # POST-FOLDING vocabulary; do not add ਰੁਪਏ here — it is folded
+    # to ਰੁਪਏ already (no bindi in this word). The list will need a
+    # second pass when the bn-style regional split is added for pa
+    # (Indian vs Pakistani Punjabi). Not in scope this stage.
+    currency_cues:
+      accept: ["ਰੁਪਏ", "ਰੁਪਇਆ", "ਰੁ", "₹", "Rs", "Rs.", "INR"]
+      canonical: "₹"
+      paise_accept: ["ਪੈਸੇ", "ਪੈਸਾ"]
 
   ur:
     name: "Urdu"

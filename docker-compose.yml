@@ -176,6 +176,7 @@ services:
       - SPEAKER_VERIFICATION_DEBUG_SIMILARITY=${SPEAKER_VERIFICATION_DEBUG_SIMILARITY:-0.95}
       - LOG_LEVEL=${LOG_LEVEL}
       - GATEWAY_LOG_FILE=${GATEWAY_LOG_FILE}
+      - LOG_TRANSCRIPTS=${LOG_TRANSCRIPTS:-false}
       - WS_API_KEYS=${WS_API_KEYS:-dev}
     volumes:
       - /home/ubuntu/logs:/srv/logs

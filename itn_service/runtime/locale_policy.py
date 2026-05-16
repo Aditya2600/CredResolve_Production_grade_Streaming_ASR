@@ -17,7 +17,7 @@ source for locale and tenant policy. This module reads the latter only.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, Mapping
 
@@ -45,11 +45,39 @@ class TenantPolicy:
 
 
 @dataclass(frozen=True)
+class CurrencyCues:
+    """Per-locale money-cue policy.
+
+    ``accept`` is the recognition vocabulary the money WFST consumes
+    (any surface form here flips the segment to the money branch).
+    ``canonical`` is the single output prefix the canonical text
+    carries regardless of which cue was recognised. ``paise_accept``
+    is the subunit vocabulary (paise / poysha / paisa / etc.).
+
+    All lists are stored already folded for the language's working-
+    copy transformations (NFC for all; Gurmukhi bindi-fold for ``pa``).
+    The caller is the money grammar, not the regex prefilter — the
+    prefilter still pattern-matches on the canonical symbol directly.
+    """
+
+    accept: tuple[str, ...]
+    canonical: str
+    paise_accept: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class TenantPolicyTable:
     """Parsed ``configs/locales.yaml`` tenant section."""
 
     default_tenant_id: str
     tenants: Mapping[str, TenantPolicy]
+    # Per-locale currency-cue table. Keyed by the locale id as it
+    # appears under ``locales:`` (e.g. ``hi``, ``mr``, ``bn``,
+    # ``bn-IN``, ``bn-BD``, ``gu``, ``pa``). Built from the
+    # ``currency_cues`` block in ``locales.yaml``.
+    locale_currency_cues: Mapping[str, CurrencyCues] = field(
+        default_factory=dict
+    )
 
     def for_tenant(self, tenant_id: str | None) -> TenantPolicy:
         """Resolve a tenant id to its effective policy.
@@ -63,6 +91,39 @@ class TenantPolicyTable:
         if tenant_id is not None and tenant_id in self.tenants:
             return self.tenants[tenant_id]
         return self.tenants[self.default_tenant_id]
+
+    def currency_cues_for(
+        self,
+        lang: str,
+        tenant_id: str | None = None,
+    ) -> CurrencyCues | None:
+        """Resolve the currency-cue policy for a (lang, tenant) pair.
+
+        Resolution order, first hit wins:
+
+        1. ``f"{lang}-{tenant.region}"`` — regional override (e.g.
+           ``bn-IN`` / ``bn-BD``). Lets a Bangladesh tenant pick the
+           ৳ canonical even though the script-routed lang is ``bn``.
+        2. ``lang`` — the base locale entry.
+        3. ``None`` — the lang has no cue table; the money grammar
+           is expected to fall back to a generic ``₹ + Rs + INR``
+           policy (the runtime default for INR-tenant Indic locales).
+
+        Returns ``None`` when neither key is present. Callers are
+        expected to be defensive: a missing entry means "use the
+        runtime default", not "money is disabled".
+        """
+        # 1. region-qualified lookup, only if the tenant resolves to
+        # a non-empty region.
+        if tenant_id is not None:
+            tenant = self.for_tenant(tenant_id)
+            if tenant.region:
+                regional = f"{lang}-{tenant.region}"
+                hit = self.locale_currency_cues.get(regional)
+                if hit is not None:
+                    return hit
+        # 2. base locale.
+        return self.locale_currency_cues.get(lang)
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +142,7 @@ def load_locale_policy(path: Path | None = None) -> TenantPolicyTable:
 
     defaults: dict[str, Any] = data.get("defaults") or {}
     tenants_raw: dict[str, Any] = data.get("tenants") or {}
+    locales_raw: dict[str, Any] = data.get("locales") or {}
 
     default_tenant_id = str(defaults.get("tenant", "default"))
     if default_tenant_id not in tenants_raw:
@@ -108,13 +170,35 @@ def load_locale_policy(path: Path | None = None) -> TenantPolicyTable:
             currency=str(cfg.get("currency", fallback_currency)),
         )
 
+    cues: dict[str, CurrencyCues] = {}
+    for loc_id, cfg in locales_raw.items():
+        cfg = cfg or {}
+        block = cfg.get("currency_cues")
+        if not block:
+            continue
+        accept_raw = block.get("accept") or []
+        canonical = block.get("canonical")
+        if not canonical or not accept_raw:
+            raise ValueError(
+                f"locale {loc_id!r}: currency_cues requires both "
+                f"`accept` (non-empty) and `canonical`"
+            )
+        paise_raw = block.get("paise_accept") or []
+        cues[str(loc_id)] = CurrencyCues(
+            accept=tuple(str(a) for a in accept_raw),
+            canonical=str(canonical),
+            paise_accept=tuple(str(p) for p in paise_raw),
+        )
+
     return TenantPolicyTable(
         default_tenant_id=default_tenant_id,
         tenants=parsed,
+        locale_currency_cues=cues,
     )
 
 
 __all__ = [
+    "CurrencyCues",
     "TenantPolicy",
     "TenantPolicyTable",
     "load_locale_policy",

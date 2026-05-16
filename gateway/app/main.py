@@ -37,6 +37,7 @@ from .config import (
     STREAMING_HANGOVER_MS,
     STREAMING_RING_BUFFER_MS,
     STREAMING_VAD_MODE,
+    LOG_TRANSCRIPTS,
     WORKER_TIMEOUT_MS,
     WORKER_URL,
     WS_API_KEYS,
@@ -822,17 +823,29 @@ async def ws_stt(ws: WebSocket):
                     )
                     if event.final_latency is not None:
                         E2E_LATENCY.observe(event.final_latency)
-                    log.info(
-                        "Data sent session_id=%s utterance_id=%s latency_ms=%s text_chars=%s text=\"%s\" language=%s language_source=%s context_biasing_mode=%s",
-                        session_id,
-                        f"utt-{utterance_count:04d}",
-                        int(event.processing_latency * 1000),
-                        len(result.text),
-                        result.text,
-                        result.language or "-",
-                        result.language_source or "-",
-                        ((result.context_biasing or {}).get("mode") if isinstance(result.context_biasing, dict) else "-"),
-                    )
+                    if LOG_TRANSCRIPTS:
+                        log.info(
+                            "Data sent session_id=%s utterance_id=%s latency_ms=%s text_chars=%s text=%s language=%s language_source=%s context_biasing_mode=%s",
+                            session_id,
+                            f"utt-{utterance_count:04d}",
+                            int(event.processing_latency * 1000),
+                            len(result.text),
+                            json.dumps(result.text, ensure_ascii=False),
+                            result.language or "-",
+                            result.language_source or "-",
+                            ((result.context_biasing or {}).get("mode") if isinstance(result.context_biasing, dict) else "-"),
+                        )
+                    else:
+                        log.info(
+                            "Data sent session_id=%s utterance_id=%s latency_ms=%s text_chars=%s language=%s language_source=%s context_biasing_mode=%s",
+                            session_id,
+                            f"utt-{utterance_count:04d}",
+                            int(event.processing_latency * 1000),
+                            len(result.text),
+                            result.language or "-",
+                            result.language_source or "-",
+                            ((result.context_biasing or {}).get("mode") if isinstance(result.context_biasing, dict) else "-"),
+                        )
                 except Exception:
                     log.exception(
                         "Final transcription emission failed session_id=%s utterance_id=%s",

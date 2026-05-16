@@ -84,4 +84,5 @@ SPEAKER_VERIFICATION_DEBUG_SIMILARITY = max(
 
 LOG_LEVEL = getenv_str("LOG_LEVEL", "INFO")
 GATEWAY_LOG_FILE = getenv_str("GATEWAY_LOG_FILE", "")
+LOG_TRANSCRIPTS = getenv_bool("LOG_TRANSCRIPTS", False)
 WS_API_KEYS = getenv_csv_set("WS_API_KEYS", "dev")

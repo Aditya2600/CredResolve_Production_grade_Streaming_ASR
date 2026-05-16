@@ -22,7 +22,7 @@ import time
 import wave
 from collections import Counter
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -71,6 +71,7 @@ class ClientResult:
     preflush_data_messages: int = 0
     postflush_data_messages: int = 0
     vad_messages: int = 0
+    transcripts: list[dict] = field(default_factory=list)
     connect_ms: float = 0.0
     start_wait_ms: float = 0.0
     stream_ms: float = 0.0
@@ -344,6 +345,23 @@ def handle_message(result: ClientResult, item: IncomingMessage, flush_sent_at: f
         return
 
     result.data_messages += 1
+    data = item.payload.get("data")
+    data = data if isinstance(data, dict) else {}
+    phase = "post_flush" if flush_sent_at is not None and item.received_at >= flush_sent_at else "pre_flush"
+    metrics = data.get("metrics")
+    metrics = metrics if isinstance(metrics, dict) else {}
+    result.transcripts.append(
+        {
+            "index": result.data_messages,
+            "phase": phase,
+            "request_id": data.get("request_id"),
+            "transcript": str(data.get("transcript") or ""),
+            "language_code": data.get("language_code"),
+            "language_source": data.get("language_source"),
+            "audio_duration": metrics.get("audio_duration"),
+            "processing_latency": metrics.get("processing_latency"),
+        }
+    )
     if flush_sent_at is not None and item.received_at >= flush_sent_at:
         result.postflush_data_messages += 1
     else:
@@ -599,6 +617,44 @@ def print_summary(results: list[ClientResult]) -> None:
             print(f"  {count}x {error}")
 
 
+def transcript_rows(results: list[ClientResult]) -> list[dict]:
+    rows: list[dict] = []
+    for result in sorted(results, key=lambda item: item.client_id):
+        for transcript in result.transcripts:
+            rows.append(
+                {
+                    "client_id": result.client_id,
+                    "audio_source": result.audio_source,
+                    **transcript,
+                }
+            )
+    return rows
+
+
+def write_transcript_log(path_value: str, results: list[ClientResult]) -> None:
+    path = Path(path_value).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = transcript_rows(results)
+    with path.open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True))
+            handle.write("\n")
+    print(f"Transcript log: {path} ({len(rows)} rows)")
+
+
+def print_transcripts(results: list[ClientResult]) -> None:
+    rows = transcript_rows(results)
+    print("\n--- Transcripts ---")
+    if not rows:
+        print("(none)")
+        return
+    for row in rows:
+        print(
+            f"client {row['client_id']:02d} #{row['index']:02d} {row['phase']}: "
+            f"{row['transcript']}"
+        )
+
+
 def print_json_summary(results: list[ClientResult]) -> None:
     payload = {
         "clients": len(results),
@@ -718,6 +774,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="In burst send-mode, yield to the event loop every N frames; <=0 disables",
     )
     parser.add_argument("--json", action="store_true", help="Print per-client JSON instead of text summary")
+    parser.add_argument(
+        "--transcript-log",
+        default="",
+        help="Optional JSONL path for every received transcript, including client id and pre/post-flush phase",
+    )
+    parser.add_argument(
+        "--print-transcripts",
+        action="store_true",
+        help="Print each received transcript after the summary",
+    )
     return parser
 
 
@@ -768,11 +834,16 @@ async def amain(args: argparse.Namespace) -> int:
     results = await asyncio.gather(*tasks)
     total_ms = (time.perf_counter() - started_at) * 1000.0
 
+    if args.transcript_log:
+        write_transcript_log(args.transcript_log, results)
+
     if args.json:
         print_json_summary(results)
     else:
         print_summary(results)
         print(f"\nWall time: {total_ms:.1f}ms")
+        if args.print_transcripts:
+            print_transcripts(results)
 
     return 0 if all(result.ok for result in results) else 1
 

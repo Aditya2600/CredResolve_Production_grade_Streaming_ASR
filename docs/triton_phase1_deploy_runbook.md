@@ -32,6 +32,42 @@ The plan doc has the full reasoning. Short version:
 
 Three sequential steps. Run on the box that will serve the model.
 
+### 2.0 Prepare the host-side Conda environment
+
+The staging script runs on the host before Triton starts, so it needs a host Python with
+`huggingface_hub` available. This repo keeps that setup in [`environment.yml`](../environment.yml).
+
+If the machine does not already have `conda`, install Miniconda first:
+
+```bash
+cd /tmp
+curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh
+source ~/.bashrc
+```
+
+During the installer flow, accept the license, keep the default install path unless the host has
+a reason to differ, and allow the installer to initialize `conda` for the shell.
+The URL above is for Linux x86_64 hosts; use the matching Miniconda installer instead on aarch64.
+
+Then create and activate the repo environment from the checked-in spec:
+
+```bash
+cd ~/CredResolve_Production_grade_Streaming_ASR
+conda env create -f environment.yml
+conda activate credresolve-asr
+```
+
+If the environment already exists, refresh it instead of recreating it:
+
+```bash
+conda env update -n credresolve-asr -f environment.yml --prune
+conda activate credresolve-asr
+```
+
+`environment.yml` already installs the operational host helpers used by this flow, including
+`huggingface_hub`.
+
 ### 2.1 Stage artifacts from the Hugging Face cache → model repository
 
 [scripts/stage_triton_model_repo.sh](../scripts/stage_triton_model_repo.sh) copies `preprocessor.ts`, `encoder.onnx`, `ctc_decoder.onnx`, and the encoder's external weight blobs (367 files: `layers.*`, `Constant_*`, `onnx__*`, `pre*`) into the per-model `1/` directories.

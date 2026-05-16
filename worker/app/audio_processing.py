@@ -1,6 +1,7 @@
 import logging
 import threading
 import time
+from contextlib import nullcontext
 from functools import lru_cache
 
 import numpy as np
@@ -148,6 +149,8 @@ class AudioPreprocessor:
         self.vad_model = None
         self._get_speech_timestamps = None
         self.rnnoise = None
+        # Default to a real lock; overridden to nullcontext by _load_denoiser when
+        # DeepFilterNet is active (PyTorch inference is thread-safe, no lock needed).
         self._denoise_lock = threading.Lock()
         self._load_models()
 
@@ -194,11 +197,14 @@ class AudioPreprocessor:
             try:
                 denoiser = _DeepFilterNetDenoiser()
                 log.info("DeepFilterNet3 denoiser loaded successfully")
+                # PyTorch inference under torch.no_grad() is thread-safe; skip the lock
+                # so concurrent worker jobs don't serialize through the denoise stage.
+                self._denoise_lock = nullcontext()
                 return denoiser
             except ImportError:
                 log.warning(
                     "DENOISER=deepfilternet but the 'deepfilternet' package is not installed; "
-                    "falling back to RNNoise. Install via worker/requirements-denoise-dfn.txt."
+                    "falling back to RNNoise. Install via worker/requirements.txt (deepfilternet>=0.5.6)."
                 )
             except Exception as e:
                 log.warning(
@@ -364,7 +370,8 @@ class AudioPreprocessor:
             try:
                 target_sr = 48000
 
-                # The RNNoise C wrapper is not documented as thread-safe; serialize.
+                # Lock is threading.Lock for RNNoise (C wrapper, not thread-safe) and
+                # nullcontext for DeepFilterNet (PyTorch inference is thread-safe).
                 with self._denoise_lock:
                     pcm_48k = resample_int16(pcm_bytes, sample_rate, target_sr)
                     cleaned_48k = self.rnnoise.process(pcm_48k)

@@ -1,4 +1,4 @@
-# WebSocket Barrier Burst Test - 30 Concurrent Vaani Streams
+# WebSocket Barrier Burst Vaani Concurrency Tests
 
 ## Summary
 
@@ -513,6 +513,8 @@ run is not dominated by fallback or non-inference responses.
 | n=30 earlier | No inference / not valid | 30 | 20s | 30/30 | 69 | 40 | 29 | 20,085.6 ms | ~86 ms | ~106 ms | ~107 ms | No |
 | n=50 prior latest | Inference on | 50 | 20s | 50/50 | 116 | 67 | 49 | 20,130.7 ms | ~131 ms | ~186 ms | ~189 ms | Yes |
 | n=50 distinct-audio + Prometheus capture | Inference on | 50 | 20s | 50/50 | 140 | 89 | 51 | 22,375.8 ms | ~2,376 ms | ~4,638 ms | ~4,962 ms | Yes for session-level inference; no for a 50-way worker-concurrency claim |
+| 2026-05-16 RNNT + DeepFilterNet distinct-audio repeat | Inference on | 50 | 20s | 50/50 | 123 | 72 | 51 | 22,354.3 ms | ~2,354 ms | ~4,170 ms | ~4,279 ms | Yes for session-level inference; transcript log showed no fallback rows, but no worker-concurrency telemetry was captured |
+| 2026-05-16 RNNT + DeepFilterNet distinct-audio repeat #2 | Inference on | 50 | 20s | 50/50 | 123 | 73 | 50 | 21,977.9 ms | ~1,978 ms | ~3,667 ms | ~3,692 ms | Yes for session-level inference; transcript log showed no fallback rows, but no worker-concurrency telemetry was captured |
 | n=50 true worker-concurrency run | Inference on | 50 | 20s | 50/50 | 150 | 45 | 105 | 30,118.8 ms | ~10,119 ms | ~10,630 ms | ~10,681 ms | Yes; Prometheus observed 50 in-flight worker requests |
 
 Validation notes:
@@ -528,10 +530,182 @@ Validation notes:
   validation, but exported Prometheus telemetry shows it is **not** evidence of
   50 simultaneous worker jobs: `asr_ws_connections` peaked at 50 while
   `asr_worker_inflight_requests` peaked at 4.
+- The 2026-05-16 RNNT + DeepFilterNet repeat keeps the same distinct-audio
+  workload shape and lands in the same session-level regime: all 50 sessions
+  completed, the saved transcript log contained neither `worker-fallback` nor
+  `fallback_timeout`, and 72 of 123 transcript messages arrived before the
+  synchronized flush. Without a matching worker-concurrency capture, it should
+  not be promoted into a 50-way backend-concurrency claim.
+- The second 2026-05-16 RNNT + DeepFilterNet repeat reproduced the same clean
+  session-level result with the same 123-message total and again no fallback
+  markers. It was modestly faster than the first repeat, but still remains a
+  mixed-audio session test rather than a backend-concurrency proof.
 - The newest 50-client run is the valid **true worker-concurrency** claim:
   inference was on, all 50 sessions succeeded, fallbacks stayed at 0 in the
   captured window, and Prometheus observed
   `asr_worker_inflight_requests = 50`.
+
+## 2026-05-16 RNNT + DeepFilterNet + TensorRT Encoder Repeats
+
+This run shape keeps **RNNT** as the decoder while still exercising the
+TensorRT encoder: the Triton `indic_asr` Python backend runs the RNNT loop and
+BLS-calls the shared `indic_asr_encoder` TensorRT model for the heavy encoder
+stage. The worker keeps `DENOISER=deepfilternet`.
+
+Observed recreate timing from the Docker Compose output:
+
+| Step | Observed time |
+|---|---:|
+| Triton image build | `362.3 s` |
+| Worker image build | `348.6 s` |
+| Gateway image build | `385.2 s` |
+| Triton healthy | `58.6 s` |
+| Worker healthy | `60.1 s` |
+| Gateway started | `60.2 s` |
+| Approximate end-to-end recreate wall time | `445.4 s` (`7m 25s`) |
+
+The image builds run in parallel, so the useful wall-clock estimate is the
+slowest image build (`385.2 s`) plus the slowest service-ready time (`60.2 s`),
+not the sum of all three build durations.
+
+Use the deterministic 50-file Vaani set and persist every returned transcript
+to JSONL:
+
+```bash
+mkdir -p artifacts/ws50_rnnt_dfn_20260516
+python3 tools/ws_burst_barrier.py \
+  --ws ws://localhost:8001/ws/stt \
+  --n 50 \
+  --wav-dir artifacts/vaani_hindi_10s_c50_seed20260515 \
+  --audio-seed 20260515 \
+  --max-audio-sec 10 \
+  --send-mode realtime \
+  --language-code hi \
+  --response-timeout 120 \
+  --idle-timeout 20 \
+  --expect-data \
+  --transcript-log artifacts/ws50_rnnt_dfn_20260516/transcripts.jsonl \
+  --print-transcripts \
+  | tee artifacts/ws50_rnnt_dfn_20260516/client.log
+```
+
+`--transcript-log` writes one JSON object per returned transcript with client
+id, selected WAV, pre/post-flush phase, transcript text, language metadata, and
+worker timing fields. `--print-transcripts` mirrors the transcript text into
+the terminal/client log for quick inspection.
+
+Run 1 artifacts:
+
+```text
+artifacts/ws50_rnnt_dfn_20260516/
+```
+
+Run 1 client-side results:
+
+```text
+Clients: 50
+Connected: 50
+Successful: 50
+Failures: 0
+First-audio release spread: 2.10ms
+Flush send spread: 1.18ms
+Bytes sent total: 16000000
+Data messages: 123
+Pre-flush data messages: 72
+Post-flush data messages: 51
+VAD messages: 0
+Connect: avg=43.7ms p50=51.6ms p95=57.6ms min=14.5ms max=58.7ms
+Stream send: avg=10000.6ms p50=10000.7ms p95=10001.0ms min=10000.0ms max=10001.1ms
+Flush barrier wait: avg=1.6ms p50=1.7ms p95=2.7ms min=0.1ms max=2.7ms
+Response wait: avg=22354.3ms p50=22450.8ms p95=24170.3ms min=20140.7ms max=24278.9ms
+Total session: avg=32415.5ms p50=32511.2ms p95=34230.3ms min=30199.2ms max=34346.3ms
+Wall time: 34352.8ms
+```
+
+Run 1 transcript-log observations:
+
+| Observation | Value |
+|---|---:|
+| Saved transcript rows | 123 |
+| Clients represented | 50 |
+| `worker-fallback` rows | 0 |
+| `fallback_timeout` rows | 0 |
+| Empty transcript rows | 3 |
+| Pre-flush worker `processing_latency` avg / p95 / max | 0.431 s / 1.723 s / 2.505 s |
+| Post-flush worker `processing_latency` avg / p95 / max | 2.312 s / 4.166 s / 4.266 s |
+
+Interpretation:
+
+- This is a clean 50-client distinct-audio session-level validation for the
+  RNNT + DeepFilterNet + TensorRT-encoder configuration: 50/50 clients
+  succeeded, and the saved transcript log showed no fallback markers.
+- The synchronization itself stayed tight: first-audio release spread was
+  `2.10 ms`, and flush send spread was `1.18 ms`.
+- Subtracting the configured 20-second idle grace from `response_wait` yields
+  estimated real post-flush latency of ~`2,354 ms` average, ~`4,170 ms` p95,
+  and ~`4,279 ms` max.
+- The workload again spread work across the stream rather than forcing a pure
+  backend burst: 72 of 123 transcript messages arrived before flush. Because
+  this run did not capture matching worker-concurrency telemetry, it should be
+  documented as a session-level repeat, not as proof of 50 simultaneous worker
+  jobs.
+
+### Repeat #2
+
+Artifacts:
+
+```text
+artifacts/ws50_rnnt_dfn_20260516T111238Z/
+```
+
+Client-side results:
+
+```text
+Clients: 50
+Connected: 50
+Successful: 50
+Failures: 0
+First-audio release spread: 2.23ms
+Flush send spread: 1.05ms
+Bytes sent total: 16000000
+Data messages: 123
+Pre-flush data messages: 73
+Post-flush data messages: 50
+VAD messages: 0
+Connect: avg=36.3ms p50=33.4ms p95=59.8ms min=15.6ms max=60.5ms
+Stream send: avg=10000.8ms p50=10000.9ms p95=10001.4ms min=10000.0ms max=10001.5ms
+Flush barrier wait: avg=1.9ms p50=1.7ms p95=2.7ms min=0.2ms max=2.8ms
+Response wait: avg=21977.9ms p50=21947.7ms p95=23667.3ms min=20099.4ms max=23692.0ms
+Total session: avg=32045.6ms p50=32017.3ms p95=33733.1ms min=30165.0ms max=33756.3ms
+Wall time: 33772.3ms
+```
+
+Transcript-log observations:
+
+| Observation | Value |
+|---|---:|
+| Saved transcript rows | 123 |
+| Clients represented | 50 |
+| `worker-fallback` rows | 0 |
+| `fallback_timeout` rows | 0 |
+| Empty transcript rows | 3 |
+| Pre-flush worker `processing_latency` avg / p95 / max | 0.269 s / 1.195 s / 2.058 s |
+| Post-flush worker `processing_latency` avg / p95 / max | 1.974 s / 3.661 s / 3.686 s |
+
+Interpretation:
+
+- Repeat #2 reproduced the same clean session result: 50/50 clients succeeded,
+  and the saved transcript log again contained no fallback markers.
+- The synchronization stayed tight again: first-audio release spread was
+  `2.23 ms`, and flush send spread was `1.05 ms`.
+- Subtracting the same 20-second idle grace from `response_wait` yields
+  estimated real post-flush latency of ~`1,978 ms` average, ~`3,667 ms` p95,
+  and ~`3,692 ms` max.
+- Relative to Run 1, Repeat #2 was faster by ~`376 ms` on average, ~`503 ms`
+  at p95, and ~`587 ms` at max while preserving essentially the same workload
+  shape (`123` messages total, `73` pre-flush / `50` post-flush).
+- As with Run 1, this is stronger evidence for reproducible 50-client
+  session-level behavior, not evidence of 50 simultaneous worker jobs.
 
 ## What This Proves
 
@@ -544,12 +718,12 @@ Validation notes:
 - The updated barrier script can run a reproducible 30-client burst using 30
   different Vaani WAV files instead of replaying one shared file.
 - The validated comparison table now separates the prior low-latency 50-client
-  inference-on row, the distinct-audio 50-client session-level run, and the
+  inference-on row, the distinct-audio 50-client session-level runs, and the
   newest 50-client true worker-concurrency run.
 - With `GATEWAY_MAX_INFLIGHT_WORKER=50` and `WORKER_MAX_JOBS=50`, the deployment
   executed 50 simultaneous worker jobs during the latest same-WAV burst.
-- The barrier script produced a tight concurrency probe: audio start and flush
-  spread were both within roughly 5 ms in the final verification run.
+- The barrier script produced tight concurrency probes: audio start and flush
+  spread stayed below `3 ms` in both 2026-05-16 RNNT + DeepFilterNet repeats.
 
 ## What It Does Not Prove
 
