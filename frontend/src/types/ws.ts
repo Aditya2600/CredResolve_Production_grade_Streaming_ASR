@@ -71,6 +71,10 @@ export interface DataMessage {
   data: {
     request_id: string;
     transcript: string;
+    raw_text?: string;
+    canonical_text?: string;
+    display_text?: string;
+    normalization_spans?: unknown[];
     language_code?: string;
     language_source?: string;
     metrics: {
@@ -105,6 +109,10 @@ export interface TranscriptItem {
   timestamp: number;
   latencyMs?: number;
   isPartial?: boolean;
+  rawText?: string;
+  canonicalText?: string;
+  displayText?: string;
+  normalizationSpans?: unknown[];
 }
 
 export interface AudioConfig {

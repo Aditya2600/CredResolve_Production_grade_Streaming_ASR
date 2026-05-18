@@ -13,3 +13,15 @@ export function formatErrorMessage(error: unknown): string {
   }
   return String(error);
 }
+
+export function getVisibleTranscript({
+  display_text,
+  canonical_text,
+  transcript,
+}: {
+  display_text?: string;
+  canonical_text?: string;
+  transcript: string;
+}): string {
+  return display_text || canonical_text || transcript;
+}

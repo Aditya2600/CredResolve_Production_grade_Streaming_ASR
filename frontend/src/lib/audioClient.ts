@@ -80,7 +80,10 @@ function mapMediaError(error: unknown): AudioClientError {
   switch (error.name) {
     case 'NotAllowedError':
     case 'PermissionDeniedError':
-      return new AudioClientError('permission_denied', 'Microphone permission denied');
+      return new AudioClientError(
+        'permission_denied',
+        'Microphone permission is blocked for this site. Click the lock icon in the address bar, allow Microphone, then try again.'
+      );
     case 'NotFoundError':
     case 'DevicesNotFoundError':
       return new AudioClientError('device_not_found', 'No microphone device found');

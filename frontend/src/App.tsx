@@ -33,6 +33,7 @@ import {
   type BiasingFormValues,
   type DemoBiasingSettings,
 } from './utils/contextBiasing';
+import { getVisibleTranscript } from './utils/formatters';
 
 type SessionPhase =
   | 'idle'
@@ -60,13 +61,22 @@ function toAudioState(phase: SessionPhase): AudioState {
   return 'idle';
 }
 
-function createTranscriptMessage(role: 'user' | 'assistant', text: string, latencyMs?: number): TranscriptItem {
+function createTranscriptMessage(
+  role: 'user' | 'assistant',
+  text: string,
+  latencyMs?: number,
+  metadata: Pick<
+    TranscriptItem,
+    'rawText' | 'canonicalText' | 'displayText' | 'normalizationSpans'
+  > = {},
+): TranscriptItem {
   return {
     id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     role,
     text,
     timestamp: Date.now(),
     latencyMs,
+    ...metadata,
   };
 }
 
@@ -88,7 +98,7 @@ function App() {
   const baseWsUrl = import.meta.env.VITE_WS_URL || DEFAULT_WS_URL;
   const [language, setLanguage] = useState<string>(DEFAULT_LANGUAGE);
   const [audioProcessing, setAudioProcessing] = useState<AudioProcessingSettings>({
-    vadEnabled: false,
+    vadEnabled: true,
     denoiseEnabled: false,
   });
   const wsUrl = useMemo(() => buildWsUrl(baseWsUrl, language, audioProcessing), [audioProcessing, baseWsUrl, language]);
@@ -312,13 +322,28 @@ function App() {
   useEffect(() => {
     onMessage((msg: ServerMessage) => {
       if (msg.type === 'data') {
-        const { transcript, context_biasing, metrics } = msg.data;
+        const {
+          transcript,
+          raw_text,
+          canonical_text,
+          display_text,
+          normalization_spans,
+          context_biasing,
+          metrics,
+        } = msg.data;
+        const visibleTranscript = getVisibleTranscript(msg.data);
         setMessages(prev => [
           ...prev,
           createTranscriptMessage(
             'assistant',
-            transcript || '(empty transcript)',
+            visibleTranscript || '(empty transcript)',
             metrics?.processing_latency !== undefined ? Math.round(metrics.processing_latency * 1000) : undefined,
+            {
+              rawText: raw_text,
+              canonicalText: canonical_text,
+              displayText: display_text,
+              normalizationSpans: normalization_spans,
+            },
           ),
         ]);
         setCurrentPartial('');
