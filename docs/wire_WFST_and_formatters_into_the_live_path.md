@@ -1,56 +1,278 @@
-Stage 1 plan — wire WFST + formatters into the live path
-Architecture, one diagram
+# Stage 1 execution note — wire WFST + formatters into the live path
 
-default_classifier(working_text, lang, *, tenant_policy)
-  │
-  ├──► prefilter(working_text)                    # locates spans, sets canonical=raw, conf=1.0
-  │
-  ├──► for each prefilter span, dispatch by class:
-  │      PHONE                       → formatters.parse_phone_in(raw)
-  │      AMOUNT/PERCENT/TIME         → WFSTPipeline(lang).normalize_span(raw, cls)
-  │      DATE                        → WFSTPipeline(lang).normalize_date(raw, date_order=…)
-  │                                     └─ if no parse + has_date_cue → dateparser_fallback
-  │
-  ├──► detect_self_correction(working_text, spans)  # pairwise pass; marks unsafe → ambiguous=True
-  │
-  └──► return spans  (gate runs downstream as today)
-The classifier becomes a per-tenant closure so the existing Classifier protocol (text, lang) -> list[Span] is unchanged; tenant policy is captured at construction time.
+**Status:** partially implemented, not yet live by default  
+**As of:** 2026-05-18  
+**Companion docs:** [implementation_blueprint_INR.md](implementation_blueprint_INR.md), [itn_live_path_gap_analysis.md](itn_live_path_gap_analysis.md), [concrete_pipeline.md](concrete_pipeline.md)
 
-Tasks, in order
-#	File	Change	Why
-1	new runtime/wfst_factory.py	@functools.cache-d get_pipeline(lang) -> WFSTPipeline | None. Catches ImportError/FileNotFoundError, returns None if FAR or pynini unavailable.	Defers the full far_cache.py design. Lazy import keeps Python unit tests runnable without pynini.
-2	new runtime/wfst_classifier.py	make_wfst_classifier(tenant_policy) -> Classifier. Internally: prefilter → per-class dispatch → returns rewritten spans. Each rewrite uses rule_id wfst.<cls> / fmt.<cls> / dateparser.<cls>; fallback to canonical=raw, ambiguous=True, fallback_reason=<reason> on no-parse.	New classifier; doesn't touch the protocol or normalize_segment.
-3	runtime/wfst_classifier.py	Class-name map: PHONE → phone; AMOUNT → money; PERCENT → percent; DATE → date; TIME → time.	Bridges prefilter labels (UPPERCASE, locating) and threshold/WFST labels (lowercase, rewriting).
-4	runtime/normalizer.py:71-111	Keep default_classifier as the regex-only safe default. Add _span_has_lex_cue recognition for wfst.*, fmt.*, dateparser.* rule ids.	Doesn't break the existing "safe before FARs build" guarantee.
-5	runtime/normalizer.py:174-…	Add a self-correction pass between classifier and gate: unsafe = detect_self_correction(working, spans); spans = [s.model_copy(update={"ambiguous": True, "fallback_reason": "self_correction"}) if i in unsafe else s for i, s in enumerate(spans)].	Cross-span; belongs in the orchestrator, not the classifier. Gate then reverts canonical→raw on those.
-6	service/grpc_server.py:169-302	At stream open, resolve tenant_policy = locale_policy.for_tenant(req.locale_policy); build classifier = make_wfst_classifier(tenant_policy); pass to normalize_segment. Cache per (tenant_id,) via functools.lru_cache.	Single change to make the WFST classifier the request-path default.
-7	configs/policy.yaml	Add a feature flag wfst_classifier_enabled: true (default true) read by grpc_server to pick between default_classifier and make_wfst_classifier(…).	Lets us roll back without code change if a regression slips. Deletable later.
-8	new tests/runtime/test_wfst_classifier.py	Per-class tests: phone uses formatter, AMOUNT routes to WFST money, DATE honours date_order and falls back to dateparser on cue+no-parse.	New unit surface.
-9	tests/regression/test_hi_gold_no_regression.py	Switch the regression harness from default_classifier to the WFST classifier (with default tenant policy).	Today the ≥98% bar is measured on the no-op path; this makes it meaningful.
-10	.github/workflows/itn_service.yml	Add libicu-dev, libopenfst-dev + pip install pynini PyICU to the CI step, or mark grammar-dependent tests with pytest.importorskip("pynini") and continue skipping.	Pick one based on Q2 below.
-Sequencing
-Three commits, mergeable independently:
+Stage 1 is the first user-visible ITN boundary. Before it, the service locates spans and preserves provenance but the default request path still returns effectively raw text. After it, selected classes are actually rewritten on final segments while preserving the same conservative fallback model.
 
-Commit A — Tasks 1, 2, 3, 8. Adds the new classifier module and its tests. Nothing in the request path changes yet; this is pure addition. Safe to merge before CI installs pynini, because tests skip if pynini is missing.
-Commit B — Tasks 4, 5, 9. Wires self-correction into normalize_segment, adjusts _span_has_lex_cue, and points the regression harness at the new classifier. The harness will catch real regressions here.
-Commit C — Tasks 6, 7. Flips grpc_server to the WFST classifier behind the policy flag. This is the user-visible flip. Roll out with wfst_classifier_enabled: false first, smoke-test, then flip to true.
-Task 10 (CI) lands before Commit B since the regression test needs real FARs.
+The codebase is now **partway through Stage 1**:
 
-Design decisions worth confirming before I start
-Q	Decision	Default if you don't push back
-Q1	Does WFST-no-parse + no cue mean "emit raw with wfst_no_parse" (telemetry) or just "leave the prefilter span untouched" (silent)?	Telemetry. Record the attempt; lets us measure WFST coverage in production.
-Q2	CI: install pynini/PyICU vs. skip-if-missing?	Install in CI. Otherwise the regression test silently no-ops on PR builds.
-Q3	Tenant resolution lifetime: per-stream (cached on StreamState) or per-process?	Per-stream. Tenants rarely change but reload-on-stream-open lets us pick up locales.yaml edits without bouncing the service.
-Q4	Where does tenant_policy live in the classifier protocol — closure, third arg, or a request_ctx object?	Closure (make_wfst_classifier(tenant_policy)). Keeps the protocol stable and avoids threading state through every call.
-Q5	If the phone formatter returns None on uncertainty, should we map that to canonical=raw, ambiguous=True, fallback_reason="fmt_no_parse" or drop the span entirely?	Ambiguous + raw. Same as WFST-no-parse. The prefilter already located it as a phone-shaped span; downstream consumers benefit from the span existing with a reason.
-What this doesn't touch
-display_renderer.py still passthrough (Stage 4).
-far_cache.py still stub (the functools.cache factory in Task 1 is a placeholder).
-Marathi remains review-gated.
-IndicLID still stub.
-Gateway integration untouched (Stage 2).
-Risks
-CI pynini install adds ~3–5 min build time. Acceptable; alternative is a regression bar that no-ops in CI which is worse.
-Hindi gold is cardinal-only today (223 examples). Once the WFST classifier is live, the ≥ 98% regression bar applies to cardinals only. Expanding gold (Stage 5) should happen close in time — otherwise the harness is reassuring but narrow.
-WFSTPipeline.__init__ raises KeyError if a FAR entry is missing (wfst_pipeline.py:99-123). Today's FAR has cardinal/decimal/money/percent/date/time for hi+mr. The factory should try/except construction and fall back to regex-only for that language. Failed-init for one language must not poison others.
-Self-correction false positives. detect_self_correction flags pairs within a 6-token window when a marker word appears. Hindi नहीं (no/negation) is a marker but is also conversational. Worth a careful look at self_correction.py:34-62 once we have real call traffic — but for Stage 1, ship as-is and tune from telemetry.
+- the additive WFST classifier surface exists,
+- lazy per-language WFST construction exists,
+- focused classifier tests exist,
+- but the gRPC request path still defaults to `default_classifier`,
+- and the orchestration work that makes the new classifier safe enough to flip live is still incomplete.
+
+In other words: the engine has been built on the bench; it has not yet been bolted into the vehicle.
+
+---
+
+## Target request path
+
+```text
+final ASR text
+    |
+    v
+working_copy(raw_text)
+    |
+    v
+route_language(working_text, lang_hint)
+    |
+    v
+make_wfst_classifier(tenant_policy)
+    |
+    +--> regex_prefilter(working_text)
+    |
+    +--> dispatch located spans
+    |       phone            -> deterministic formatter
+    |       amount           -> WFST money
+    |       percent / time   -> WFST class rewrite
+    |       date             -> policy-aware WFST date
+    |                            \-> guarded dateparser fallback only when allowed
+    |
+    v
+detect_self_corrections(working_text, spans)
+    |
+    v
+confidence_gate
+    |
+    v
+apply_spans -> canonical_text -> display renderer
+```
+
+The classifier remains a **per-tenant closure**:
+
+```python
+classifier = make_wfst_classifier(tenant_policy)
+spans = classifier(working_text, lang)
+```
+
+That keeps the public classifier protocol stable — `(working_text, lang) -> list[Span]` — while still allowing date policy and later tenant-specific rewrite policy to participate.
+
+---
+
+## Current implementation state
+
+| Area | State on 2026-05-18 | Evidence |
+|---|---|---|
+| Lazy WFST factory | Done | `runtime/wfst_factory.py` |
+| Additive WFST classifier | Done | `runtime/wfst_classifier.py` |
+| Amount → money bridge | Done inside classifier | `_PREFILTER_TO_WFST_CLASS` |
+| Phone formatter integration | Done | `fmt.phone` branch |
+| Policy-aware date branch | Done | `normalize_date(..., date_order=...)` |
+| Guarded dateparser fallback | Done | only after `has_date_cue(...)` |
+| Focused unit tests | Done | `tests/runtime/test_wfst_classifier.py`, `test_wfst_factory.py` |
+| Live request-path flip | Not done | `grpc_server.py` still injects `default_classifier` |
+| Self-correction orchestration | Not done | `normalizer.py` does not call `detect_self_corrections` |
+| Cue semantics for rewritten spans | Not done | `_span_has_lex_cue` only recognises `prefilter.*` |
+| Threshold taxonomy cleanup | Not done | runtime emits `money`; thresholds still configure `currency` |
+| Feature flag / rollback switch | Not done | `configs/policy.yaml` has no WFST classifier flag |
+| CI with real WFST deps | Not done | workflow still documents “scaffolding-stage CI” |
+| Request-path regression gate | Not done | current gold tests exercise `WFSTPipeline` directly, not the default service path |
+
+### What is already true
+
+`runtime/wfst_classifier.py` now rewrites the subset intended for the first rollout:
+
+```text
+phone  -> formatter
+amount -> money
+percent / time -> WFST
+date -> WFST, then guarded dateparser fallback
+```
+
+It also records failed attempts as raw spans with explicit reasons such as:
+
+```text
+fmt_no_parse
+wfst_unavailable
+wfst_no_parse
+ambiguous_numeric_date
+```
+
+That is the right local failure shape: attempted rewrites remain observable without forcing a guess into the transcript.
+
+### What is still not true
+
+The live service still behaves as:
+
+```text
+grpc_server
+   -> default_classifier
+   -> regex_prefilter only
+   -> canonical == raw
+```
+
+So Stage 1 has not crossed the product boundary yet. The user-visible flip only happens when the gRPC layer starts selecting the WFST classifier and the remaining safety work lands around it.
+
+---
+
+## Remaining work, in the order it should land
+
+| # | Change | Why it belongs before the flip |
+|---|---|---|
+| 1 | Unify the live class taxonomy: choose `money` or `currency`, then use it consistently across classifier, thresholds, tests, and docs | Today rewritten amount spans are `money`, but `thresholds.yaml` configures `currency`; that silently bypasses the intended gate |
+| 2 | Replace blanket lexical-cue handling with rule-aware semantics | Rewritten spans currently lose cue recognition because `_span_has_lex_cue` only accepts `prefilter.*`; risky classes must not be accepted or rejected accidentally |
+| 3 | Insert `detect_self_corrections(...)` between classification and gating | Cross-span correction safety belongs in the orchestrator, not in the classifier |
+| 4 | Decide identifier scope for this stage | `id_pan_aadhaar_ifsc.py` exists, but the present classifier only wires `phone`; either wire PAN / Aadhaar / IFSC now or state that Stage 1 is phone-only for identifiers |
+| 5 | Add request-path integration tests | Unit tests prove the parts; Stage 1 needs tests proving the default service path rewrites and still defers unsafe spans |
+| 6 | Upgrade CI to execute real grammar-dependent tests | A skipped regression bar is a painting of a guardrail, not a guardrail |
+| 7 | Add a config-level rollback switch | The first live flip needs a reversible knob |
+| 8 | Flip gRPC to the WFST classifier per tenant / stream | This is the actual product-visible activation |
+
+---
+
+## The two important hidden hazards
+
+### 1. `money` vs `currency` is not cosmetic
+
+The classifier already maps prefilter `amount` spans to runtime class `money`:
+
+```text
+amount -> money
+```
+
+But `thresholds.yaml` still defines the gated class as `currency`. Since the gate treats unknown classes as pass-through unless ambiguous, a successful `money` rewrite can bypass the class-specific threshold entirely.
+
+This should be fixed before any live flip. The safest choice is likely:
+
+```text
+prefilter amount -> runtime money -> threshold money
+```
+
+because the grammar namespace is already `money`, and the live path should have one name at every downstream boundary.
+
+### 2. The current cue function is correct for the old path, not the new one
+
+`normalizer._span_has_lex_cue(...)` currently returns `True` only for `prefilter.*` rule ids. That was harmless while prefilter spans kept `canonical == raw`. Once the classifier emits `wfst.money`, `wfst.date`, `wfst.time`, `fmt.phone`, or `dateparser.date`, cue handling becomes materially important.
+
+The fix should not be “all WFST spans have cues.” It should be class-aware:
+
+```text
+money     -> symbol / lexical currency cue
+percent   -> literal % or explicit percent word
+time      -> AM/PM or strong lexical cue
+date      -> month word, trusted policy, or explicit date cue
+phone     -> phone/mobile/OTP context or accepted structural rule
+```
+
+Prefilter location is evidence; it is not always sufficient evidence.
+
+---
+
+## Proposed commit sequence
+
+### Commit A — close the safety gaps
+
+- normalize the class taxonomy,
+- make cue detection rule-aware,
+- wire self-correction into `normalize_segment`,
+- add tests for those interactions.
+
+This commit changes behavior only when a WFST classifier is explicitly injected; it should still leave the default request path untouched.
+
+### Commit B — make the tests tell the truth
+
+- add service-path integration tests,
+- move at least one regression harness onto the same classifier path intended for production,
+- update CI to install the native WFST stack or otherwise guarantee the relevant tests truly run.
+
+The core principle: once Stage 1 is live, the green path in CI must exercise real rewrites, not only importable scaffolding.
+
+### Commit C — perform the reversible live flip
+
+- add `wfst_classifier_enabled` under runtime policy,
+- resolve tenant policy at stream open,
+- construct or cache the tenant classifier,
+- pass it into `normalize_segment`,
+- deploy initially with the flag off,
+- smoke-test,
+- then enable for the first rollout cohort.
+
+That split keeps the risky semantic work separate from the operational switch.
+
+---
+
+## Rollout contract
+
+```text
+flag off:
+  request path remains regex-only passthrough
+
+flag on, WFST available:
+  selected spans rewrite under gate control
+
+flag on, WFST missing for one language:
+  that language falls back locally to raw spans;
+  other languages continue to work
+
+pipeline exception:
+  gRPC emits raw_text on every surface, deferred=true;
+  transcription delivery survives
+```
+
+Do not silently compile FARs in the request path. Do not make missing FARs indistinguishable from a healthy rollout. A raw fallback is acceptable; invisible broken deployment is not.
+
+---
+
+## Decisions already settled
+
+| Question | Decision |
+|---|---|
+| Where does tenant policy live? | In a closure returned by `make_wfst_classifier(tenant_policy)` |
+| What happens on parser / formatter uncertainty? | Emit raw span with telemetry, not a silent drop |
+| Should dateparser guess after `ambiguous_numeric_date`? | No; preserve the policy rejection |
+| Should one language’s missing FAR poison the process? | No; `get_pipeline(lang)` falls back per language |
+
+---
+
+## Decisions still worth making before the flip
+
+| Question | Recommended default |
+|---|---|
+| Runtime taxonomy: `money` or `currency`? | Use `money` everywhere after prefiltering |
+| Identifier scope in Stage 1? | Either wire PAN / Aadhaar / IFSC now, or explicitly rename the rollout “WFST + phone formatter” |
+| CI strategy? | Install the real WFST dependencies in CI; do not let the rewrite path skip on every PR |
+| Classifier lifetime? | Resolve per stream, cache by effective tenant policy if profiling proves it matters |
+| First rollout surface? | Final segments only; partial-path richness can wait until the gateway genuinely emits partials |
+
+---
+
+## Out of scope for Stage 1
+
+- `display_renderer.py` locale shaping
+- gateway / worker integration
+- IndicLID promotion onto the hot path
+- C++ serving runtime
+- FAR cache redesign beyond the current lazy factory
+- broad language expansion
+- partial transcript UX beyond the existing conservative policy
+
+Stage 1 should stay narrow. Its job is not to finish ITN; its job is to make the first real deterministic rewrites happen safely on the path users will actually hit.
+
+---
+
+## Acceptance bar
+
+Stage 1 is complete only when all of the following are true:
+
+1. A final request through the default service path can produce a real rewrite.
+2. Unsafe spans remain raw with explicit fallback reasons.
+3. `money` / `currency` class naming is no longer split across layers.
+4. Cue policy and self-correction both run before a rewrite becomes visible.
+5. CI exercises the grammar-backed path rather than merely importing it.
+6. Operators have a rollback switch.
+7. A missing FAR or ITN exception degrades the segment, not the transcription service.
+
+That is the moment the architecture stops being latent capability and becomes a trustworthy product behavior.
