@@ -1,6 +1,10 @@
 import os
 
-from .context_biasing import normalize_context_biasing_method, normalize_context_biasing_mode
+from .context_biasing import (
+    normalize_context_biasing_method,
+    normalize_context_biasing_mode,
+    normalize_context_biasing_pool_load_mode,
+)
 
 
 def getenv_bool(name: str, default: bool) -> bool:
@@ -158,6 +162,28 @@ ASR_CONTEXT_BIASING_PHRASES_DIR = getenv_str("ASR_CONTEXT_BIASING_PHRASES_DIR", 
 ASR_CONTEXT_BIASING_TIMEOUT_MS = max(
     1,
     getenv_int("ASR_CONTEXT_BIASING_TIMEOUT_MS", ASR_INFERENCE_TIMEOUT_MS),
+)
+ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES = max(
+    1,
+    getenv_int("ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES", 1),
+)
+ASR_CONTEXT_BIASING_EXECUTOR_WORKERS = max(
+    1,
+    getenv_int(
+        "ASR_CONTEXT_BIASING_EXECUTOR_WORKERS",
+        ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES,
+    ),
+)
+ASR_CONTEXT_BIASING_QUEUE_TIMEOUT_MS = max(
+    1,
+    getenv_int("ASR_CONTEXT_BIASING_QUEUE_TIMEOUT_MS", ASR_CONTEXT_BIASING_TIMEOUT_MS),
+)
+ASR_CONTEXT_BIASING_MODEL_POOL_SIZE = max(
+    1,
+    getenv_int("ASR_CONTEXT_BIASING_MODEL_POOL_SIZE", 1),
+)
+ASR_CONTEXT_BIASING_MODEL_POOL_LOAD_MODE = normalize_context_biasing_pool_load_mode(
+    getenv_str("ASR_CONTEXT_BIASING_MODEL_POOL_LOAD_MODE", "eager")
 )
 ASR_DEVICE = getenv_str("ASR_DEVICE", "cuda")
 ASR_CONTEXT_BIASING_DEVICE = getenv_str("ASR_CONTEXT_BIASING_DEVICE", "cuda")

@@ -25,7 +25,7 @@ Marker vocabulary (case-insensitive):
 
 from __future__ import annotations
 
-import re
+import unicodedata
 from typing import Sequence
 
 from .contract import Span
@@ -61,17 +61,25 @@ _MARKERS_MULTI: tuple[str, ...] = (
     "गलती हो",
 )
 
-_PUNCT_TRIM = re.compile(r"^[^\w]+|[^\w]+$", re.UNICODE)
-
-
 def _tokenise(text: str) -> list[str]:
     """Whitespace-split + light leading/trailing punctuation trim."""
     out: list[str] = []
     for raw in text.split():
-        t = _PUNCT_TRIM.sub("", raw)
+        t = _strip_edge_punctuation(raw)
         if t:
             out.append(t)
     return out
+
+
+def _strip_edge_punctuation(token: str) -> str:
+    """Trim punctuation without discarding Indic combining marks."""
+    start = 0
+    end = len(token)
+    while start < end and unicodedata.category(token[start]).startswith("P"):
+        start += 1
+    while end > start and unicodedata.category(token[end - 1]).startswith("P"):
+        end -= 1
+    return token[start:end]
 
 
 def _gap_has_marker(text: str, max_tokens: int) -> bool:

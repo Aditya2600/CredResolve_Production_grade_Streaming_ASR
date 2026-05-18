@@ -36,6 +36,11 @@ output:
 # thresholds.yaml streaming.partial_safe_classes) may render on partials.
 endpoint_normalisation_default: true
 
+# Live-service rollout switch. The lower-level normalizer still defaults
+# to regex-only passthrough; only the gRPC ITN service path reads this flag
+# to decide whether tenant-aware WFST rewriting is active.
+wfst_classifier_enabled: true
+
 # Hot-path safety: classes that never auto-rewrite, only emit
 # canonical-form suggestions for downstream review.
 unsafe_rewrite_classes_blocklist:

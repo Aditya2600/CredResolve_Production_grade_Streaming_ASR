@@ -38,12 +38,15 @@ runnable as soon as ``runtime/regex_prefilter.py`` is in place.
 
 from __future__ import annotations
 
+import re
 from typing import Callable, Protocol
 
 from .confidence_gate import ThresholdTable, gate, load_thresholds
 from .contract import SegmentResult, Span, Token
+from .dateparser_fallback import has_date_cue
 from .regex_prefilter import prefilter
 from .script_router import route_language
+from .self_correction import detect_self_corrections
 from .stream_state import StreamState
 from .unicode_clean import working_copy
 
@@ -61,8 +64,9 @@ class Classifier(Protocol):
     working copy so :func:`apply_spans` can splice it back in.
 
     The default classifier is :func:`default_classifier`, which runs
-    the regex prefilter only. A WFST-aware classifier will live in
-    ``runtime/wfst_pipeline.py`` once it's wired into the request path.
+    the regex prefilter only. The gRPC service may inject the
+    tenant-aware classifier from ``runtime.wfst_classifier`` when its
+    rollout flag is enabled.
     """
 
     def __call__(self, working_text: str, lang: str) -> list[Span]: ...
@@ -72,9 +76,9 @@ def default_classifier(working_text: str, lang: str) -> list[Span]:
     """Regex-prefilter-only classifier.
 
     Safe even before the WFST FARs are built: every span carries
-    ``canonical == raw`` with full confidence, so the gate will accept
-    the prefilter classes (URL, email, IFSC, PAN, Aadhaar, phone, date,
-    time, amount, percent) and pass everything else through unchanged.
+    ``canonical == raw`` with full confidence, so whether the gate
+    accepts or rejects a located prefilter span, the emitted surfaces
+    remain verbatim passthrough.
     """
     del lang  # unused at the prefilter layer; FAR routing happens in WFST classifier
     return prefilter(working_text)
@@ -99,16 +103,90 @@ def _aggregate_asr_conf(tokens: list[Token]) -> float:
     return min(t.conf for t in tokens)
 
 
-def _span_has_lex_cue(span: Span) -> bool:
-    """Whether a span carries an explicit lexical / structural cue.
+_CURRENCY_CUE_RE = re.compile(
+    r"(?:₹|Rs\.?|INR|US\$|\$|USD|£|GBP|€|EUR|rupees?|रुपये|रुपया|रू)",
+    re.IGNORECASE,
+)
+_PERCENT_CUE_RE = re.compile(r"(?:%|percent|प्रतिशत|टक्के|टक्का)", re.IGNORECASE)
+_DECIMAL_CUE_RE = re.compile(r"(?:\b(?:point|dot|decimal)\b|दशमलव)", re.IGNORECASE)
+_TIME_CUE_RE = re.compile(
+    r"(?:\b(?:AM|PM|A\.M\.|P\.M\.)\b|बजे|बजकर|मिनट|सुबह|दोपहर|शाम|रात)",
+    re.IGNORECASE,
+)
+_PHONE_CUE_RE = re.compile(
+    r"(?:\b(?:phone|mobile|number|otp)\b|फ़ोन|फोन|मोबाइल|नंबर|नम्बर|ओटीपी)",
+    re.IGNORECASE,
+)
 
-    Prefilter spans are matched on cue-bearing patterns by definition
-    (a leading currency symbol, a literal ``%``, a phone-shaped digit
-    run, etc.), so they always have a cue. Future WFST classifier
-    spans should set this themselves; we conservatively default to
-    False so the gate's ``require_lex_cue`` rule applies.
+
+def _span_has_lex_cue(span: Span, *, context_text: str) -> bool:
+    """Whether a span carries sufficient cue evidence to auto-rewrite.
+
+    The prefilter is a locator, not a semantic witness: a bare numeric
+    phone/date/time shape is intentionally *not* enough on its own.
+    Stronger downstream rules may satisfy the cue requirement when the
+    rule itself proves the missing piece (for example ``fmt.phone``'s
+    strict structural parse or ``wfst.date``'s locale-aware date path).
     """
-    return span.rule_id.startswith("prefilter.")
+    if span.cls in {"amount", "currency", "money"}:
+        # Amount regexes and the money WFST both require an explicit
+        # currency surface. Keep the cue tied to that surface rather
+        # than to the fact that a regex located the span.
+        return bool(_CURRENCY_CUE_RE.search(span.raw))
+
+    if span.cls == "percent":
+        # A literal percent symbol or lexical percent word is self-cuing.
+        return bool(_PERCENT_CUE_RE.search(span.raw))
+
+    if span.cls == "decimal":
+        # Generic spoken decimals are only safe when an explicit decimal marker
+        # is in the span. Percent-bearing decimals arrive as ``percent`` spans.
+        return bool(_DECIMAL_CUE_RE.search(span.raw))
+
+    if span.cls == "time":
+        # ``17:30`` is only a shape; ``5:30 PM`` or a Hindi time cue is
+        # semantic evidence. Do not let ``prefilter.time`` alone pass.
+        return bool(_TIME_CUE_RE.search(span.raw))
+
+    if span.cls == "date":
+        # Plain prefilter date matches are merely located. A date WFST
+        # result means the policy-aware date path accepted it; the
+        # dateparser branch is likewise already cue/policy-gated.
+        return (
+            has_date_cue(span.raw)
+            or has_date_cue(context_text)
+            or span.rule_id.startswith(("wfst.", "dateparser."))
+        )
+
+    if span.cls == "phone":
+        # The strict formatter is accepted structural evidence. Raw
+        # prefilter phone shapes still need actual phone/OTP context.
+        return (
+            span.rule_id.startswith("fmt.")
+            or bool(_PHONE_CUE_RE.search(context_text))
+        )
+
+    # Other classes should earn their own semantics explicitly instead
+    # of inheriting trust from a generic ``prefilter.*`` location.
+    return False
+
+
+def _mark_self_corrections(text: str, spans: list[Span]) -> list[Span]:
+    """Mark spans participating in a correction pair as unsafe."""
+    unsafe = detect_self_corrections(text, spans)
+    if not unsafe:
+        return spans
+    return [
+        span.model_copy(
+            update={
+                "ambiguous": True,
+                "fallback_reason": "self_correction",
+            }
+        )
+        if idx in unsafe
+        else span
+        for idx, span in enumerate(spans)
+    ]
 
 
 def apply_spans(text: str, spans: list[Span]) -> str:
@@ -239,10 +317,12 @@ def normalize_segment(
     working = working_copy(raw_text)
     route = route_language(working, asr_hint=lang_hint)
     spans = classifier(working, route.lang)
+    spans = _mark_self_corrections(working, spans)
 
     # On partials, restrict to the small set of low-risk classes
     # (cardinal/money/percent) per the blueprint's partial-display
-    # rules. Ambiguous spans are always filtered out before the gate.
+    # rules. Ambiguous partial spans are filtered out before the gate;
+    # final spans go through the gate so fallback provenance survives.
     if not is_final:
         spans = [
             s for s in spans
@@ -256,13 +336,10 @@ def normalize_segment(
     asr_conf = _aggregate_asr_conf(tokens)
     safe_spans: list[Span] = []
     for span in spans:
-        if span.ambiguous:
-            # Ambiguous spans never auto-rewrite, on partial or final.
-            continue
         gated = gate(
             span,
             asr_conf=asr_conf,
-            has_lex_cue=_span_has_lex_cue(span),
+            has_lex_cue=_span_has_lex_cue(span, context_text=working),
             is_partial=not is_final,
             thresholds=thresholds,
         )

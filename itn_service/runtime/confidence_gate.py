@@ -128,10 +128,16 @@ def gate(
 
 
 def _fallback(span: Span, reasons: list[str]) -> Span:
+    existing = (
+        [part for part in span.fallback_reason.split(";") if part]
+        if span.fallback_reason
+        else []
+    )
+    merged = [*existing, *(reason for reason in reasons if reason not in existing)]
     return span.model_copy(
         update={
             "canonical": span.raw,
-            "fallback_reason": ";".join(reasons),
+            "fallback_reason": ";".join(merged),
         }
     )
 

@@ -44,7 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         g++ \
         libicu-dev \
-        libopenfst-dev \
+        libfst-dev \
         pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
@@ -87,7 +87,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # in toolchains.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libicu72 \
-        libfst27 \
+        libfst22 \
     && rm -rf /var/lib/apt/lists/*
 
 # Bring the prepared venv over from the builder.

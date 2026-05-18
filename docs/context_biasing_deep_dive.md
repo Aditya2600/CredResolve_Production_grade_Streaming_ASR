@@ -232,7 +232,9 @@ decoding_cfg.ctc_ali_token_weight  = 0.6   # ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_W
 6. Delete the temp WAV.
 7. Return `ContextBiasingResult(text, language, phrase_file, latency_ms)`.
 
-The call runs in a dedicated `ThreadPoolExecutor` with a single worker, serializing GPU access. An `asyncio.BoundedSemaphore(1)` gate with a timeout (`ASR_CONTEXT_BIASING_TIMEOUT_MS`) prevents request stacking — if a prior inference is still running when a new request arrives, it raises `ContextBiasingTimeoutError` and the baseline transcript is used.
+Each request now leases one model from `ContextBiasingModelPool` before applying the decoding strategy. This is the safety boundary: `change_decoding_strategy()` mutates decoder state, so concurrent requests must use independent NeMo model instances rather than one shared mutable model. Defaults remain serialized (`pool_size=1`, `max_concurrent=1`, `executor_workers=1`).
+
+Queue wait and inference timeouts are separate. If no model lease arrives before `ASR_CONTEXT_BIASING_QUEUE_TIMEOUT_MS`, the request falls back with `queue_timeout`. If an already-leased decode exceeds `ASR_CONTEXT_BIASING_TIMEOUT_MS`, it falls back with `inference_timeout`; the slot is marked `draining_after_timeout` and is not returned to the pool until the underlying thread actually exits.
 
 ---
 
@@ -287,10 +289,26 @@ biased_transcript      str
 selected_transcript    str
 ```
 
+Every pool attempt also logs:
+
+```
+bias_queue_wait_ms
+bias_inflight_count
+bias_max_concurrency
+bias_timeout_reason
+configured_max_concurrency
+effective_max_concurrency
+model_pool_size
+```
+
 Prometheus metrics:
 - `CONTEXT_BIASING_REQUESTS{mode, status}` — counter
-- `CONTEXT_BIASING_FALLBACKS{reason}` — counter
-- `CONTEXT_BIASING_LATENCY` — histogram
+- `CONTEXT_BIASING_FALLBACKS{reason}` — counter (`queue_timeout` and `inference_timeout` are distinct)
+- `CONTEXT_BIASING_LATENCY` — inference-only histogram
+- `CONTEXT_BIASING_TOTAL_LATENCY` — caller-visible queue + inference histogram
+- `CONTEXT_BIASING_QUEUE_WAIT_MS` — queue-wait histogram
+- `CONTEXT_BIASING_INFLIGHT` — active or draining leases
+- `CONTEXT_BIASING_POOL_AVAILABLE` — currently leaseable models
 
 ---
 
@@ -304,6 +322,11 @@ Prometheus metrics:
 | `ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS` | `""` | E.g., `EncDecCTCModelBPE` |
 | `ASR_CONTEXT_BIASING_PHRASES_DIR` | `""` | Directory containing `<lang>.txt` phrase files |
 | `ASR_CONTEXT_BIASING_TIMEOUT_MS` | `4000` | Max inference time before fallback |
+| `ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES` | `1` | Requested biased decodes in flight; clamped to pool size |
+| `ASR_CONTEXT_BIASING_EXECUTOR_WORKERS` | max concurrent | Dedicated context-biasing worker threads |
+| `ASR_CONTEXT_BIASING_QUEUE_TIMEOUT_MS` | inference timeout | Max wait for a model lease before `queue_timeout` fallback |
+| `ASR_CONTEXT_BIASING_MODEL_POOL_SIZE` | `1` | Number of independent NeMo model instances |
+| `ASR_CONTEXT_BIASING_MODEL_POOL_LOAD_MODE` | `eager` | `eager` loads all slots at startup; `lazy` loads on first lease |
 | `ASR_CONTEXT_BIASING_DEVICE` | `cuda` | `cuda` or `cpu` |
 | `ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE` | `1.0` | Fraction of shadow requests to run (0.0–1.0) |
 | `ASR_CONTEXT_BIASING_BEAM_THRESHOLD` | `8.0` | CTC-WS beam pruning threshold |
@@ -375,13 +398,16 @@ bounce charges_bounce charge_बाउंस चार्जेस_बाउं�
 
 ### Latency
 
-The biasing model runs synchronously on GPU in a single-threaded executor. Typical latency for a 30-second utterance at 16 kHz on a mid-range GPU is 200–600 ms. If this exceeds `ASR_CONTEXT_BIASING_TIMEOUT_MS`, the system falls back to baseline. Set the timeout to ≥ 2× observed p95 latency.
+The biasing model runs synchronously on GPU inside a dedicated executor. Typical latency for a 30-second utterance at 16 kHz on a mid-range GPU is 200–600 ms. Keep queue wait and inference latency separate when tuning: queue pressure means pool capacity is exhausted, while inference timeout means the leased decode itself is too slow. `tools/context_biasing_loadtest.py` reports queue, inference, total latency, fallback rate, and GPU memory by pool-size group.
 
 ### Shadow → Active rollout
 
-1. Deploy with `ASR_CONTEXT_BIASING_MODE=shadow` and `ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE=1.0`.
-2. Analyze `transcribe_context_biasing_result` events: check `returned_source`, `selection_reason`, and `biased_phrase_hits` vs `baseline_phrase_hits`.
-3. Once phrase gain rate is satisfactory and regression rate is acceptable, switch to `active`.
+1. Start with default serialized behavior: pool size `1`, max concurrency `1`, executor workers `1`.
+2. Deploy with `ASR_CONTEXT_BIASING_MODE=shadow` and `ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE=1.0`.
+3. Validate phrase isolation first: no request-specific phrase file should appear in another request's decode logs.
+4. In staging, test `pool_size=2`, `max_concurrent=2`, `executor_workers=2`; optionally test `4/4/4` only if GPU memory allows.
+5. Analyze `transcribe_context_biasing_result` events plus timeout/fallback metrics.
+6. Do not promote to `active` until phrase-leakage tests and shadow logs are clean.
 
 ---
 

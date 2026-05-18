@@ -4,9 +4,11 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import inspect
+import json
 import logging
 import re
 import tempfile
+import threading
 import time
 import unicodedata
 import wave
@@ -21,12 +23,21 @@ from .context_assembler import (
     build_request_scoped_phrase_pack,
     parse_biasing_context,
 )
+from .metrics import (
+    CONTEXT_BIASING_INFLIGHT,
+    CONTEXT_BIASING_LATENCY,
+    CONTEXT_BIASING_POOL_AVAILABLE,
+    CONTEXT_BIASING_QUEUE_WAIT_MS,
+    CONTEXT_BIASING_TOTAL_LATENCY,
+)
 from .nemo_export import _load_nemo_model, select_supported_kwargs
 
 log = logging.getLogger("worker.context_biasing")
 
 VALID_CONTEXT_BIASING_MODES = frozenset({"disabled", "shadow", "active"})
 VALID_CONTEXT_BIASING_METHODS = frozenset({"ctc_ws"})
+VALID_CONTEXT_BIASING_POOL_LOAD_MODES = frozenset({"eager", "lazy"})
+VALID_CONTEXT_BIASING_MODEL_STATES = frozenset({"available", "leased", "draining_after_timeout", "failed"})
 
 
 class ContextBiasingError(RuntimeError):
@@ -38,7 +49,10 @@ class ContextBiasingNotReadyError(ContextBiasingError):
 
 
 class ContextBiasingTimeoutError(ContextBiasingError):
-    pass
+    def __init__(self, message: str, *, reason: str, cleanup_deferred: bool = False):
+        super().__init__(message)
+        self.reason = reason
+        self.cleanup_deferred = cleanup_deferred
 
 
 @dataclass(frozen=True)
@@ -59,6 +73,13 @@ def normalize_context_biasing_method(value: str) -> str:
     if method not in VALID_CONTEXT_BIASING_METHODS:
         return "ctc_ws"
     return method
+
+
+def normalize_context_biasing_pool_load_mode(value: str) -> str:
+    mode = (value or "eager").strip().lower()
+    if mode not in VALID_CONTEXT_BIASING_POOL_LOAD_MODES:
+        return "eager"
+    return mode
 
 
 def normalize_phrase_text(text: str) -> list[str]:
@@ -220,6 +241,11 @@ class ContextBiasingConfig:
     context_score: float
     ctc_ali_token_weight: float
     max_dynamic_phrases: int
+    max_concurrent_inferences: int = 1
+    executor_workers: int = 1
+    queue_timeout_ms: int = 0
+    model_pool_size: int = 1
+    model_pool_load_mode: str = "eager"
 
 
 @dataclass(frozen=True)
@@ -249,6 +275,186 @@ class ContextBiasingResult:
     language: str
     phrase_file: str
     latency_ms: int
+    queue_wait_ms: int = 0
+    total_latency_ms: int = 0
+
+
+@dataclass
+class ContextBiasingModelSlot:
+    slot_id: int
+    model: Any | None = None
+    state: str = "available"
+    last_error: str = ""
+
+
+@dataclass(frozen=True)
+class ContextBiasingModelLease:
+    slot: ContextBiasingModelSlot
+
+    @property
+    def slot_id(self) -> int:
+        return self.slot.slot_id
+
+    @property
+    def model(self) -> Any | None:
+        return self.slot.model
+
+
+class ContextBiasingModelPool:
+    """Owns independent mutable NeMo model instances and leases them one at a time."""
+
+    def __init__(
+        self,
+        *,
+        size: int,
+        load_mode: str,
+        model_loader,
+    ):
+        self.size = max(int(size), 1)
+        self.load_mode = normalize_context_biasing_pool_load_mode(load_mode)
+        self._model_loader = model_loader
+        self._slots = [ContextBiasingModelSlot(slot_id=index) for index in range(self.size)]
+        self._available: asyncio.Queue[int] = asyncio.Queue(maxsize=self.size)
+        self._lock = threading.RLock()
+        self._initialized = False
+
+    @classmethod
+    def from_models(cls, models: list[Any]) -> "ContextBiasingModelPool":
+        pool = cls(size=max(len(models), 1), load_mode="eager", model_loader=lambda: None)
+        with pool._lock:
+            seen_model_ids: set[int] = set()
+            for slot, model in zip(pool._slots, models):
+                if id(model) in seen_model_ids:
+                    slot.state = "failed"
+                    slot.last_error = "Duplicate preloaded model instance"
+                    continue
+                seen_model_ids.add(id(model))
+                slot.model = model
+                slot.state = "available"
+                pool._available.put_nowait(slot.slot_id)
+            for slot in pool._slots[len(models) :]:
+                slot.state = "failed"
+                slot.last_error = "No preloaded model supplied"
+            pool._initialized = True
+        return pool
+
+    @property
+    def slots(self) -> tuple[ContextBiasingModelSlot, ...]:
+        with self._lock:
+            return tuple(self._slots)
+
+    @property
+    def available_count(self) -> int:
+        with self._lock:
+            return sum(1 for slot in self._slots if slot.state == "available")
+
+    @property
+    def inflight_count(self) -> int:
+        with self._lock:
+            return sum(1 for slot in self._slots if slot.state in {"leased", "draining_after_timeout"})
+
+    @property
+    def usable_capacity(self) -> int:
+        with self._lock:
+            return sum(1 for slot in self._slots if slot.state != "failed")
+
+    @property
+    def failed_count(self) -> int:
+        with self._lock:
+            return sum(1 for slot in self._slots if slot.state == "failed")
+
+    def initialize(self) -> None:
+        with self._lock:
+            if self._initialized:
+                return
+            self._initialized = True
+        if self.load_mode == "lazy":
+            with self._lock:
+                for slot in self._slots:
+                    slot.state = "available"
+                    self._available.put_nowait(slot.slot_id)
+            return
+
+        for slot in self._slots:
+            try:
+                model = self._model_loader()
+            except Exception as exc:
+                with self._lock:
+                    slot.state = "failed"
+                    slot.last_error = str(exc)
+                log.exception("Context-biasing model pool slot failed to initialize slot_id=%s error=%s", slot.slot_id, exc)
+                continue
+            with self._lock:
+                if any(existing.model is model for existing in self._slots if existing is not slot):
+                    slot.state = "failed"
+                    slot.last_error = "Duplicate model instance returned by loader"
+                    log.error(
+                        "Context-biasing model pool rejected duplicate model instance slot_id=%s",
+                        slot.slot_id,
+                    )
+                    continue
+                slot.model = model
+                slot.state = "available"
+                slot.last_error = ""
+                self._available.put_nowait(slot.slot_id)
+
+    def ensure_model(self, lease: ContextBiasingModelLease) -> Any:
+        slot = lease.slot
+        with self._lock:
+            if slot.state not in {"leased", "draining_after_timeout"}:
+                raise ContextBiasingError(f"Context-biasing model slot {slot.slot_id} is not leased")
+            if slot.model is not None:
+                return slot.model
+        try:
+            model = self._model_loader()
+        except Exception as exc:
+            with self._lock:
+                slot.last_error = str(exc)
+            raise
+        with self._lock:
+            if slot.state not in {"leased", "draining_after_timeout"}:
+                raise ContextBiasingError(f"Context-biasing model slot {slot.slot_id} changed state while loading")
+            if any(existing.model is model for existing in self._slots if existing is not slot):
+                slot.last_error = "Duplicate model instance returned by loader"
+                raise ContextBiasingError(slot.last_error)
+            slot.model = model
+            slot.last_error = ""
+            return model
+
+    async def acquire(self, *, timeout_s: float) -> ContextBiasingModelLease:
+        slot_id = await asyncio.wait_for(self._available.get(), timeout=max(timeout_s, 0.000001))
+        with self._lock:
+            slot = self._slots[slot_id]
+            if slot.state != "available":
+                raise ContextBiasingError(
+                    f"Context-biasing model slot {slot.slot_id} was queued while state={slot.state}"
+                )
+            slot.state = "leased"
+            return ContextBiasingModelLease(slot=slot)
+
+    def mark_draining_after_timeout(self, lease: ContextBiasingModelLease) -> None:
+        with self._lock:
+            if lease.slot.state == "leased":
+                lease.slot.state = "draining_after_timeout"
+
+    def release(self, lease: ContextBiasingModelLease) -> None:
+        with self._lock:
+            slot = lease.slot
+            if slot.state not in {"leased", "draining_after_timeout"}:
+                return
+            if slot.model is None:
+                slot.state = "failed"
+                slot.last_error = slot.last_error or "Model missing at release"
+                return
+            slot.state = "available"
+            slot.last_error = ""
+            self._available.put_nowait(slot.slot_id)
+
+    def mark_failed(self, lease: ContextBiasingModelLease, exc: BaseException) -> None:
+        with self._lock:
+            lease.slot.state = "failed"
+            lease.slot.last_error = str(exc)
+            lease.slot.model = None
 
 
 def _sample_ratio(key: str) -> float:
@@ -336,10 +542,86 @@ class NeMoContextBiasingRuntime:
         self.ready = False
         self.init_error = ""
         self.model = None
+        self.model_pool: ContextBiasingModelPool | None = None
         self.device = (config.device or "cuda").strip().lower() or "cuda"
         self.target_sample_rate = 16000
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="context-bias")
-        self._slots = asyncio.BoundedSemaphore(1)
+        self.configured_max_concurrency = max(int(config.max_concurrent_inferences), 1)
+        self.model_pool_size = max(int(config.model_pool_size), 1)
+        self.effective_max_concurrency = min(self.configured_max_concurrency, self.model_pool_size)
+        if self.configured_max_concurrency > self.model_pool_size:
+            log.warning(
+                "Context-biasing max concurrency exceeds model pool size; clamping configured_max_concurrency=%s effective_max_concurrency=%s model_pool_size=%s",
+                self.configured_max_concurrency,
+                self.effective_max_concurrency,
+                self.model_pool_size,
+            )
+        self.executor_workers = max(int(config.executor_workers), 1)
+        self.queue_timeout_ms = max(int(config.queue_timeout_ms or config.timeout_ms), 1)
+        self.model_pool_load_mode = normalize_context_biasing_pool_load_mode(config.model_pool_load_mode)
+        self._executor = ThreadPoolExecutor(
+            max_workers=self.executor_workers,
+            thread_name_prefix="context-bias",
+        )
+        self._slots = asyncio.BoundedSemaphore(self.effective_max_concurrency)
+
+    def _load_model_instance(self) -> Any:
+        _, _, model = _load_nemo_model(
+            source=self.config.nemo_source,
+            model_class_name=self.config.nemo_model_class,
+            device=self.device,
+        )
+        if hasattr(model, "to"):
+            model.to(self.device)
+        if hasattr(model, "eval"):
+            model.eval()
+        if hasattr(model, "freeze"):
+            model.freeze()
+        return model
+
+    def _refresh_pool_metrics(self) -> None:
+        if self.model_pool is None:
+            CONTEXT_BIASING_INFLIGHT.set(0)
+            CONTEXT_BIASING_POOL_AVAILABLE.set(0)
+            return
+        CONTEXT_BIASING_INFLIGHT.set(self.model_pool.inflight_count)
+        CONTEXT_BIASING_POOL_AVAILABLE.set(self.model_pool.available_count)
+
+    def _ensure_external_model_pool(self) -> ContextBiasingModelPool:
+        if self.model_pool is not None:
+            return self.model_pool
+        if self.model is None:
+            raise ContextBiasingNotReadyError(self.init_error or "Context-biasing model not initialized")
+        self.model_pool = ContextBiasingModelPool.from_models([self.model])
+        self.model_pool_size = 1
+        self.effective_max_concurrency = 1
+        self._refresh_pool_metrics()
+        return self.model_pool
+
+    def _log_attempt(
+        self,
+        *,
+        session_id: Optional[str],
+        utterance_id: Optional[str],
+        status: str,
+        queue_wait_ms: int,
+        timeout_reason: str | None,
+        total_latency_ms: int,
+    ) -> None:
+        payload = {
+            "event": "context_biasing_attempt",
+            "session_id": session_id,
+            "utterance_id": utterance_id,
+            "status": status,
+            "bias_queue_wait_ms": queue_wait_ms,
+            "bias_inflight_count": self.model_pool.inflight_count if self.model_pool is not None else 0,
+            "bias_max_concurrency": self.effective_max_concurrency,
+            "bias_timeout_reason": timeout_reason,
+            "configured_max_concurrency": self.configured_max_concurrency,
+            "effective_max_concurrency": self.effective_max_concurrency,
+            "model_pool_size": self.model_pool_size,
+            "total_latency_ms": total_latency_ms,
+        }
+        log.info(json.dumps(payload, separators=(",", ":"), ensure_ascii=True))
 
     def load(self) -> None:
         if self.mode == "disabled":
@@ -357,34 +639,40 @@ class NeMoContextBiasingRuntime:
             return
 
         try:
-            _, _, model = _load_nemo_model(
-                source=self.config.nemo_source,
-                model_class_name=self.config.nemo_model_class,
-                device=self.device,
+            self.model_pool = ContextBiasingModelPool(
+                size=self.model_pool_size,
+                load_mode=self.model_pool_load_mode,
+                model_loader=self._load_model_instance,
             )
-            if hasattr(model, "to"):
-                model.to(self.device)
-            if hasattr(model, "eval"):
-                model.eval()
-            if hasattr(model, "freeze"):
-                model.freeze()
-            self.model = model
-            self.target_sample_rate = self._infer_sample_rate(model)
+            self.model_pool.initialize()
+            first_loaded = next((slot.model for slot in self.model_pool.slots if slot.model is not None), None)
+            if self.model_pool_load_mode == "eager" and first_loaded is None:
+                raise ContextBiasingNotReadyError("No context-biasing model pool slots initialized successfully")
+            self.model = first_loaded
+            if first_loaded is not None:
+                self.target_sample_rate = self._infer_sample_rate(first_loaded)
             self.ready = True
             self.init_error = ""
+            self._refresh_pool_metrics()
             log.info(
-                "Context-biasing model ready mode=%s method=%s source=%s model_class=%s device=%s sample_rate=%s",
+                "Context-biasing model ready mode=%s method=%s source=%s model_class=%s device=%s sample_rate=%s configured_max_concurrency=%s effective_max_concurrency=%s model_pool_size=%s model_pool_load_mode=%s",
                 self.mode,
                 self.method,
                 self.config.nemo_source,
                 self.config.nemo_model_class,
                 self.device,
                 self.target_sample_rate,
+                self.configured_max_concurrency,
+                self.effective_max_concurrency,
+                self.model_pool_size,
+                self.model_pool_load_mode,
             )
         except Exception as exc:
             self.ready = False
             self.model = None
+            self.model_pool = None
             self.init_error = str(exc)
+            self._refresh_pool_metrics()
             log.exception("Context-biasing model failed to initialize: %s", exc)
 
     def decide(
@@ -435,7 +723,7 @@ class NeMoContextBiasingRuntime:
                 phrase_file=None,
                 **common_fields,
             )
-        if not self.ready or self.model is None:
+        if not self.ready or (self.model_pool is None and self.model is None):
             return ContextBiasingDecision(
                 mode=effective_mode,
                 eligible=False,
@@ -562,19 +850,21 @@ class NeMoContextBiasingRuntime:
                 continue
         return 16000
 
-    def _resolve_decoder_type(self) -> str:
-        cfg = getattr(self.model, "cfg", None) or getattr(self.model, "_cfg", None)
-        if getattr(cfg, "aux_ctc", None) is not None or hasattr(self.model, "aux_ctc"):
+    def _resolve_decoder_type(self, model: Any | None = None) -> str:
+        active_model = model if model is not None else self.model
+        cfg = getattr(active_model, "cfg", None) or getattr(active_model, "_cfg", None)
+        if getattr(cfg, "aux_ctc", None) is not None or hasattr(active_model, "aux_ctc"):
             return "ctc"
-        model_name = type(self.model).__name__.lower() if self.model is not None else ""
+        model_name = type(active_model).__name__.lower() if active_model is not None else ""
         if "ctc" in model_name:
             return "ctc"
-        if "rnnt" in model_name or hasattr(self.model, "joint"):
+        if "rnnt" in model_name or hasattr(active_model, "joint"):
             return "rnnt"
         return "ctc"
 
-    def _build_decoding_cfg(self, *, phrase_file: str) -> tuple[str, Any]:
-        if self.model is None:
+    def _build_decoding_cfg(self, *, phrase_file: str, model: Any | None = None) -> tuple[str, Any]:
+        active_model = model if model is not None else self.model
+        if active_model is None:
             raise ContextBiasingNotReadyError(self.init_error or "Context-biasing model not initialized")
 
         try:
@@ -584,8 +874,8 @@ class NeMoContextBiasingRuntime:
                 "Context-biasing requires OmegaConf and NeMo runtime dependencies."
             ) from exc
 
-        decoder_type = self._resolve_decoder_type()
-        cfg_root = getattr(self.model, "cfg", None) or getattr(self.model, "_cfg", None)
+        decoder_type = self._resolve_decoder_type(active_model)
+        cfg_root = getattr(active_model, "cfg", None) or getattr(active_model, "_cfg", None)
         if cfg_root is None:
             raise ContextBiasingError("NeMo model does not expose a decoding config")
 
@@ -606,12 +896,13 @@ class NeMoContextBiasingRuntime:
         decoding_cfg.ctc_ali_token_weight = float(self.config.ctc_ali_token_weight)
         return decoder_type, decoding_cfg
 
-    def _apply_decoding_strategy(self, *, phrase_file: str) -> str:
-        if self.model is None or not hasattr(self.model, "change_decoding_strategy"):
+    def _apply_decoding_strategy(self, *, phrase_file: str, model: Any | None = None) -> str:
+        active_model = model if model is not None else self.model
+        if active_model is None or not hasattr(active_model, "change_decoding_strategy"):
             raise ContextBiasingError("NeMo model does not support change_decoding_strategy")
 
-        decoder_type, decoding_cfg = self._build_decoding_cfg(phrase_file=phrase_file)
-        change_strategy = getattr(self.model, "change_decoding_strategy")
+        decoder_type, decoding_cfg = self._build_decoding_cfg(phrase_file=phrase_file, model=active_model)
+        change_strategy = getattr(active_model, "change_decoding_strategy")
         kwargs = select_supported_kwargs(
             change_strategy,
             decoding_cfg=decoding_cfg,
@@ -623,11 +914,12 @@ class NeMoContextBiasingRuntime:
             change_strategy(decoding_cfg)
         return decoder_type
 
-    def _transcribe_file(self, wav_path: Path, *, language: str) -> str:
-        if self.model is None:
+    def _transcribe_file(self, wav_path: Path, *, language: str, model: Any | None = None) -> str:
+        active_model = model if model is not None else self.model
+        if active_model is None:
             raise ContextBiasingNotReadyError(self.init_error or "Context-biasing model not initialized")
 
-        transcribe = getattr(self.model, "transcribe", None)
+        transcribe = getattr(active_model, "transcribe", None)
         if transcribe is None:
             raise ContextBiasingError("NeMo model does not expose transcribe")
 
@@ -667,8 +959,19 @@ class NeMoContextBiasingRuntime:
         session_id: Optional[str],
         utterance_id: Optional[str],
         mode: str,
+        model: Any | None = None,
+        lease: ContextBiasingModelLease | None = None,
     ) -> ContextBiasingResult:
-        if not self.ready or self.model is None:
+        active_model = model if model is not None else self.model
+        if lease is not None:
+            pool = self.model_pool
+            if pool is None:
+                raise ContextBiasingNotReadyError(self.init_error or "Context-biasing model pool not initialized")
+            active_model = pool.ensure_model(lease)
+            if self.model is None:
+                self.model = active_model
+                self.target_sample_rate = self._infer_sample_rate(active_model)
+        if not self.ready or active_model is None:
             raise ContextBiasingNotReadyError(self.init_error or "Context-biasing model not initialized")
 
         audio = _prepare_audio(pcm16le, sample_rate, self.target_sample_rate)
@@ -678,8 +981,8 @@ class NeMoContextBiasingRuntime:
         temp_wav = _write_temp_wav(audio, self.target_sample_rate)
         t0 = time.time()
         try:
-            decoder_type = self._apply_decoding_strategy(phrase_file=phrase_file)
-            text = self._transcribe_file(temp_wav, language=language)
+            decoder_type = self._apply_decoding_strategy(phrase_file=phrase_file, model=active_model)
+            text = self._transcribe_file(temp_wav, language=language, model=active_model)
             latency_ms = int((time.time() - t0) * 1000)
             log.info(
                 "Context-biasing decode finished session_id=%s utterance_id=%s mode=%s language=%s decoder_type=%s phrase_file=%s latency_ms=%s text_chars=%s",
@@ -708,15 +1011,67 @@ class NeMoContextBiasingRuntime:
         session_id: Optional[str],
         utterance_id: Optional[str],
         mode: str,
+        cleanup_phrase_file: bool = False,
     ) -> ContextBiasingResult:
-        timeout_s = max(int(self.config.timeout_ms), 1) / 1000.0
+        inference_timeout_s = max(int(self.config.timeout_ms), 1) / 1000.0
+        queue_timeout_s = max(int(self.queue_timeout_ms), 1) / 1000.0
+        attempt_t0 = time.monotonic()
+        queue_t0 = attempt_t0
         loop = asyncio.get_running_loop()
+        pool = self._ensure_external_model_pool()
+        slot_acquired = False
+        lease: ContextBiasingModelLease | None = None
         try:
-            await asyncio.wait_for(self._slots.acquire(), timeout=timeout_s)
+            await asyncio.wait_for(self._slots.acquire(), timeout=queue_timeout_s)
+            slot_acquired = True
+            remaining_queue_s = max(queue_timeout_s - (time.monotonic() - queue_t0), 0.000001)
+            lease = await pool.acquire(timeout_s=remaining_queue_s)
         except asyncio.TimeoutError as exc:
-            raise ContextBiasingTimeoutError(f"Context-biasing slot unavailable after {timeout_s}s") from exc
+            if slot_acquired:
+                self._slots.release()
+            queue_wait_ms = int((time.monotonic() - queue_t0) * 1000)
+            CONTEXT_BIASING_QUEUE_WAIT_MS.observe(queue_wait_ms)
+            self._refresh_pool_metrics()
+            total_latency_ms = int((time.monotonic() - attempt_t0) * 1000)
+            CONTEXT_BIASING_TOTAL_LATENCY.observe(total_latency_ms / 1000.0)
+            self._log_attempt(
+                session_id=session_id,
+                utterance_id=utterance_id,
+                status="fallback",
+                queue_wait_ms=queue_wait_ms,
+                timeout_reason="queue_timeout",
+                total_latency_ms=total_latency_ms,
+            )
+            raise ContextBiasingTimeoutError(
+                f"Context-biasing model lease unavailable after {queue_timeout_s}s",
+                reason="queue_timeout",
+            ) from exc
+        except Exception:
+            if slot_acquired:
+                self._slots.release()
+            self._refresh_pool_metrics()
+            queue_wait_ms = int((time.monotonic() - queue_t0) * 1000)
+            total_latency_ms = int((time.monotonic() - attempt_t0) * 1000)
+            CONTEXT_BIASING_QUEUE_WAIT_MS.observe(queue_wait_ms)
+            CONTEXT_BIASING_TOTAL_LATENCY.observe(total_latency_ms / 1000.0)
+            self._log_attempt(
+                session_id=session_id,
+                utterance_id=utterance_id,
+                status="error",
+                queue_wait_ms=queue_wait_ms,
+                timeout_reason=None,
+                total_latency_ms=total_latency_ms,
+            )
+            raise
+
+        assert lease is not None
+        queue_wait_ms = int((time.monotonic() - queue_t0) * 1000)
+        CONTEXT_BIASING_QUEUE_WAIT_MS.observe(queue_wait_ms)
+        self._refresh_pool_metrics()
+        defer_phrase_cleanup = False
 
         try:
+            inference_t0 = time.monotonic()
             future = self._executor.submit(
                 self.transcribe_pcm16,
                 pcm16le=pcm16le,
@@ -726,20 +1081,109 @@ class NeMoContextBiasingRuntime:
                 session_id=session_id,
                 utterance_id=utterance_id,
                 mode=mode,
+                lease=lease,
             )
         except Exception:
+            pool.release(lease)
+            self._refresh_pool_metrics()
             self._slots.release()
+            total_latency_ms = int((time.monotonic() - attempt_t0) * 1000)
+            CONTEXT_BIASING_TOTAL_LATENCY.observe(total_latency_ms / 1000.0)
+            self._log_attempt(
+                session_id=session_id,
+                utterance_id=utterance_id,
+                status="error",
+                queue_wait_ms=queue_wait_ms,
+                timeout_reason=None,
+                total_latency_ms=total_latency_ms,
+            )
             raise
 
         def _release_slot(_future) -> None:
+            inference_elapsed = max(time.monotonic() - inference_t0, 0.0)
+
+            def _finalize() -> None:
+                try:
+                    if _future.cancelled():
+                        pool.release(lease)
+                    else:
+                        exc = _future.exception()
+                        if exc is None:
+                            pool.release(lease)
+                        else:
+                            pool.mark_failed(lease, exc)
+                    CONTEXT_BIASING_LATENCY.observe(inference_elapsed)
+                finally:
+                    if defer_phrase_cleanup and cleanup_phrase_file and phrase_file:
+                        try:
+                            Path(phrase_file).unlink(missing_ok=True)
+                        except Exception as cleanup_exc:
+                            log.warning(
+                                "Failed to remove deferred context-biasing phrase file path=%s error=%s",
+                                phrase_file,
+                                cleanup_exc,
+                            )
+                    self._refresh_pool_metrics()
+                    self._slots.release()
+
             try:
-                loop.call_soon_threadsafe(self._slots.release)
+                loop.call_soon_threadsafe(_finalize)
             except RuntimeError:
                 pass
 
         future.add_done_callback(_release_slot)
 
         try:
-            return await asyncio.wait_for(asyncio.wrap_future(future), timeout=timeout_s)
+            result = await asyncio.wait_for(
+                asyncio.shield(asyncio.wrap_future(future)),
+                timeout=inference_timeout_s,
+            )
+            total_latency_ms = int((time.monotonic() - attempt_t0) * 1000)
+            CONTEXT_BIASING_TOTAL_LATENCY.observe(total_latency_ms / 1000.0)
+            self._log_attempt(
+                session_id=session_id,
+                utterance_id=utterance_id,
+                status="ok",
+                queue_wait_ms=queue_wait_ms,
+                timeout_reason=None,
+                total_latency_ms=total_latency_ms,
+            )
+            return ContextBiasingResult(
+                text=result.text,
+                language=result.language,
+                phrase_file=result.phrase_file,
+                latency_ms=result.latency_ms,
+                queue_wait_ms=queue_wait_ms,
+                total_latency_ms=total_latency_ms,
+            )
         except asyncio.TimeoutError as exc:
-            raise ContextBiasingTimeoutError(f"Context-biasing inference timed out after {timeout_s}s") from exc
+            defer_phrase_cleanup = not future.done()
+            pool.mark_draining_after_timeout(lease)
+            self._refresh_pool_metrics()
+            total_latency_ms = int((time.monotonic() - attempt_t0) * 1000)
+            CONTEXT_BIASING_TOTAL_LATENCY.observe(total_latency_ms / 1000.0)
+            self._log_attempt(
+                session_id=session_id,
+                utterance_id=utterance_id,
+                status="fallback",
+                queue_wait_ms=queue_wait_ms,
+                timeout_reason="inference_timeout",
+                total_latency_ms=total_latency_ms,
+            )
+            raise ContextBiasingTimeoutError(
+                f"Context-biasing inference timed out after {inference_timeout_s}s",
+                reason="inference_timeout",
+                cleanup_deferred=defer_phrase_cleanup,
+            ) from exc
+        except Exception:
+            total_latency_ms = int((time.monotonic() - attempt_t0) * 1000)
+            CONTEXT_BIASING_TOTAL_LATENCY.observe(total_latency_ms / 1000.0)
+            self._log_attempt(
+                session_id=session_id,
+                utterance_id=utterance_id,
+                status="error",
+                queue_wait_ms=queue_wait_ms,
+                timeout_reason=None,
+                total_latency_ms=total_latency_ms,
+            )
+            raise

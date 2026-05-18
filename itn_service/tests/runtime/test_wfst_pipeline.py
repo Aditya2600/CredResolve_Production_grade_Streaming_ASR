@@ -42,7 +42,7 @@ def test_explicit_far_root_works(tmp_path: Path) -> None:
 
 def test_unknown_class_raises(pipeline: WFSTPipeline) -> None:
     with pytest.raises(ValueError):
-        pipeline.normalize_span("एक", "money")
+        pipeline.normalize_span("एक", "not_a_class")
 
 
 def test_empty_input_returns_none(pipeline: WFSTPipeline) -> None:

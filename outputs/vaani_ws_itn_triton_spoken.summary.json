@@ -1,0 +1,19 @@
+{
+  "samples": 50,
+  "ok": 50,
+  "errors": 0,
+  "raw_wer": 0.2737752161383285,
+  "display_wer": 0.31988472622478387,
+  "raw_totals": {
+    "s": 53,
+    "d": 15,
+    "i": 27,
+    "words": 347
+  },
+  "display_totals": {
+    "s": 69,
+    "d": 15,
+    "i": 27,
+    "words": 347
+  }
+}

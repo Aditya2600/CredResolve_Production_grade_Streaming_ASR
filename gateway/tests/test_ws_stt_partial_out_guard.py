@@ -148,6 +148,28 @@ class _TestStreamingPipeline:
         return events
 
 
+class _FailingFlushPipeline:
+    async def push_audio(self, _pcm_bytes: bytes) -> list[gateway_main.PipelineEvent]:
+        return []
+
+    async def flush(self) -> list[gateway_main.PipelineEvent]:
+        raise gateway_main.RNNTProviderError("worker transcription failed")
+
+    def reset(self) -> None:
+        return None
+
+
+class _FailingPushPipeline:
+    async def push_audio(self, _pcm_bytes: bytes) -> list[gateway_main.PipelineEvent]:
+        raise gateway_main.RNNTProviderError("worker transcription failed")
+
+    async def flush(self) -> list[gateway_main.PipelineEvent]:
+        return []
+
+    def reset(self) -> None:
+        return None
+
+
 def _prepare_common(monkeypatch) -> None:
     monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD, raising=False)
 
@@ -166,6 +188,24 @@ def _prepare_common(monkeypatch) -> None:
         return _TestStreamingPipeline(session_context), session_context
 
     monkeypatch.setattr(gateway_main, "build_streaming_pipeline", _build_test_streaming_pipeline)
+
+
+def _install_pipeline(monkeypatch, pipeline):
+    def _build_pipeline(session, *, session_id):
+        session_context = gateway_main.PipelineSessionContext(
+            session_id=session_id,
+            request_id=session.request_id,
+            sample_rate=session.sample_rate,
+            language_code=session.language_code,
+            mode=session.mode,
+            context_biasing_mode=session.context_biasing_mode,
+            biasing_context=session.biasing_context,
+            vad_enabled=session.vad_enabled,
+            denoise_enabled=session.denoise_enabled,
+        )
+        return pipeline, session_context
+
+    monkeypatch.setattr(gateway_main, "build_streaming_pipeline", _build_pipeline)
 
 
 def test_valid_handshake_and_flush_finalizes_transcript(monkeypatch):
@@ -226,7 +266,7 @@ def test_data_sent_log_includes_transcript_only_when_enabled(monkeypatch):
     ]
     assert len(data_sent_calls) == 1
     assert "text=%s" in data_sent_calls[0][0]
-    assert data_sent_calls[0][5] == '"hello sarvam"'
+    assert data_sent_calls[0][6] == '"hello sarvam"'
 
 
 def test_data_sent_log_omits_transcript_when_disabled(monkeypatch):
@@ -305,6 +345,37 @@ def test_binary_audio_frame_without_opt_in_returns_bad_message(monkeypatch):
     assert "binary websocket frames are not supported" in error["message"]
 
 
+def test_worker_failure_during_flush_returns_worker_error(monkeypatch):
+    _install_pipeline(monkeypatch, _FailingFlushPipeline())
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(binary_audio=1), headers=_auth_headers()) as ws:
+            ws.send_bytes(b"\x00" * 640)
+            ws.send_json({"type": "flush"})
+            error = ws.receive_json()
+
+    assert error == {
+        "type": "error",
+        "code": "WORKER_ERROR",
+        "message": "worker transcription failed",
+    }
+
+
+def test_worker_failure_during_push_returns_worker_error(monkeypatch):
+    _install_pipeline(monkeypatch, _FailingPushPipeline())
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(binary_audio=1), headers=_auth_headers()) as ws:
+            ws.send_bytes(b"\x00" * 640)
+            error = ws.receive_json()
+
+    assert error == {
+        "type": "error",
+        "code": "WORKER_ERROR",
+        "message": "worker transcription failed",
+    }
+
+
 def test_odd_length_binary_pcm_returns_bad_message(monkeypatch):
     _prepare_common(monkeypatch)
     monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
@@ -332,6 +403,7 @@ def test_lang_alias_and_banking_domain_query_parse_session_config():
 
     assert session.language_code == "hi"
     assert session.binary_audio is True
+    assert session.vad_enabled is False
     assert session.context_biasing_mode == "active"
     assert session.biasing_context["product"] == "banking"
     assert "loan id" in session.biasing_context["campaign_vocabulary"]

@@ -22,6 +22,7 @@ mean" — the caller is expected to emit raw for ``None`` returns.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 # ---------------------------------------------------------------------------
 # Strict regexes.
@@ -55,7 +56,13 @@ _ID_CUES: frozenset[str] = frozenset({
     "आईडी", "नंबर",
 })
 
-_CUE_TRIM_RE: re.Pattern[str] = re.compile(r"[^\w/]+", re.UNICODE)
+def _clean_cue_token(token: str) -> str:
+    """Strip punctuation while preserving Indic combining marks."""
+    return "".join(
+        ch
+        for ch in token
+        if ch == "/" or not unicodedata.category(ch).startswith("P")
+    ).lower()
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +207,7 @@ def parse_generic_id(
     if window < 1:
         return None
     recent = context_tokens[-window:] if len(context_tokens) >= window else context_tokens
-    if not any(_CUE_TRIM_RE.sub("", t).lower() in _ID_CUES for t in recent):
+    if not any(_clean_cue_token(t) in _ID_CUES for t in recent):
         return None
     compact = _GENERIC_ID_SEPARATOR_RE.sub("", text.strip()).upper()
     if not _GENERIC_ID_RE.match(compact):

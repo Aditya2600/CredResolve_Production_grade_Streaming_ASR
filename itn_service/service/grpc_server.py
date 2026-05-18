@@ -13,8 +13,8 @@ Operational invariants:
   YAML parsing is a regression.
 * The server creates a new ``StreamState`` per gRPC stream; sessions
   do not bleed across streams.
-* No graph construction in the request path — the classifier callable
-  is set up at startup and reused for every request.
+* No graph construction in the request path — tenant classifier
+  closures are set up at startup and reused for every request.
 * The proto-generated stubs (``itn_pb2``, ``itn_pb2_grpc``) are
   imported lazily so unit tests that exercise the translation helpers
   do not require ``protoc`` to have run.
@@ -33,18 +33,57 @@ import logging
 import signal
 import sys
 from concurrent import futures
-from typing import TYPE_CHECKING, Any, Iterator
+from dataclasses import dataclass
+from pathlib import Path
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping
+
+import yaml
 
 from ..runtime.confidence_gate import ThresholdTable, load_thresholds
 from ..runtime.contract import ITN_CONTRACT_VERSION, SegmentResult, Span, Token
+from ..runtime.locale_policy import TenantPolicy, TenantPolicyTable, load_locale_policy
 from ..runtime.normalizer import Classifier, default_classifier, normalize_segment
 from ..runtime.script_router import detect_script
 from ..runtime.stream_state import StreamState
+from ..runtime.wfst_classifier import make_wfst_classifier
 
 if TYPE_CHECKING:  # pragma: no cover - import-time only
     import grpc
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Live-service policy. ``normalize_segment`` deliberately keeps its own
+# regex-only default; this loader is consumed only by the gRPC path.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ServicePolicy:
+    """Subset of ``configs/policy.yaml`` consumed by the gRPC service."""
+
+    wfst_classifier_enabled: bool = True
+
+
+def _default_policy_path() -> Path:
+    return Path(__file__).resolve().parent.parent / "configs" / "policy.yaml"
+
+
+def load_service_policy(path: Path | None = None) -> ServicePolicy:
+    """Load the service-only rollout knobs from ``policy.yaml``."""
+    p = path if path is not None else _default_policy_path()
+    with p.open("r", encoding="utf-8") as f:
+        data: dict[str, Any] = yaml.safe_load(f) or {}
+
+    enabled = data.get("wfst_classifier_enabled", True)
+    if not isinstance(enabled, bool):
+        raise ValueError(
+            "policy.wfst_classifier_enabled must be a boolean, "
+            f"got {enabled!r}"
+        )
+    return ServicePolicy(wfst_classifier_enabled=enabled)
 
 
 # ---------------------------------------------------------------------------
@@ -158,22 +197,49 @@ class ItnServicer:
     fails when stubs are missing, only constructing the servicer does.
 
     One ``StreamState`` is created per ``StreamNormalize`` call. The
-    classifier and threshold table are shared across calls (they are
-    read-only after load).
+    threshold table, tenant policy table, and pre-built tenant
+    classifier closures are shared across calls (they are read-only
+    after load).
     """
 
     def __init__(
         self,
         *,
         thresholds: ThresholdTable | None = None,
-        classifier: Classifier = default_classifier,
+        classifier: Classifier | None = None,
+        service_policy: ServicePolicy | None = None,
+        locale_policies: TenantPolicyTable | None = None,
+        classifier_factory: Callable[[TenantPolicy], Classifier] = make_wfst_classifier,
         stub_module: Any,
     ) -> None:
         self._thresholds: ThresholdTable = (
             thresholds if thresholds is not None else load_thresholds()
         )
-        self._classifier: Classifier = classifier
+        self._service_policy = (
+            service_policy if service_policy is not None else load_service_policy()
+        )
+        self._locale_policies = (
+            locale_policies if locale_policies is not None else load_locale_policy()
+        )
+        self._classifier_override = classifier
+        tenant_classifiers: dict[str, Classifier] = {}
+        if classifier is None and self._service_policy.wfst_classifier_enabled:
+            tenant_classifiers = {
+                tenant_id: classifier_factory(tenant_policy)
+                for tenant_id, tenant_policy in self._locale_policies.tenants.items()
+            }
+        self._tenant_classifiers: Mapping[str, Classifier] = MappingProxyType(
+            tenant_classifiers
+        )
         self._pb = stub_module
+
+    def _classifier_for(self, tenant_policy: TenantPolicy) -> Classifier:
+        """Resolve the immutable classifier callable for one request."""
+        if self._classifier_override is not None:
+            return self._classifier_override
+        if not self._service_policy.wfst_classifier_enabled:
+            return default_classifier
+        return self._tenant_classifiers[tenant_policy.tenant_id]
 
     def StreamNormalize(  # noqa: N802 — gRPC method name is fixed
         self,
@@ -206,7 +272,9 @@ class ItnServicer:
                 # raises — the passthrough path needs at least this.
                 raw_text = getattr(req, "text", "") or ""
                 lang_hint = (getattr(req, "lang_hint", "") or None)
+                tenant_id = (getattr(req, "locale_policy", "") or None)
                 try:
+                    tenant_policy = self._locale_policies.for_tenant(tenant_id)
                     tokens = request_to_tokens(list(req.tokens))
                     result = normalize_segment(
                         raw_text=raw_text,
@@ -214,9 +282,9 @@ class ItnServicer:
                         is_final=bool(req.is_final),
                         state=state,
                         lang_hint=lang_hint,
-                        locale_policy=(getattr(req, "locale_policy", "") or ""),
+                        locale_policy=tenant_policy.tenant_id,
                         thresholds=self._thresholds,
-                        classifier=self._classifier,
+                        classifier=self._classifier_for(tenant_policy),
                     )
                 except Exception as e:  # noqa: BLE001 — see invariant above
                     logger.exception(
@@ -299,7 +367,9 @@ def serve(
     *,
     max_workers: int = 16,
     thresholds: ThresholdTable | None = None,
-    classifier: Classifier = default_classifier,
+    classifier: Classifier | None = None,
+    service_policy: ServicePolicy | None = None,
+    locale_policies: TenantPolicyTable | None = None,
 ) -> "grpc.Server":
     """Construct, start, and return a gRPC server.
 
@@ -314,6 +384,8 @@ def serve(
     servicer = servicer_cls(
         thresholds=thresholds,
         classifier=classifier,
+        service_policy=service_policy,
+        locale_policies=locale_policies,
         stub_module=itn_pb2,
     )
 

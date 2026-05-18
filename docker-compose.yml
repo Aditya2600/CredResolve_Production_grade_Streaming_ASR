@@ -99,6 +99,11 @@ services:
       - ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS=${ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS:-}
       - ASR_CONTEXT_BIASING_PHRASES_DIR=${ASR_CONTEXT_BIASING_PHRASES_DIR:-}
       - ASR_CONTEXT_BIASING_TIMEOUT_MS=${ASR_CONTEXT_BIASING_TIMEOUT_MS:-4000}
+      - ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES=${ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES:-1}
+      - ASR_CONTEXT_BIASING_EXECUTOR_WORKERS=${ASR_CONTEXT_BIASING_EXECUTOR_WORKERS:-}
+      - ASR_CONTEXT_BIASING_QUEUE_TIMEOUT_MS=${ASR_CONTEXT_BIASING_QUEUE_TIMEOUT_MS:-}
+      - ASR_CONTEXT_BIASING_MODEL_POOL_SIZE=${ASR_CONTEXT_BIASING_MODEL_POOL_SIZE:-1}
+      - ASR_CONTEXT_BIASING_MODEL_POOL_LOAD_MODE=${ASR_CONTEXT_BIASING_MODEL_POOL_LOAD_MODE:-eager}
       - ASR_CONTEXT_BIASING_DEVICE=${ASR_CONTEXT_BIASING_DEVICE:-cuda}
       - ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE=${ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE:-1.0}
       - ASR_CONTEXT_BIASING_BEAM_THRESHOLD=${ASR_CONTEXT_BIASING_BEAM_THRESHOLD:-8.0}
@@ -135,6 +140,25 @@ services:
               count: all
               capabilities: ["gpu"]
 
+  itn-service:
+    build:
+      context: ./itn_service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports: ["50051:50051"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; socket.create_connection(('127.0.0.1', 50051), 2).close()",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
   gateway:
     build:
       context: .
@@ -157,6 +181,9 @@ services:
       - GATEWAY_MAX_INFLIGHT_WORKER=${GATEWAY_MAX_INFLIGHT_WORKER}
       - WORKER_TIMEOUT_MS=${WORKER_TIMEOUT_MS}
       - WORKER_URL=${WORKER_URL}
+      - ITN_GRPC_TARGET=${ITN_GRPC_TARGET:-}
+      - ITN_TIMEOUT_MS=${ITN_TIMEOUT_MS:-250}
+      - ITN_LOCALE_POLICY=${ITN_LOCALE_POLICY:-}
       - PARTIAL_DECODE_INTERVAL_MS=${PARTIAL_DECODE_INTERVAL_MS}
       - STREAMING_DENOISE_ENABLED=${STREAMING_DENOISE_ENABLED:-true}
       - STREAMING_VAD_ENABLED=${STREAMING_VAD_ENABLED:-false}
@@ -180,7 +207,7 @@ services:
       - WS_API_KEYS=${WS_API_KEYS:-dev}
     volumes:
       - /home/ubuntu/logs:/srv/logs
-    ports: ["8001:8000"]
+    ports: ["8003:8000"]
     ulimits:
       nofile:
         soft: 65535
@@ -193,6 +220,8 @@ services:
       start_period: 5s
     depends_on:
       worker:
+        condition: service_healthy
+      itn-service:
         condition: service_healthy
 
   frontend:

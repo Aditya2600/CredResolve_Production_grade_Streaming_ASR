@@ -1,4 +1,4 @@
-"""WFST-backed classifier built on top of the regex prefilter.
+"""WFST-backed classifier built on top of regex + spoken prefilters.
 
 This is the additive Stage 1 surface: it keeps the existing classifier protocol
 stable while upgrading the subset of prefilter spans that the current rollout
@@ -8,9 +8,9 @@ actually needs. By design, this classifier only emits:
 * ``amount`` prefilter spans rewritten as threshold-facing ``money``,
 * ``percent``, ``date``, and ``time`` via the WFST pipeline.
 
-Other prefilter-only classes are deliberately ignored here. The legacy
-``default_classifier`` remains the broad regex-only surface until a later commit
-chooses to wire this classifier into the live path.
+Other prefilter-only classes are deliberately ignored here. The lower-level
+``default_classifier`` remains the broad regex-only surface; the gRPC service
+opts into this classifier behind its rollout flag.
 """
 
 from __future__ import annotations
@@ -22,7 +22,8 @@ from .contract import Span
 from .dateparser_fallback import has_date_cue, try_dateparser_fallback
 from .formatters.phone_in import parse_indian_mobile
 from .locale_policy import TenantPolicy
-from .regex_prefilter import prefilter
+from .regex_prefilter import prefilter as regex_prefilter
+from .spoken_prefilter import prefilter as spoken_prefilter
 from .wfst_factory import get_pipeline
 
 
@@ -49,6 +50,26 @@ _PREFILTER_TO_WFST_CLASS: dict[str, str] = {
     "amount": "money",
     "percent": "percent",
     "time": "time",
+    "cardinal": "cardinal",
+    "decimal": "decimal",
+}
+
+_MERGE_PRIORITY: dict[str, int] = {
+    # Preserve the regex prefilter's existing structural priority first.
+    "url": 1,
+    "email": 2,
+    "ifsc": 3,
+    "pan": 4,
+    "aadhaar": 5,
+    "phone": 6,
+    "date": 7,
+    "time": 8,
+    "amount": 9,
+    "percent": 10,
+    # Spoken generic number spans are useful only when nothing more
+    # semantically specific already covers them.
+    "decimal": 11,
+    "cardinal": 12,
 }
 
 
@@ -65,31 +86,75 @@ def make_wfst_classifier(tenant_policy: TenantPolicy) -> Classifier:
         pipeline = get_pipeline(lang)
         rewritten: list[Span] = []
 
-        for span in prefilter(working_text):
-            if span.cls == "phone":
-                rewritten.append(_rewrite_phone(span))
-                continue
+        for span in _merged_prefilter_spans(working_text, lang=lang):
+            try:
+                if span.cls == "phone":
+                    rewritten.append(_rewrite_phone(span))
+                    continue
 
-            if span.cls == "date":
-                rewritten.append(
-                    _rewrite_date(
-                        span,
-                        pipeline=pipeline,
-                        tenant_policy=tenant_policy,
-                        context_text=working_text,
+                if span.cls == "date":
+                    rewritten.append(
+                        _rewrite_date(
+                            span,
+                            pipeline=pipeline,
+                            tenant_policy=tenant_policy,
+                            context_text=working_text,
+                        )
                     )
-                )
-                continue
+                    continue
 
-            wfst_cls = _PREFILTER_TO_WFST_CLASS.get(span.cls)
-            if wfst_cls is not None:
-                rewritten.append(
-                    _rewrite_wfst(span, pipeline=pipeline, wfst_cls=wfst_cls)
-                )
+                wfst_cls = _PREFILTER_TO_WFST_CLASS.get(span.cls)
+                if wfst_cls is not None:
+                    rewritten.append(
+                        _rewrite_wfst(span, pipeline=pipeline, wfst_cls=wfst_cls)
+                    )
+            except Exception:  # noqa: BLE001 — isolate one failed span
+                fallback = _unexpected_error_fallback(span)
+                if fallback is not None:
+                    rewritten.append(fallback)
 
         return rewritten
 
     return classify
+
+
+def _merged_prefilter_spans(text: str, *, lang: str) -> list[Span]:
+    """Merge written + spoken candidates with one overlap policy.
+
+    The regex prefilter already emits a non-overlapping set internally, but the
+    new spoken detector can legitimately find nested alternatives such as:
+
+        बारह दशमलव पाँच प्रतिशत
+        ├─ percent  (specific, keep)
+        └─ decimal  (generic, drop)
+
+    Resolve all candidates together so offsets remain exact and generic number
+    spans never shadow cue-bearing classes.
+    """
+    candidates = [*regex_prefilter(text), *spoken_prefilter(text, lang)]
+    candidates.sort(
+        key=lambda span: (
+            _MERGE_PRIORITY.get(span.cls, 99),
+            -(0 if span.start is None or span.end is None else span.end - span.start),
+            span.start if span.start is not None else 10**9,
+        )
+    )
+    selected: list[Span] = []
+    for candidate in candidates:
+        if candidate.start is None or candidate.end is None:
+            selected.append(candidate)
+            continue
+        if any(
+            selected_span.start is not None
+            and selected_span.end is not None
+            and selected_span.start < candidate.end
+            and candidate.start < selected_span.end
+            for selected_span in selected
+        ):
+            continue
+        selected.append(candidate)
+    selected.sort(key=lambda span: span.start if span.start is not None else 10**9)
+    return selected
 
 
 def _rewrite_phone(span: Span) -> Span:
@@ -193,6 +258,30 @@ def _fallback(span: Span, *, cls: str, rule_id: str, reason: str) -> Span:
             "ambiguous": True,
             "fallback_reason": reason,
         }
+    )
+
+
+def _unexpected_error_fallback(span: Span) -> Span | None:
+    """Collapse one formatter / WFST exception to a raw local fallback.
+
+    The service-level handler still protects the whole request when the
+    pipeline itself raises outside a span rewrite. Inside the classifier,
+    however, one malformed span must not poison unrelated rewrites in
+    the same segment.
+    """
+    if span.cls == "phone":
+        return _fallback(span, cls="phone", rule_id="fmt.phone", reason="fmt_error")
+    if span.cls == "date":
+        return _fallback(span, cls="date", rule_id="wfst.date", reason="wfst_error")
+
+    wfst_cls = _PREFILTER_TO_WFST_CLASS.get(span.cls)
+    if wfst_cls is None:
+        return None
+    return _fallback(
+        span,
+        cls=wfst_cls,
+        rule_id=f"wfst.{wfst_cls}",
+        reason="wfst_error",
     )
 
 

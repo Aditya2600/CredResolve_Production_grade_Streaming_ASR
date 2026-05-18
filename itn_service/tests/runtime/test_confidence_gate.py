@@ -65,6 +65,13 @@ def test_missing_lex_cue_rejected(thresholds) -> None:
     assert "missing_lex_cue" in (out.fallback_reason or "")
 
 
+def test_money_uses_the_same_gate_as_currency(thresholds) -> None:
+    span = _span("money", conf=0.99, raw="1000", canon="₹1,000")
+    out = gate(span, asr_conf=0.95, has_lex_cue=False, is_partial=False, thresholds=thresholds)
+    assert out.canonical == "1000"
+    assert "missing_lex_cue" in (out.fallback_reason or "")
+
+
 def test_partial_defer_for_phone(thresholds) -> None:
     span = _span("phone", conf=0.99, raw="9876543210", canon="+91 98765 43210")
     out = gate(span, asr_conf=0.95, has_lex_cue=True, is_partial=True, thresholds=thresholds)
@@ -105,7 +112,7 @@ def test_multiple_failure_reasons_joined(thresholds) -> None:
 def test_threshold_table_loads_all_classes(thresholds) -> None:
     # Sanity: the YAML has the classes the implementation blueprint
     # mandates ("Confidence gating and fallback" table).
-    expected = {"cardinal", "decimal", "percent", "currency", "time",
+    expected = {"cardinal", "decimal", "percent", "currency", "money", "time",
                 "date", "phone", "id", "health_dose"}
     assert expected <= set(thresholds.classes.keys())
     assert thresholds.partial_stable_min >= 1

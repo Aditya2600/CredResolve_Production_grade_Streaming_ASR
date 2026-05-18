@@ -45,6 +45,7 @@ class PipelineConfig:
     sample_rate: int = 16000
     ring_buffer_ms: int = 600
     partial_poll_interval_ms: int = 900
+    min_final_audio_ms: int = 700
     vad: VADGateConfig = field(default_factory=VADGateConfig)
 
     def __post_init__(self) -> None:
@@ -54,10 +55,16 @@ class PipelineConfig:
             raise ValueError("ring_buffer_ms must be a positive multiple of vad.frame_ms")
         if self.partial_poll_interval_ms <= 0:
             raise ValueError("partial_poll_interval_ms must be > 0")
+        if self.min_final_audio_ms < 0:
+            raise ValueError("min_final_audio_ms must be >= 0")
 
     @property
     def ring_buffer_frames(self) -> int:
         return self.ring_buffer_ms // self.vad.frame_ms
+
+    @property
+    def min_final_audio_bytes(self) -> int:
+        return int(self.sample_rate * 2 * (self.min_final_audio_ms / 1000.0))
 
 
 @dataclass(frozen=True)
@@ -134,7 +141,7 @@ class StreamingSpeechPipeline:
         events: list[PipelineEvent] = []
         events.extend(await self._flush_partial_buffers())
         if self._stream is not None:
-            final_event = await self._finish_stream()
+            final_event = await self._finish_stream(reason="flush")
             if final_event is not None:
                 events.append(final_event)
         if self._vad_signal_active:
@@ -226,7 +233,7 @@ class StreamingSpeechPipeline:
 
         if update.closed:
             if self._stream is not None:
-                final_event = await self._finish_stream()
+                final_event = await self._finish_stream(reason="vad_closed")
                 if final_event is not None:
                     events.append(final_event)
             if self._vad_signal_active:
@@ -267,11 +274,21 @@ class StreamingSpeechPipeline:
         self._last_partial_text = text
         return PartialTranscriptEvent(result=partial)
 
-    async def _finish_stream(self) -> FinalTranscriptEvent | None:
+    async def _finish_stream(self, *, reason: str) -> FinalTranscriptEvent | None:
         if self._stream is None:
             return None
         stream = self._stream
         self._stream = None
+        audio_ms = round(self._stream_audio_bytes / float(self.config.sample_rate * 2) * 1000.0, 1)
+        if self._stream_audio_bytes < self.config.min_final_audio_bytes:
+            self.log.info(
+                "Final utterance skipped session_id=%s reason=%s audio_ms=%s min_final_audio_ms=%s dropped_short_utterance=true",
+                self.session_id,
+                reason,
+                audio_ms,
+                self.config.min_final_audio_ms,
+            )
+            return None
         started = time.monotonic()
         result = await stream.end_stream()
         processing_latency = max(0.0, time.monotonic() - started)

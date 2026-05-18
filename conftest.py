@@ -24,6 +24,9 @@ except Exception:
         def dec(self, *args, **kwargs):
             del args, kwargs
 
+        def set(self, *args, **kwargs):
+            del args, kwargs
+
         def observe(self, *args, **kwargs):
             del args, kwargs
 

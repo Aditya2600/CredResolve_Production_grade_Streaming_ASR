@@ -151,3 +151,108 @@ def test_excluded_prefilter_classes_are_ignored(monkeypatch) -> None:
     )
 
     assert spans == []
+
+
+def test_spoken_money_routes_raw_span_to_wfst(monkeypatch) -> None:
+    pipeline = _FakePipeline(span_outputs={("एक सौ पच्चीस रुपये", "money"): "₹125"})
+    monkeypatch.setattr(
+        "itn_service.runtime.wfst_classifier.get_pipeline",
+        lambda lang: pipeline,
+    )
+
+    spans = make_wfst_classifier(_DMY_POLICY)("मुझे एक सौ पच्चीस रुपये भेजने हैं", "hi")
+
+    assert [(span.cls, span.raw, span.canonical) for span in spans] == [
+        ("money", "एक सौ पच्चीस रुपये", "₹125"),
+    ]
+    assert pipeline.span_calls == [("एक सौ पच्चीस रुपये", "money")]
+
+
+def test_spoken_candidate_offsets_still_slice_the_original_text(monkeypatch) -> None:
+    pipeline = _FakePipeline(span_outputs={("एक सौ पच्चीस रुपये", "money"): "₹125"})
+    monkeypatch.setattr(
+        "itn_service.runtime.wfst_classifier.get_pipeline",
+        lambda lang: pipeline,
+    )
+    text = "मुझे एक सौ पच्चीस रुपये भेजने हैं"
+
+    spans = make_wfst_classifier(_DMY_POLICY)(text, "hi")
+
+    assert len(spans) == 1
+    assert spans[0].start is not None and spans[0].end is not None
+    assert text[spans[0].start : spans[0].end] == spans[0].raw
+
+
+def test_spoken_date_routes_monthword_span_to_date_wfst(monkeypatch) -> None:
+    pipeline = _FakePipeline(date_canonical="12/05/2026")
+    monkeypatch.setattr(
+        "itn_service.runtime.wfst_classifier.get_pipeline",
+        lambda lang: pipeline,
+    )
+
+    spans = make_wfst_classifier(_DMY_POLICY)("आज बारह मई दो हजार छब्बीस है", "hi")
+
+    assert [(span.cls, span.raw, span.canonical) for span in spans] == [
+        ("date", "बारह मई दो हजार छब्बीस", "12/05/2026"),
+    ]
+    assert pipeline.date_calls == [("बारह मई दो हजार छब्बीस", "DMY")]
+
+
+def test_spoken_time_routes_cue_bearing_span_to_wfst(monkeypatch) -> None:
+    pipeline = _FakePipeline(span_outputs={("शाम पाँच बजे", "time"): "5:00 PM"})
+    monkeypatch.setattr(
+        "itn_service.runtime.wfst_classifier.get_pipeline",
+        lambda lang: pipeline,
+    )
+
+    spans = make_wfst_classifier(_DMY_POLICY)("शाम पाँच बजे कॉल करो", "hi")
+
+    assert [(span.cls, span.raw, span.canonical) for span in spans] == [
+        ("time", "शाम पाँच बजे", "5:00 PM"),
+    ]
+    assert pipeline.span_calls == [("शाम पाँच बजे", "time")]
+
+
+def test_specific_percent_beats_nested_decimal_candidate(monkeypatch) -> None:
+    pipeline = _FakePipeline(
+        span_outputs={
+            ("बारह दशमलव पाँच प्रतिशत", "percent"): "12.5%",
+            ("बारह दशमलव पाँच", "decimal"): "12.5",
+        }
+    )
+    monkeypatch.setattr(
+        "itn_service.runtime.wfst_classifier.get_pipeline",
+        lambda lang: pipeline,
+    )
+
+    spans = make_wfst_classifier(_DMY_POLICY)("बारह दशमलव पाँच प्रतिशत", "hi")
+
+    assert [(span.cls, span.raw, span.canonical) for span in spans] == [
+        ("percent", "बारह दशमलव पाँच प्रतिशत", "12.5%"),
+    ]
+    assert pipeline.span_calls == [("बारह दशमलव पाँच प्रतिशत", "percent")]
+
+
+def test_spoken_phone_requires_context_cue(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "itn_service.runtime.wfst_classifier.get_pipeline",
+        lambda lang: None,
+    )
+
+    with_cue = make_wfst_classifier(_DMY_POLICY)(
+        "मेरा मोबाइल नंबर नौ आठ सात छह पाँच चार तीन दो एक शून्य है",
+        "hi",
+    )
+    without_cue = make_wfst_classifier(_DMY_POLICY)(
+        "नौ आठ सात छह पाँच चार तीन दो एक शून्य",
+        "hi",
+    )
+
+    assert [(span.cls, span.raw, span.canonical) for span in with_cue] == [
+        (
+            "phone",
+            "नौ आठ सात छह पाँच चार तीन दो एक शून्य",
+            "+91 98765 43210",
+        ),
+    ]
+    assert all(span.cls != "phone" for span in without_cue)

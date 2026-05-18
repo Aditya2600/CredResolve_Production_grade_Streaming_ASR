@@ -93,7 +93,7 @@ def compile_language(lang: str, out_dir: Path) -> Path:
     far_path = out_dir / f"{lang}.far"
     fsts = _resolve_fsts(_LANGUAGE_REGISTRY[lang])
     with pynini.Far(str(far_path), mode="w") as far:
-        for name, fst in fsts:
+        for name, fst in sorted(fsts, key=lambda item: item[0]):
             far[name] = fst
     return far_path
 

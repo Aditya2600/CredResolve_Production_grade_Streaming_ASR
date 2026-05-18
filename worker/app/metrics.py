@@ -66,13 +66,31 @@ CONTEXT_BIASING_REQUESTS = Counter(
 )
 CONTEXT_BIASING_LATENCY = Histogram(
     "asr_worker_context_biasing_latency_seconds",
-    "Context-biasing decode latency",
+    "Context-biasing inference latency excluding queue wait",
     buckets=(0.02, 0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1, 1.5, 2, 3, 5, 8, 12),
+)
+CONTEXT_BIASING_TOTAL_LATENCY = Histogram(
+    "asr_worker_context_biasing_total_latency_seconds",
+    "Context-biasing caller-visible total latency including queue wait",
+    buckets=(0.02, 0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1, 1.5, 2, 3, 5, 8, 12),
+)
+CONTEXT_BIASING_QUEUE_WAIT_MS = Histogram(
+    "asr_worker_context_biasing_queue_wait_ms",
+    "Context-biasing queue wait before a model lease is acquired",
+    buckets=(1, 2.5, 5, 10, 20, 35, 50, 75, 100, 200, 350, 500, 750, 1000, 2000, 4000, 8000),
 )
 CONTEXT_BIASING_FALLBACKS = Counter(
     "asr_worker_context_biasing_fallback_total",
     "Context-biasing fallback count",
     ["reason"],
+)
+CONTEXT_BIASING_INFLIGHT = Gauge(
+    "asr_worker_context_biasing_inflight",
+    "Current context-biasing model leases running or draining after timeout",
+)
+CONTEXT_BIASING_POOL_AVAILABLE = Gauge(
+    "asr_worker_context_biasing_pool_available",
+    "Available context-biasing model instances",
 )
 
 # Audio preprocessing (VAD + denoise) instrumentation. Labels are kept low

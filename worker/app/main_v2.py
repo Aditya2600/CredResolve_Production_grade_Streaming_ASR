@@ -17,11 +17,16 @@ from .config import (
     ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT,
     ASR_CONTEXT_BIASING_DEVICE,
     ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES,
+    ASR_CONTEXT_BIASING_EXECUTOR_WORKERS,
+    ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES,
     ASR_CONTEXT_BIASING_METHOD,
     ASR_CONTEXT_BIASING_MODE,
+    ASR_CONTEXT_BIASING_MODEL_POOL_LOAD_MODE,
+    ASR_CONTEXT_BIASING_MODEL_POOL_SIZE,
     ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS,
     ASR_CONTEXT_BIASING_NEMO_SOURCE,
     ASR_CONTEXT_BIASING_PHRASES_DIR,
+    ASR_CONTEXT_BIASING_QUEUE_TIMEOUT_MS,
     ASR_CONTEXT_BIASING_SHADOW_SAMPLE_RATE,
     ASR_CONTEXT_BIASING_TIMEOUT_MS,
     ASR_DECODER,
@@ -139,6 +144,11 @@ def build_context_biasing_runtime() -> NeMoContextBiasingRuntime:
             context_score=ASR_CONTEXT_BIASING_CONTEXT_SCORE,
             ctc_ali_token_weight=ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT,
             max_dynamic_phrases=ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES,
+            max_concurrent_inferences=ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES,
+            executor_workers=ASR_CONTEXT_BIASING_EXECUTOR_WORKERS,
+            queue_timeout_ms=ASR_CONTEXT_BIASING_QUEUE_TIMEOUT_MS,
+            model_pool_size=ASR_CONTEXT_BIASING_MODEL_POOL_SIZE,
+            model_pool_load_mode=ASR_CONTEXT_BIASING_MODEL_POOL_LOAD_MODE,
         )
     )
 
@@ -327,6 +337,7 @@ async def maybe_apply_context_biasing(
         requested_mode=requested_biasing_mode,
         biasing_context=biasing_context,
     )
+    defer_phrase_cleanup = False
     try:
         if decision.mode == "disabled":
             return (
@@ -407,7 +418,6 @@ async def maybe_apply_context_biasing(
                 build_context_biasing_response(decision),
             )
 
-        attempt_t0 = time.time()
         biased = await context_biasing.transcribe_with_timeout(
             pcm16le=pcm,
             sample_rate=sample_rate,
@@ -416,9 +426,8 @@ async def maybe_apply_context_biasing(
             session_id=session_id,
             utterance_id=utterance_id,
             mode=mode,
+            cleanup_phrase_file=decision.cleanup_phrase_file,
         )
-        elapsed = max(time.time() - attempt_t0, 0.0)
-        CONTEXT_BIASING_LATENCY.observe(elapsed)
         status = "ok" if biased.text.strip() else "empty_candidate"
         CONTEXT_BIASING_REQUESTS.labels(mode=decision.mode, status=status).inc()
         returned = baseline_result
@@ -507,8 +516,10 @@ async def maybe_apply_context_biasing(
             ),
         )
     except ContextBiasingTimeoutError as exc:
+        timeout_reason = exc.reason
+        defer_phrase_cleanup = exc.cleanup_deferred
         CONTEXT_BIASING_REQUESTS.labels(mode=decision.mode, status="fallback").inc()
-        CONTEXT_BIASING_FALLBACKS.labels(reason="timeout").inc()
+        CONTEXT_BIASING_FALLBACKS.labels(reason=timeout_reason).inc()
         emit_eval_event(
             log,
             "transcribe_context_biasing_result",
@@ -519,7 +530,7 @@ async def maybe_apply_context_biasing(
             bias_mode=decision.mode,
             bias_method=context_biasing.method,
             status="fallback",
-            reason="timeout",
+            reason=timeout_reason,
             error=str(exc),
             requested_language=requested_language,
             resolved_language=baseline_result.language,
@@ -540,8 +551,8 @@ async def maybe_apply_context_biasing(
             baseline_result,
             decision,
             None,
-            "timeout",
-            build_context_biasing_response(decision, fallback_reason="timeout"),
+            timeout_reason,
+            build_context_biasing_response(decision, fallback_reason=timeout_reason),
         )
     except (ContextBiasingNotReadyError, ContextBiasingError) as exc:
         CONTEXT_BIASING_REQUESTS.labels(mode=decision.mode, status="fallback").inc()
@@ -581,13 +592,14 @@ async def maybe_apply_context_biasing(
             build_context_biasing_response(decision, fallback_reason="error"),
         )
     finally:
-        cleanup_phrase_file(decision)
+        if not defer_phrase_cleanup:
+            cleanup_phrase_file(decision)
 
 
 @app.on_event("startup")
 async def startup_event():
     log.info(
-        "Worker startup backend=%s model=%s triton_model=%s triton_url=%s decoder=%s default_language=%s lid_enabled=%s lid_primary_provider=%s lid_primary_source=%s lid_fallback_provider=%s lid_fallback_source=%s lid_confidence_threshold=%.2f timeout_ms=%s max_jobs=%s context_biasing_mode=%s context_biasing_method=%s context_biasing_phrases_dir=%s context_biasing_dynamic_max_phrases=%s",
+        "Worker startup backend=%s model=%s triton_model=%s triton_url=%s decoder=%s default_language=%s lid_enabled=%s lid_primary_provider=%s lid_primary_source=%s lid_fallback_provider=%s lid_fallback_source=%s lid_confidence_threshold=%.2f timeout_ms=%s max_jobs=%s context_biasing_mode=%s context_biasing_method=%s context_biasing_phrases_dir=%s context_biasing_dynamic_max_phrases=%s context_biasing_configured_max_concurrency=%s context_biasing_executor_workers=%s context_biasing_model_pool_size=%s",
         ASR_BACKEND,
         ASR_MODEL_NAME or "-",
         TRITON_MODEL_NAME,
@@ -606,6 +618,9 @@ async def startup_event():
         ASR_CONTEXT_BIASING_METHOD,
         ASR_CONTEXT_BIASING_PHRASES_DIR or "-",
         ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES,
+        ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES,
+        ASR_CONTEXT_BIASING_EXECUTOR_WORKERS,
+        ASR_CONTEXT_BIASING_MODEL_POOL_SIZE,
     )
     try:
         await asyncio.to_thread(model.load)
@@ -619,12 +634,15 @@ async def startup_event():
         await asyncio.to_thread(context_biasing.load)
         if context_biasing.ready:
             log.info(
-                "Context biasing ready mode=%s method=%s source=%s model_class=%s phrases_dir=%s",
+                "Context biasing ready mode=%s method=%s source=%s model_class=%s phrases_dir=%s configured_max_concurrency=%s effective_max_concurrency=%s model_pool_size=%s",
                 context_biasing.mode,
                 context_biasing.method,
                 ASR_CONTEXT_BIASING_NEMO_SOURCE or "-",
                 ASR_CONTEXT_BIASING_NEMO_MODEL_CLASS or "-",
                 ASR_CONTEXT_BIASING_PHRASES_DIR or "-",
+                context_biasing.configured_max_concurrency,
+                context_biasing.effective_max_concurrency,
+                context_biasing.model_pool_size,
             )
         else:
             log.warning(

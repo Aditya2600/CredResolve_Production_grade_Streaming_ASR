@@ -50,6 +50,15 @@ classes:
     require_lex_cue: true
     defer_on_partial: false
 
+  # Runtime WFST classifiers emit ``money``; keep it under the same
+  # safety bar as the legacy ``currency`` name so it cannot bypass the
+  # gate merely because the class taxonomy is still being consolidated.
+  money:
+    classifier_min: 0.90
+    asr_min: 0.80
+    require_lex_cue: true
+    defer_on_partial: false
+
   time:
     classifier_min: 0.90
     asr_min: 0.80

@@ -20,6 +20,9 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from .apm import NoOpAudioProcessor
 from .config import (
     GATEWAY_MAX_INFLIGHT_WORKER,
+    ITN_GRPC_TARGET,
+    ITN_LOCALE_POLICY,
+    ITN_TIMEOUT_MS,
     PARTIAL_DECODE_INTERVAL_MS,
     SPEAKER_VERIFICATION_BACKEND,
     SPEAKER_VERIFICATION_DEBUG_SIMILARITY,
@@ -35,6 +38,7 @@ from .config import (
     STREAMING_GATE_OPEN_REQUIRED_VOICED_FRAMES,
     STREAMING_GATE_OPEN_WINDOW_FRAMES,
     STREAMING_HANGOVER_MS,
+    STREAMING_MIN_FINAL_AUDIO_MS,
     STREAMING_RING_BUFFER_MS,
     STREAMING_VAD_MODE,
     LOG_TRANSCRIPTS,
@@ -42,6 +46,7 @@ from .config import (
     WORKER_URL,
     WS_API_KEYS,
 )
+from .itn_client import ItnClient, ItnResult
 from .logging_setup import setup_logging
 from .metrics import (
     AUDIO_BYTES_RECEIVED,
@@ -107,6 +112,7 @@ log = logging.getLogger("gateway")
 
 app = FastAPI()
 worker = WorkerClient(WORKER_URL, WORKER_TIMEOUT_MS)
+itn_client = ItnClient(ITN_GRPC_TARGET, ITN_TIMEOUT_MS)
 worker_sem = asyncio.Semaphore(GATEWAY_MAX_INFLIGHT_WORKER)
 
 
@@ -123,6 +129,7 @@ class SessionConfig:
     input_audio_codec: str
     context_biasing_mode: str | None
     biasing_context: dict[str, object] | None
+    locale_policy: str | None = None
     binary_audio: bool = False
     vad_enabled: bool = False
     denoise_enabled: bool = False
@@ -311,6 +318,7 @@ def build_streaming_pipeline(
             sample_rate=session.sample_rate,
             ring_buffer_ms=STREAMING_RING_BUFFER_MS,
             partial_poll_interval_ms=PARTIAL_DECODE_INTERVAL_MS,
+            min_final_audio_ms=STREAMING_MIN_FINAL_AUDIO_MS,
             vad=VADGateConfig(
                 sample_rate=session.sample_rate,
                 frame_ms=FRAME_MS,
@@ -333,10 +341,14 @@ def build_streaming_pipeline(
 @app.on_event("startup")
 async def startup():
     log.info(
-        "Gateway startup worker_url=%s worker_timeout_ms=%s max_inflight_worker=%s",
+        "Gateway startup worker_url=%s worker_timeout_ms=%s max_inflight_worker=%s itn_target=%s itn_timeout_ms=%s itn_locale_policy=%s min_final_audio_ms=%s",
         WORKER_URL,
         WORKER_TIMEOUT_MS,
         GATEWAY_MAX_INFLIGHT_WORKER,
+        ITN_GRPC_TARGET or "-",
+        ITN_TIMEOUT_MS,
+        ITN_LOCALE_POLICY or "-",
+        STREAMING_MIN_FINAL_AUDIO_MS,
     )
 
 
@@ -344,6 +356,7 @@ async def startup():
 async def shutdown():
     log.info("Gateway shutdown initiated")
     await worker.close()
+    await itn_client.close()
     log.info("Gateway shutdown complete")
 
 
@@ -469,6 +482,9 @@ def parse_session_config(ws: WebSocket, request_id: str) -> SessionConfig:
         input_audio_codec=input_audio_codec,
         context_biasing_mode=context_biasing_mode,
         biasing_context=biasing_context,
+        locale_policy=(
+            _normalize_biasing_text(params.get("locale-policy") or params.get("locale_policy")) or None
+        ),
         binary_audio=binary_audio,
         vad_enabled=parse_bool_query("vad_enabled", params.get("vad_enabled"), STREAMING_VAD_ENABLED),
         denoise_enabled=parse_bool_query("denoise_enabled", params.get("denoise_enabled"), STREAMING_DENOISE_ENABLED),
@@ -692,6 +708,30 @@ async def send_ws_error_and_close(ws: WebSocket, code: str, message: str, close_
     await ws.close(code=close_code)
 
 
+async def normalize_final_transcript(
+    *,
+    raw_text: str,
+    lang_hint: str,
+    locale_policy: str,
+) -> ItnResult:
+    try:
+        return await itn_client.normalize(
+            raw_text,
+            is_final=True,
+            lang_hint=lang_hint,
+            locale_policy=locale_policy,
+        )
+    except Exception as exc:  # noqa: BLE001 — last guard before websocket emission
+        log.warning(
+            "ITN client raised unexpectedly raw_chars=%s lang_hint=%s locale_policy=%s error=%s; returning raw transcript",
+            len(raw_text),
+            lang_hint or "-",
+            locale_policy or "-",
+            exc,
+        )
+        return ItnResult.passthrough(raw_text, lang_hint=lang_hint)
+
+
 @app.websocket("/ws/stt")
 @app.websocket("/ws/")
 async def ws_stt(ws: WebSocket):
@@ -803,6 +843,11 @@ async def ws_stt(ws: WebSocket):
                     resolved_language_source = result.language_source or (
                         "client" if session.language_code != "auto" else None
                     )
+                    itn_result = await normalize_final_transcript(
+                        raw_text=result.text,
+                        lang_hint=result.language or "",
+                        locale_policy=session.locale_policy or ITN_LOCALE_POLICY,
+                    )
                     await ws.send_text(
                         jdump(
                             {
@@ -810,6 +855,12 @@ async def ws_stt(ws: WebSocket):
                                 "data": {
                                     "request_id": session.request_id,
                                     "transcript": result.text,
+                                    "raw_text": itn_result.raw_text,
+                                    "canonical_text": itn_result.canonical_text,
+                                    "display_text": itn_result.display_text,
+                                    "normalization_spans": [
+                                        span.as_dict() for span in itn_result.spans
+                                    ],
                                     "language_code": resolved_language,
                                     "language_source": resolved_language_source,
                                     "metrics": {
@@ -825,10 +876,11 @@ async def ws_stt(ws: WebSocket):
                         E2E_LATENCY.observe(event.final_latency)
                     if LOG_TRANSCRIPTS:
                         log.info(
-                            "Data sent session_id=%s utterance_id=%s latency_ms=%s text_chars=%s text=%s language=%s language_source=%s context_biasing_mode=%s",
+                            "Data sent session_id=%s utterance_id=%s latency_ms=%s audio_ms=%s text_chars=%s text=%s language=%s language_source=%s context_biasing_mode=%s",
                             session_id,
                             f"utt-{utterance_count:04d}",
                             int(event.processing_latency * 1000),
+                            int(round(event.audio_duration * 1000)),
                             len(result.text),
                             json.dumps(result.text, ensure_ascii=False),
                             result.language or "-",
@@ -837,10 +889,11 @@ async def ws_stt(ws: WebSocket):
                         )
                     else:
                         log.info(
-                            "Data sent session_id=%s utterance_id=%s latency_ms=%s text_chars=%s language=%s language_source=%s context_biasing_mode=%s",
+                            "Data sent session_id=%s utterance_id=%s latency_ms=%s audio_ms=%s text_chars=%s language=%s language_source=%s context_biasing_mode=%s",
                             session_id,
                             f"utt-{utterance_count:04d}",
                             int(event.processing_latency * 1000),
+                            int(round(event.audio_duration * 1000)),
                             len(result.text),
                             result.language or "-",
                             result.language_source or "-",
@@ -862,7 +915,17 @@ async def ws_stt(ws: WebSocket):
             AUDIO_BYTES_RECEIVED.inc(len(pcm_bytes))
             AUDIO_FRAMES_RECEIVED.inc()
             total_audio_bytes += len(pcm_bytes)
-            return await emit_pipeline_events(await pipeline.push_audio(pcm_bytes))
+            try:
+                events = await pipeline.push_audio(pcm_bytes)
+            except RNNTProviderError:
+                log.exception(
+                    "Pipeline worker transcription failed session_id=%s request_id=%s",
+                    session_id,
+                    session.request_id,
+                )
+                await send_ws_error(ws, "WORKER_ERROR", "worker transcription failed")
+                return False
+            return await emit_pipeline_events(events)
 
         while True:
             msg = await ws.receive()
@@ -916,7 +979,17 @@ async def ws_stt(ws: WebSocket):
 
             if payload.get("type") == "flush":
                 log.info("WS flush received session_id=%s request_id=%s", session_id, session.request_id)
-                ok = await emit_pipeline_events(await pipeline.flush())
+                try:
+                    events = await pipeline.flush()
+                except RNNTProviderError:
+                    log.exception(
+                        "Pipeline worker transcription failed during flush session_id=%s request_id=%s",
+                        session_id,
+                        session.request_id,
+                    )
+                    await send_ws_error(ws, "WORKER_ERROR", "worker transcription failed")
+                    return
+                ok = await emit_pipeline_events(events)
                 if not ok:
                     return
                 continue

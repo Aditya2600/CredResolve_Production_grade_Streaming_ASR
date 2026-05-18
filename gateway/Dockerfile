@@ -12,6 +12,9 @@ COPY gateway/requirements.txt /srv/requirements.txt
 RUN pip install --no-cache-dir -r /srv/requirements.txt
 
 COPY gateway/app /srv/app
+COPY itn_service/__init__.py /srv/itn_service/__init__.py
+COPY itn_service/service /srv/itn_service/service
+RUN bash /srv/itn_service/service/build_protos.sh
 
 EXPOSE 8000
 CMD ["uvicorn","app.main:app","--host","0.0.0.0","--port","8000","--workers","1"]

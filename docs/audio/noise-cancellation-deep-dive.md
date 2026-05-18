@@ -233,7 +233,7 @@ push_audio(pcm_bytes)
 
 **File:** `worker/app/audio_processing.py`
 
-Activated only when gateway forwards `X-VAD-Enabled: true` or `X-Denoise-Enabled: true` headers (session flags `vad_enabled` / `denoise_enabled`). Defaults: `STREAMING_VAD_ENABLED=false`, `STREAMING_DENOISE_ENABLED=true`.
+Activated only when gateway forwards `X-VAD-Enabled: true` or `X-Denoise-Enabled: true` headers (session flags `vad_enabled` / `denoise_enabled`). Defaults: `STREAMING_VAD_ENABLED=true`, `STREAMING_DENOISE_ENABLED=true`.
 
 A module-level singleton is provided via `get_audio_preprocessor()` (LRU-cached, maxsize=1). Called via `asyncio.to_thread()` to avoid blocking the event loop.
 
@@ -388,7 +388,7 @@ process_with_stats(pcm_bytes, sample_rate, vad_enabled, denoise_enabled)
 
 | Env Variable | Default | Description |
 |---|---|---|
-| `STREAMING_VAD_ENABLED` | `false` | Per-session default for worker-side Silero VAD |
+| `STREAMING_VAD_ENABLED` | `true` | Per-session default for worker-side Silero VAD |
 | `STREAMING_DENOISE_ENABLED` | `true` | Per-session default for RNNoise |
 | `STREAMING_VAD_MODE` | `3` | webrtcvad aggressiveness (0=least, 3=most aggressive) |
 | `STREAMING_RING_BUFFER_MS` | `600` | Lookback preroll before gate open |
