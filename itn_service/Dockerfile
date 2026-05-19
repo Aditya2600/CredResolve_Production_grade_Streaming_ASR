@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # itn_service runtime image.
 #
 # Stage 1 (builder): installs build toolchain, builds the Pynini wheel
@@ -7,27 +8,15 @@
 #
 # Stage 2 (runtime): slim Python image. Installs only the runtime
 #   wheels (grpcio, pydantic, pyyaml, pyicu, pynini, regex) and copies
-#   the service code plus the *pre-compiled* FAR archives produced by
-#   CI. The image deliberately omits ``itn_service/compile.py``-related
-#   build tooling so a startup-time FAR compile is impossible:
-#   `compile.py` itself is copied so engineers can audit the FARs that
-#   were baked in, but the wheel of `pynini` is intentionally the only
-#   way to build a FAR — and the build stage's `_smoke_check` below
-#   refuses to start the server unless the FAR directory is populated.
+#   the service code plus FAR archives compiled in the builder stage.
+#   The image deliberately omits build tooling from the runtime layer so
+#   a startup-time FAR compile is impossible: `compile.py` itself is
+#   copied so engineers can audit the FARs that were baked in, but the
+#   entrypoint refuses to start the server unless the FAR directory is
+#   populated.
 #
-# Build args:
-#   FARS_DIR — path *inside the build context* to the CI artifact
-#              directory containing one ``<lang>.far`` per supported
-#              language. Defaults to ``./compiled_grammars`` so a local
-#              `python -m itn_service.compile && docker build ...` flow
-#              just works.
-#
-# Usage in CI:
-#   docker build \
-#     --build-arg FARS_DIR=artifacts/fars \
-#     -f itn_service/Dockerfile \
-#     -t itn-service:$GIT_SHA \
-#     itn_service/
+# Usage:
+#   docker build -f itn_service/Dockerfile -t itn-service:$GIT_SHA itn_service/
 
 # =============================================================================
 # Stage 1: builder
@@ -36,17 +25,19 @@ FROM python:3.11-slim-bookworm AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # pynini needs g++ + OpenFst headers; PyICU needs libicu-dev + pkg-config.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
         build-essential \
         g++ \
         libicu-dev \
         libfst-dev \
-        pkg-config \
-    && rm -rf /var/lib/apt/lists/*
+        pkg-config
 
 WORKDIR /build
 
@@ -58,8 +49,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Install in two passes for layer caching: heavy native wheels first,
 # then the rest of the project on every code change.
 COPY pyproject.toml /build/pyproject.toml
-RUN pip install --upgrade pip setuptools wheel \
- && pip install \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip setuptools wheel \
+    && pip install \
         "grpcio>=1.62" \
         "grpcio-tools>=1.62" \
         "pydantic>=2.6,<3" \
@@ -73,6 +65,16 @@ RUN pip install --upgrade pip setuptools wheel \
 COPY service /build/itn_service/service
 RUN bash /build/itn_service/service/build_protos.sh
 
+# Compile grammar FARs at image build time. Runtime startup must only
+# load these artifacts; it must never construct WFST graphs.
+COPY __init__.py /build/itn_service/__init__.py
+COPY compile.py /build/itn_service/compile.py
+COPY grammars /build/itn_service/grammars
+ENV PYTHONPATH=/build
+RUN python -m itn_service.compile --out-dir /build/compiled_grammars \
+ && test -s /build/compiled_grammars/hi.far \
+ && test -s /build/compiled_grammars/mr.far
+
 # =============================================================================
 # Stage 2: runtime
 # =============================================================================
@@ -85,10 +87,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # libicu and libfst runtime shared libs (no -dev headers needed here).
 # Use exact-major library packages so apt doesn't get tempted to pull
 # in toolchains.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
         libicu72 \
-        libfst22 \
-    && rm -rf /var/lib/apt/lists/*
+        libfst22
 
 # Bring the prepared venv over from the builder.
 COPY --from=builder /opt/venv /opt/venv
@@ -112,13 +117,11 @@ COPY --from=builder /build/itn_service/service /app/itn_service/service
 ENV PYTHONPATH=/app
 
 # ---------------------------------------------------------------------------
-# Pre-compiled FAR artifacts from CI. The FARs MUST be present at image
-# build time; the entrypoint refuses to start when the directory is
-# empty (see /app/itn_service/service/entrypoint.sh). This enforces the
-# invariant "image does not compile FARs at startup".
+# Pre-compiled FAR artifacts. The FARs MUST be present at image build
+# time; the entrypoint refuses to start when the directory is empty.
+# This enforces the invariant "image does not compile FARs at startup".
 # ---------------------------------------------------------------------------
-ARG FARS_DIR=./compiled_grammars
-COPY ${FARS_DIR} /app/itn_service/compiled_grammars
+COPY --from=builder /build/compiled_grammars /app/itn_service/compiled_grammars
 
 # Strip executable bits off compile.py so a stray `python compile.py`
 # in the container looks intentional, not accidental. The file remains

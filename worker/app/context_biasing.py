@@ -14,7 +14,7 @@ import unicodedata
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import numpy as np
 
@@ -38,6 +38,7 @@ VALID_CONTEXT_BIASING_MODES = frozenset({"disabled", "shadow", "active"})
 VALID_CONTEXT_BIASING_METHODS = frozenset({"ctc_ws"})
 VALID_CONTEXT_BIASING_POOL_LOAD_MODES = frozenset({"eager", "lazy"})
 VALID_CONTEXT_BIASING_MODEL_STATES = frozenset({"available", "leased", "draining_after_timeout", "failed"})
+ContextBiasingTimeoutReason = Literal["queue_timeout", "inference_timeout"]
 
 
 class ContextBiasingError(RuntimeError):
@@ -49,7 +50,13 @@ class ContextBiasingNotReadyError(ContextBiasingError):
 
 
 class ContextBiasingTimeoutError(ContextBiasingError):
-    def __init__(self, message: str, *, reason: str, cleanup_deferred: bool = False):
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: ContextBiasingTimeoutReason,
+        cleanup_deferred: bool = False,
+    ):
         super().__init__(message)
         self.reason = reason
         self.cleanup_deferred = cleanup_deferred

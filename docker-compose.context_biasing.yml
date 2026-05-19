@@ -23,3 +23,4 @@ services:
       - ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES=${ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES:-32}
     volumes:
       - ./context_biasing:/srv/context_biasing:ro
+      - /home/ubuntu/models:/home/ubuntu/models:ro

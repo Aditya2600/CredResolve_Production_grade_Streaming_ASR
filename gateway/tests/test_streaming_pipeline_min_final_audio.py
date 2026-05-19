@@ -97,6 +97,65 @@ def test_short_final_utterance_is_dropped_before_worker_dispatch(caplog):
     assert "dropped_short_utterance=true" in caplog.text
 
 
+def test_short_final_utterance_does_not_consume_emitted_utterance_id():
+    emitted_ids: list[str] = []
+    streams: list[_RecordingStream] = []
+
+    class _IdRecordingStream(_RecordingStream):
+        async def end_stream(self) -> RNNTFinalResult | None:
+            self.end_calls += 1
+            utterance_id = f"utt-{len(emitted_ids) + 1:04d}"
+            emitted_ids.append(utterance_id)
+            return RNNTFinalResult(
+                text="ok",
+                language="hi",
+                language_source="client",
+                utterance_id=utterance_id,
+            )
+
+    def _stream_factory() -> _RecordingStream:
+        stream = _IdRecordingStream()
+        streams.append(stream)
+        return stream
+
+    pipeline = StreamingSpeechPipeline(
+        config=PipelineConfig(
+            ring_buffer_ms=20,
+            partial_poll_interval_ms=900,
+            min_final_audio_ms=700,
+            vad=VADGateConfig(
+                open_window_frames=1,
+                open_required_voiced_frames=1,
+                close_window_frames=1,
+                close_required_unvoiced_frames=1,
+                hangover_ms=20,
+            ),
+        ),
+        audio_processor=NoOpAudioProcessor(),
+        speaker_gate=SpeakerVerificationGate(SpeakerGateConfig()),
+        rnnt_stream_factory=_stream_factory,
+        session_id="session-test",
+        vad_factory=_FrameContentVAD,
+    )
+
+    async def _run():
+        events = []
+        for frame in (SPEECH_FRAME, SILENCE_FRAME, SILENCE_FRAME):
+            events.extend(await pipeline.push_audio(frame))
+        for frame in (*([SPEECH_FRAME] * 35), SILENCE_FRAME, SILENCE_FRAME):
+            events.extend(await pipeline.push_audio(frame))
+        return events
+
+    events = asyncio.run(_run())
+
+    finals = [event for event in events if isinstance(event, FinalTranscriptEvent)]
+    assert len(streams) == 2
+    assert streams[0].end_calls == 0
+    assert streams[1].end_calls == 1
+    assert emitted_ids == ["utt-0001"]
+    assert [event.result.utterance_id for event in finals] == ["utt-0001"]
+
+
 def test_normal_final_utterance_still_dispatches_worker():
     pipeline, streams = _build_pipeline()
 

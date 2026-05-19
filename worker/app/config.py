@@ -1,3 +1,4 @@
+import logging
 import os
 
 from .context_biasing import (
@@ -5,6 +6,9 @@ from .context_biasing import (
     normalize_context_biasing_mode,
     normalize_context_biasing_pool_load_mode,
 )
+
+
+log = logging.getLogger("worker.config")
 
 
 def getenv_bool(name: str, default: bool) -> bool:
@@ -182,6 +186,17 @@ ASR_CONTEXT_BIASING_MODEL_POOL_SIZE = max(
     1,
     getenv_int("ASR_CONTEXT_BIASING_MODEL_POOL_SIZE", 1),
 )
+ASR_CONTEXT_BIASING_EFFECTIVE_MAX_CONCURRENCY = min(
+    ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES,
+    ASR_CONTEXT_BIASING_MODEL_POOL_SIZE,
+)
+if ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES > ASR_CONTEXT_BIASING_MODEL_POOL_SIZE:
+    log.warning(
+        "Context-biasing max concurrency exceeds model pool size; clamping configured_max_concurrency=%s effective_max_concurrency=%s model_pool_size=%s",
+        ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES,
+        ASR_CONTEXT_BIASING_EFFECTIVE_MAX_CONCURRENCY,
+        ASR_CONTEXT_BIASING_MODEL_POOL_SIZE,
+    )
 ASR_CONTEXT_BIASING_MODEL_POOL_LOAD_MODE = normalize_context_biasing_pool_load_mode(
     getenv_str("ASR_CONTEXT_BIASING_MODEL_POOL_LOAD_MODE", "eager")
 )

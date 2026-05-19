@@ -38,21 +38,23 @@ from itn_service.grammars.common.digit_maps import LATIN_DIGITS
 # Spoken 0..99 lexicon, with the alternates the plan calls out explicitly
 # (छह / छः, पाँच / पांच, हज़ार / हजार) plus a few of the most common
 # orthographic variants seen in real ASR output (अट्ठारह / अठारह,
-# डेढ़ / डेढ, साढ़े / साढे).
+# डेढ़ / डेढ, साढ़े / साढे). The single-digit and scale lists also
+# accept a narrow Hindi-scoped set of Devanagari-English code-switch
+# aliases. Latin-script English remains out of scope.
 # ---------------------------------------------------------------------------
 
 _NUM_0_99: Final[dict[int, list[str]]] = {
     0: ["शून्य"],
-    1: ["एक"],
-    2: ["दो"],
-    3: ["तीन"],
-    4: ["चार"],
-    5: ["पाँच", "पांच"],
-    6: ["छह", "छः"],
-    7: ["सात"],
-    8: ["आठ"],
-    9: ["नौ"],
-    10: ["दस"],
+    1: ["एक", "वन", "वान"],
+    2: ["दो", "टू", "टु"],
+    3: ["तीन", "थ्री"],
+    4: ["चार", "फोर", "फॉर"],
+    5: ["पाँच", "पांच", "फाइव", "फाईव"],
+    6: ["छह", "छः", "सिक्स"],
+    7: ["सात", "सेवन"],
+    8: ["आठ", "एट", "ऐट"],
+    9: ["नौ", "नाइन"],
+    10: ["दस", "टेन"],
     11: ["ग्यारह"],
     12: ["बारह"],
     13: ["तेरह"],
@@ -173,8 +175,15 @@ _ONE_9: Final[pynini.Fst] = pynini.string_map(
 # Scale words and their spelling alternates. Per the plan:
 # हज़ार / हजार (with / without nukta) and the canonical (with-nukta)
 # forms for ddha-nukta / dda-nukta scales are accepted.
-_SAU: Final[pynini.Fst] = pynini.accep("सौ")
-_HAZAR: Final[pynini.Fst] = pynini.union("हज़ार", "हजार")
+_SAU: Final[pynini.Fst] = pynini.union("सौ", "हंड्रेड", "हन्ड्रेड")
+_HAZAR: Final[pynini.Fst] = pynini.union(
+    "हज़ार",
+    "हजार",
+    "थाउजेंड",
+    "थाउजंड",
+    "थाउज़ेंड",
+    "थाउज़ंड",
+)
 _LAKH: Final[pynini.Fst] = pynini.accep("लाख")
 _KAROD: Final[pynini.Fst] = pynini.union("करोड़", "करोड")
 _ARAB: Final[pynini.Fst] = pynini.accep("अरब")

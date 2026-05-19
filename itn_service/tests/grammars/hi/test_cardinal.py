@@ -97,6 +97,26 @@ def test_cardinal_normalises(pipeline: WFSTPipeline, case: dict[str, str]) -> No
     )
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("टू थाउजेंड", "2000"),
+        ("टू थाउजंड", "2000"),
+        ("वन थाउजेंड", "1000"),
+        ("फाइव हंड्रेड", "500"),
+        ("टू थाउजेंड फाइव हंड्रेड", "2500"),
+        ("टू हजार", "2000"),
+        ("दो थाउजेंड", "2000"),
+    ],
+)
+def test_cardinal_normalises_devanagari_english_code_switch_aliases(
+    pipeline: WFSTPipeline,
+    raw: str,
+    expected: str,
+) -> None:
+    assert pipeline.normalize_span(raw, "cardinal") == expected
+
+
 # --- sentence accuracy ------------------------------------------------------
 
 

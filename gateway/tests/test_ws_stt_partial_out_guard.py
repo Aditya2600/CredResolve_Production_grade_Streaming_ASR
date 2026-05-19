@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -118,6 +119,9 @@ class _TestStreamingPipeline:
         ]
         if chunk:
             started = gateway_main.time.monotonic()
+            if self.session_context.emitted_utterance_id_factory is None:
+                raise AssertionError("emitted utterance ID factory is not configured")
+            utterance_id = self.session_context.emitted_utterance_id_factory()
             result = await gateway_main.worker.transcribe(
                 chunk,
                 self.session_context.sample_rate,
@@ -125,7 +129,7 @@ class _TestStreamingPipeline:
                 self.session_context.language_code,
                 mode="final",
                 session_id=self.session_context.session_id,
-                utterance_id="utt-test",
+                utterance_id=utterance_id,
                 context_biasing_mode=self.session_context.context_biasing_mode,
                 biasing_context=self.session_context.biasing_context,
                 vad_enabled=self.session_context.vad_enabled,
@@ -139,6 +143,7 @@ class _TestStreamingPipeline:
                         language=result.language,
                         language_source=result.language_source,
                         context_biasing=result.context_biasing,
+                        utterance_id=utterance_id,
                     ),
                     audio_duration=len(chunk) / (self.session_context.sample_rate * 2),
                     processing_latency=processing_latency,
@@ -268,6 +273,90 @@ def test_data_sent_log_includes_transcript_only_when_enabled(monkeypatch):
     assert "text=%s" in data_sent_calls[0][0]
     assert data_sent_calls[0][6] == '"hello sarvam"'
 
+    complete_calls = [
+        args
+        for args, _kwargs in info_calls
+        if args and args[0].startswith("Complete transcript session_id=%s")
+    ]
+    assert len(complete_calls) == 1
+    payload = json.loads(complete_calls[0][6])
+    assert complete_calls[0][4] == len(payload["utterances"]) == 1
+    assert payload["complete_transcript"] == "hello sarvam"
+    assert payload["complete_display_text"] == "hello sarvam"
+    assert payload["utterances"][0]["utterance_id"] == data_sent_calls[0][2]
+    assert payload["utterances"][0]["transcript"] == "hello sarvam"
+
+
+def test_worker_utterance_id_matches_data_sent_utterance_id(monkeypatch):
+    _prepare_common(monkeypatch)
+    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
+
+    worker_utterance_ids: list[str] = []
+
+    async def _ok_transcribe(audio_bytes, sample_rate, decoder, language, mode, **kwargs):
+        worker_utterance_ids.append(kwargs["utterance_id"])
+        return WorkerResponse(text="hello sarvam", language="hi", language_source="client")
+
+    info_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def _capture_info(*args: Any, **kwargs: Any) -> None:
+        info_calls.append((args, kwargs))
+
+    monkeypatch.setattr(gateway_main.worker, "transcribe", _ok_transcribe)
+    monkeypatch.setattr(gateway_main.log, "info", _capture_info)
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
+            ws.send_json(_audio_message(b"\x00" * 640, sample_rate=16000, encoding="pcm_s16le"))
+            ws.send_json({"type": "flush"})
+            message = ws.receive_json()
+
+    data_sent_calls = [
+        args
+        for args, _kwargs in info_calls
+        if args and args[0].startswith("Data sent session_id=%s")
+    ]
+    assert len(data_sent_calls) == 1
+    assert worker_utterance_ids == [data_sent_calls[0][2]]
+    assert message["data"]["utterance_id"] == data_sent_calls[0][2]
+
+
+def test_blank_transcript_utterance_counts_in_complete_transcript(monkeypatch):
+    _prepare_common(monkeypatch)
+    monkeypatch.setattr(gateway_main, "VADSegmenter", _FlushOnlyVAD)
+    monkeypatch.setattr(gateway_main, "LOG_TRANSCRIPTS", True)
+
+    async def _blank_transcribe(audio_bytes, sample_rate, decoder, language, mode, **_kwargs):
+        return WorkerResponse(text="", language="hi", language_source="client")
+
+    info_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def _capture_info(*args: Any, **kwargs: Any) -> None:
+        info_calls.append((args, kwargs))
+
+    monkeypatch.setattr(gateway_main.worker, "transcribe", _blank_transcribe)
+    monkeypatch.setattr(gateway_main.log, "info", _capture_info)
+
+    with TestClient(gateway_main.app) as client:
+        with client.websocket_connect(_ws_path(), headers=_auth_headers()) as ws:
+            ws.send_json(_audio_message(b"\x00" * 640, sample_rate=16000, encoding="pcm_s16le"))
+            ws.send_json({"type": "flush"})
+            message = ws.receive_json()
+
+    complete_calls = [
+        args
+        for args, _kwargs in info_calls
+        if args and args[0].startswith("Complete transcript session_id=%s")
+    ]
+    assert message["type"] == "data"
+    assert message["data"]["transcript"] == ""
+    assert len(complete_calls) == 1
+    payload = json.loads(complete_calls[0][6])
+    assert complete_calls[0][4] == len(payload["utterances"]) == 1
+    assert payload["complete_transcript"] == ""
+    assert payload["utterances"][0]["utterance_id"] == message["data"]["utterance_id"]
+    assert payload["utterances"][0]["transcript"] == ""
+
 
 def test_data_sent_log_omits_transcript_when_disabled(monkeypatch):
     _prepare_common(monkeypatch)
@@ -299,6 +388,11 @@ def test_data_sent_log_omits_transcript_when_disabled(monkeypatch):
     assert len(data_sent_calls) == 1
     assert "text=%s" not in data_sent_calls[0][0]
     assert '"hello sarvam"' not in data_sent_calls[0]
+    assert not [
+        args
+        for args, _kwargs in info_calls
+        if args and args[0].startswith("Complete transcript session_id=%s")
+    ]
 
 
 def test_binary_audio_frame_and_flush_finalizes_transcript(monkeypatch):

@@ -4,7 +4,6 @@ account holder name_account name_अकाउंट होल्डर नेम
 account number_account no_acct number_अकाउंट नंबर_खाता नंबर
 account type_अकाउंट टाइप_खाता प्रकार
 address proof_proof of address_एड्रेस प्रूफ_पते का प्रमाण
-amount_amt_अमाउंट_राशि
 application id_applicationid_application number_एप्लिकेशन आईडी_आवेदन आईडी
 application status_एप्लिकेशन स्टेटस_आवेदन स्थिति
 auto debit_autodebit_ऑटो डेबिट_ऑटोडेबिट
@@ -15,24 +14,21 @@ bank details_account details_बैंक डिटेल्स_अकाउं�
 bank name_बैंक नेम_बैंक का नाम
 bank statement_account statement_बैंक स्टेटमेंट_अकाउंट स्टेटमेंट_खाता विवरण
 bank transfer_account transfer_बैंक ट्रांसफर_अकाउंट ट्रांसफर
+bank branch_बैंक ब्रांच_बैंक शाखा
 bounce charges_bounce charge_बाउंस चार्जेस_बाउंस चार्ज
-branch_bank branch_ब्रांच_शाखा
-charges_charge_चार्ज_चार्जेस_चार्जेज़_चार्जिस_शुल्क
 cibil report_credit report_सिबिल रिपोर्ट_क्रेडिट रिपोर्ट
 cibil score_cibilscore_सिबिल स्कोर
 ckyc_c k y c_सीकेवाईसी_सी के वाई सी
 collect request_upi collect request_कलेक्ट रिक्वेस्ट_यूपीआई कलेक्ट रिक्वेस्ट
-collection_collections_कलेक्शन_कलेक्शंस
 collection agency_collection agencies_कलेक्शन एजेंसी_कलेक्शन एजेंसियां
 cred resolve_credresolve_क्रेड रिजॉल्व_क्रेडरिजॉल्व
 credit score_क्रेडिट स्कोर
 current account_करंट अकाउंट_चालू खाता
 customer id_customerid_कस्टमर आईडी_ग्राहक आईडी
 debit card_debitcard_डेबिट कार्ड
-default_payment default_डिफॉल्ट_पेमेंट डिफॉल्ट
+payment default_पेमेंट डिफॉल्ट_डिफॉल्ट पेमेंट
 direct debit_d d m_डायरेक्ट डेबिट_डीडीएम_डी डी एम
 disbursal_loan disbursal_disbursement_डिस्बर्सल_लोन डिस्बर्सल_डिस्बर्समेंट
-document_documents_डॉक्यूमेंट_डॉक्यूमेंट्स_दस्तावेज
 document upload_upload document_डॉक्यूमेंट अपलोड_दस्तावेज अपलोड
 dpd_d p d_days past due_डीपीडी_डी पी डी
 due amount_amount due_ड्यू अमाउंट_देय राशि
@@ -52,18 +48,15 @@ google pay_googlepay_gpay_गूगल पे_गूगलपे_जीपे
 gst_g s t_जीएसटी_जी एस टी
 id proof_identity proof_आईडी प्रूफ_पहचान प्रमाण
 ifsc code_ifsc_i f s c_आईएफएससी कोड_आई एफ एस सी
-income proof_प्रूफ ऑफ इनकम_आय प्रमाण
-installment_instalment_इंस्टॉलमेंट_किस्त
-interest_इंटरेस्ट_ब्याज
+income proof_proof of income_आय प्रमाण_इनकम प्रूफ
 interest rate_rate of interest_इंटरेस्ट रेट_ब्याज दर
 kfs_k f s_key fact statement_केएफएस_के एफ एस_मुख्य तथ्य विवरण
 kyc_k y c_केवाईसी_के वाई सी_केवायसी
 kyc identifier_kin_k i n_केवाईसी आइडेंटिफायर_केआईएन
 late fee_late payment fee_लेट फी_लेट पेमेंट फी_विलंब शुल्क
 late payment_लेट पेमेंट_विलंबित भुगतान
-legal notice_notice_लीगल नोटिस_नोटिस
+legal notice_लीगल नोटिस_कानूनी नोटिस
 linked bank account_linked account_लिंक्ड बैंक अकाउंट_जुड़ा बैंक खाता
-loan_लोन_ऋण
 loan account_लोन अकाउंट_ऋण खाता
 loan account number_loan account no_lan_लोन अकाउंट नंबर_एलएएन_एल ए एन
 loan agreement_लोन एग्रीमेंट_ऋण समझौता
@@ -71,10 +64,10 @@ loan amount_loan amt_लोन अमाउंट_ऋण राशि
 loan closure_close loan_लोन क्लोजर_ऋण समापन
 loan defaulter_defaulter_लोन डिफॉल्टर_डिफॉल्टर
 loan id_loanid_लोन आईडी_लोन आइडी
-loan settlement_settlement_लोन सेटलमेंट_सेटलमेंट
+loan settlement_लोन सेटलमेंट_ऋण सेटलमेंट
 loan statement_loan account statement_लोन स्टेटमेंट_ऋण विवरण
 loan status_लोन स्टेटस_ऋण स्थिति
-mandate_debit mandate_मैंडेट_डेबिट मैंडेट
+debit mandate_डेबिट मैंडेट
 mconnect_m connect_smfg mconnect_एमकनेक्ट_एम कनेक्ट
 missed emi_emi missed_मिस्ड ईएमआई_ईएमआई मिस
 mobile verification_number verification_मोबाइल वेरिफिकेशन_नंबर वेरिफिकेशन
@@ -91,7 +84,6 @@ offline ekyc_paperless offline ekyc_ऑफलाइन ईकेवाईसी_
 online payment_ऑनलाइन पेमेंट_ऑनलाइन भुगतान
 otp_o t p_ओटीपी_ओ टी पी
 outstanding amount_outstanding balance_आउटस्टैंडिंग अमाउंट_बकाया राशि
-overdue_ओवरड्यू_अतिदेय
 overdue amount_overdue amt_ओवरड्यू अमाउंट_अतिदेय राशि
 overdue payment_ओवरड्यू पेमेंट_अतिदेय भुगतान
 pan_p a n_पैन_पी ए एन
@@ -99,7 +91,6 @@ pan card_pancard_पैन कार्ड
 part payment_partpayment_part prepayment_पार्ट पेमेंट_पार्ट प्रीपेमेंट_आंशिक भुगतान
 passbook_bank passbook_पासबुक_बैंक पासबुक
 pay now_paynow_पे नाउ_पेमेंट नाउ
-payment_pay_पेमेंट_भुगतान
 payment link_pay link_पेमेंट लिंक_भुगतान लिंक
 payment receipt_transaction receipt_पेमेंट रिसीट_रसीद
 payment reminder_reminder call_पेमेंट रिमाइंडर_रिमाइंडर कॉल
@@ -110,19 +101,17 @@ penal charges_penalty charges_penalty fee_पेनल चार्जेस_प
 pending payment_payment pending_पेंडिंग पेमेंट_पेमेंट पेंडिंग
 personal loan_personalloan_पर्सनल लोन_व्यक्तिगत ऋण
 phonepe_phone pe_phone pay_फोनपे_फोन पे
-photograph_photo_passport photo_फोटोग्राफ_फोटो_पासपोर्ट फोटो
+passport photo_photograph_फोटोग्राफ_पासपोर्ट फोटो
 prepayment_pre payment_प्रीपेमेंट_प्री पेमेंट_पूर्वभुगतान
-principal_प्रिंसिपल_मूलधन
+principal amount_principal outstanding_प्रिंसिपल अमाउंट_मूलधन राशि
 processing fee_processing fees_प्रोसेसिंग फी_प्रोसेसिंग फीस
 qr code_qr_क्यूआर कोड_क्यू आर कोड
-recovery_रिकवरी_वसूली
 recovery agent_recovery executive_रिकवरी एजेंट_वसूली एजेंट
 reference number_ref number_रेफरेंस नंबर_संदर्भ संख्या
 registered mobile number_registered number_रजिस्टर्ड मोबाइल नंबर_रजिस्टर्ड नंबर
-repayment_loan repayment_रीपेमेंट_चुकौती
+loan repayment_रीपेमेंट_लोन रीपेमेंट_चुकौती
 repayment schedule_emi schedule_रीपेमेंट शेड्यूल_ईएमआई शेड्यूल_भुगतान अनुसूची
 rrn_r r n_retrieval reference number_आरआरएन_आर आर एन
-rupees_rupee_rs_रुपया_रुपये_रुपए_आरएस
 salary slip_payslip_सैलरी स्लिप_पे स्लिप
 sanction letter_loan sanction letter_सैंक्शन लेटर_स्वीकृति पत्र
 sanctioned amount_approved amount_सैंक्शन अमाउंट_स्वीकृत राशि
@@ -135,8 +124,7 @@ signature proof_सिग्नेचर प्रूफ_हस्ताक्�
 sma_s m a_special mention account_एसएमए_एस एम ए
 smfg_s m f g_एसएमएफजी_एस एम एफ जी
 smfg india credit_smfgindiacredit_एसएमएफजी इंडिया क्रेडिट_एस एम एफ जी इंडिया क्रेडिट
-statement_स्टेटमेंट_विवरण
-tenure_loan tenure_टेन्योर_ऋण अवधि
+loan tenure_टेन्योर_ऋण अवधि
 transaction id_txn id_ट्रांजैक्शन आईडी_लेनदेन आईडी
 transaction status_ट्रांजैक्शन स्टेटस_लेनदेन स्थिति
 upi_u p i_यूपीआई_यू पी आई

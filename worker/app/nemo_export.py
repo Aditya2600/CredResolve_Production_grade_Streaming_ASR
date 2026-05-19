@@ -203,14 +203,17 @@ def _write_nemo_restore_override_config(archive_path: str | Path) -> Path | None
         ) from exc
 
     archive = Path(archive_path).expanduser().resolve()
-    with tarfile.open(archive) as handle:
-        try:
-            config_member = handle.extractfile("./model_config.yaml")
-        except KeyError:
-            config_member = handle.extractfile("model_config.yaml")
-        if config_member is None:
-            return None
-        config = yaml.safe_load(config_member.read().decode("utf-8"))
+    try:
+        with tarfile.open(archive) as handle:
+            try:
+                config_member = handle.extractfile("./model_config.yaml")
+            except KeyError:
+                config_member = handle.extractfile("model_config.yaml")
+            if config_member is None:
+                return None
+            config = yaml.safe_load(config_member.read().decode("utf-8"))
+    except (tarfile.TarError, OSError):
+        return None
 
     if not isinstance(config, dict):
         return None
@@ -224,6 +227,20 @@ def _write_nemo_restore_override_config(archive_path: str | Path) -> Path | None
     override_path = Path(temp_handle.name)
     override_path.write_text(yaml.safe_dump(normalized, sort_keys=False), encoding="utf-8")
     return override_path
+
+
+def _restore_nemo_archive(model_class: Any, source: str | Path, *, device: str):
+    override_config_path = _write_nemo_restore_override_config(source)
+    restore_kwargs = select_supported_kwargs(
+        model_class.restore_from,
+        map_location=device,
+        override_config_path=str(override_config_path) if override_config_path is not None else None,
+    )
+    try:
+        return model_class.restore_from(str(source), **restore_kwargs)
+    finally:
+        if override_config_path is not None:
+            override_config_path.unlink(missing_ok=True)
 
 
 def _download_hf_nemo_archive(source: str) -> Path:
@@ -255,11 +272,7 @@ def _load_nemo_model(*, source: str, model_class_name: str, device: str):
     load_method = "restore_from" if is_local_nemo_source(source) else "from_pretrained"
 
     if load_method == "restore_from":
-        load_kwargs = select_supported_kwargs(
-            model_class.restore_from,
-            map_location=device,
-        )
-        model = model_class.restore_from(source, **load_kwargs)
+        model = _restore_nemo_archive(model_class, source, device=device)
     else:
         load_kwargs = select_supported_kwargs(
             model_class.from_pretrained,
@@ -277,17 +290,7 @@ def _load_nemo_model(*, source: str, model_class_name: str, device: str):
                 exc,
             )
             archive_path = _download_hf_nemo_archive(source)
-            override_config_path = _write_nemo_restore_override_config(archive_path)
-            restore_kwargs = select_supported_kwargs(
-                model_class.restore_from,
-                map_location=device,
-                override_config_path=str(override_config_path) if override_config_path is not None else None,
-            )
-            try:
-                model = model_class.restore_from(str(archive_path), **restore_kwargs)
-            finally:
-                if override_config_path is not None:
-                    override_config_path.unlink(missing_ok=True)
+            model = _restore_nemo_archive(model_class, archive_path, device=device)
             load_method = "restore_from_hf_hub"
 
     return normalized_name, load_method, model

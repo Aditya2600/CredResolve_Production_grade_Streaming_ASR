@@ -17,6 +17,7 @@ from .config import (
     ASR_CONTEXT_BIASING_CTC_ALI_TOKEN_WEIGHT,
     ASR_CONTEXT_BIASING_DEVICE,
     ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES,
+    ASR_CONTEXT_BIASING_EFFECTIVE_MAX_CONCURRENCY,
     ASR_CONTEXT_BIASING_EXECUTOR_WORKERS,
     ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES,
     ASR_CONTEXT_BIASING_METHOD,
@@ -610,7 +611,7 @@ async def maybe_apply_context_biasing(
 @app.on_event("startup")
 async def startup_event():
     log.info(
-        "Worker startup backend=%s model=%s triton_model=%s triton_url=%s decoder=%s default_language=%s lid_enabled=%s lid_primary_provider=%s lid_primary_source=%s lid_fallback_provider=%s lid_fallback_source=%s lid_confidence_threshold=%.2f timeout_ms=%s max_jobs=%s triton_circuit_breaker_enabled=%s triton_circuit_failure_threshold=%s triton_circuit_recovery_timeout_sec=%s triton_circuit_half_open_success_threshold=%s context_biasing_mode=%s context_biasing_method=%s context_biasing_phrases_dir=%s context_biasing_dynamic_max_phrases=%s context_biasing_configured_max_concurrency=%s context_biasing_executor_workers=%s context_biasing_model_pool_size=%s",
+        "Worker startup backend=%s model=%s triton_model=%s triton_url=%s decoder=%s default_language=%s lid_enabled=%s lid_primary_provider=%s lid_primary_source=%s lid_fallback_provider=%s lid_fallback_source=%s lid_confidence_threshold=%.2f timeout_ms=%s max_jobs=%s triton_circuit_breaker_enabled=%s triton_circuit_failure_threshold=%s triton_circuit_recovery_timeout_sec=%s triton_circuit_half_open_success_threshold=%s context_biasing_mode=%s context_biasing_method=%s context_biasing_phrases_dir=%s context_biasing_dynamic_max_phrases=%s context_biasing_configured_max_concurrency=%s context_biasing_effective_max_concurrency=%s context_biasing_executor_workers=%s context_biasing_model_pool_size=%s",
         ASR_BACKEND,
         ASR_MODEL_NAME or "-",
         TRITON_MODEL_NAME,
@@ -634,6 +635,7 @@ async def startup_event():
         ASR_CONTEXT_BIASING_PHRASES_DIR or "-",
         ASR_CONTEXT_BIASING_DYNAMIC_MAX_PHRASES,
         ASR_CONTEXT_BIASING_MAX_CONCURRENT_INFERENCES,
+        ASR_CONTEXT_BIASING_EFFECTIVE_MAX_CONCURRENCY,
         ASR_CONTEXT_BIASING_EXECUTOR_WORKERS,
         ASR_CONTEXT_BIASING_MODEL_POOL_SIZE,
     )

@@ -163,6 +163,57 @@ def test_load_nemo_model_falls_back_to_hf_nemo_archive(monkeypatch, tmp_path: Pa
     assert override_path.exists() is False
 
 
+def test_load_nemo_model_applies_compat_override_for_local_archive(monkeypatch, tmp_path: Path):
+    archive_path = tmp_path / "model.nemo"
+    archive_path.write_bytes(b"nemo")
+    override_path = tmp_path / "override.yaml"
+    override_path.write_text("tokenizer:\n  type: agg\n", encoding="utf-8")
+    calls: list[tuple[str, object, dict[str, object]]] = []
+
+    class FakeModelClass:
+        @staticmethod
+        def restore_from(source: str, map_location=None, override_config_path=None):
+            kwargs = {
+                "map_location": map_location,
+                "override_config_path": override_config_path,
+            }
+            calls.append(("restore_from", source, kwargs))
+            return {"loaded_from": source, "kwargs": kwargs}
+
+    monkeypatch.setattr(
+        "worker.app.nemo_export._resolve_nemo_model_class",
+        lambda _: ("ASRModel", FakeModelClass),
+    )
+    monkeypatch.setattr("worker.app.nemo_export._write_nemo_restore_override_config", lambda _: override_path)
+
+    model_class, load_method, model = _load_nemo_model(
+        source=str(archive_path),
+        model_class_name="ASRModel",
+        device="cuda",
+    )
+
+    assert model_class == "ASRModel"
+    assert load_method == "restore_from"
+    assert model == {
+        "loaded_from": str(archive_path),
+        "kwargs": {
+            "map_location": "cuda",
+            "override_config_path": str(override_path),
+        },
+    }
+    assert calls == [
+        (
+            "restore_from",
+            str(archive_path),
+            {
+                "map_location": "cuda",
+                "override_config_path": str(override_path),
+            },
+        )
+    ]
+    assert override_path.exists() is False
+
+
 def test_download_hf_nemo_archive_requires_single_archive(monkeypatch):
     monkeypatch.setattr(
         "worker.app.nemo_export._import_huggingface_hub",

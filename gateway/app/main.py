@@ -9,7 +9,7 @@ import time
 import uuid
 import wave
 from dataclasses import dataclass, replace
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 import orjson
@@ -158,6 +158,7 @@ class PipelineSessionContext:
     biasing_context: dict[str, object] | None
     vad_enabled: bool = False
     denoise_enabled: bool = False
+    emitted_utterance_id_factory: Callable[[], str] | None = None
 
 
 class BufferedWorkerRNNTStream:
@@ -165,10 +166,8 @@ class BufferedWorkerRNNTStream:
         self,
         *,
         session_context: PipelineSessionContext,
-        utterance_id: str,
     ):
         self.session_context = session_context
-        self.utterance_id = utterance_id
         self._buffer = bytearray()
         self._started = False
 
@@ -191,6 +190,7 @@ class BufferedWorkerRNNTStream:
             return None
 
         started = time.monotonic()
+        utterance_id = self._next_emitted_utterance_id()
         try:
             async with worker_sem:
                 out = await worker.transcribe(
@@ -200,7 +200,7 @@ class BufferedWorkerRNNTStream:
                     self.session_context.language_code,
                     mode="final",
                     session_id=self.session_context.session_id,
-                    utterance_id=self.utterance_id,
+                    utterance_id=utterance_id,
                     context_biasing_mode=self.session_context.context_biasing_mode,
                     biasing_context=self.session_context.biasing_context,
                     vad_enabled=self.session_context.vad_enabled,
@@ -214,7 +214,13 @@ class BufferedWorkerRNNTStream:
             language=out.language,
             language_source=out.language_source,
             context_biasing=out.context_biasing,
+            utterance_id=utterance_id,
         )
+
+    def _next_emitted_utterance_id(self) -> str:
+        if self.session_context.emitted_utterance_id_factory is None:
+            raise RuntimeError("emitted utterance ID factory is not configured")
+        return self.session_context.emitted_utterance_id_factory()
 
 
 def normalize_speaker_verification_mode(raw_mode: str) -> SpeakerVerificationMode:
@@ -285,15 +291,20 @@ def build_rnnt_stream_factory(
     *,
     session_context: PipelineSessionContext,
 ):
-    utterance_counter = 0
+    final_attempt_counter = 0
+
+    def fallback_final_attempt_id() -> str:
+        nonlocal final_attempt_counter
+        final_attempt_counter += 1
+        return f"utt-{final_attempt_counter:04d}"
+
+    if session_context.emitted_utterance_id_factory is None:
+        session_context.emitted_utterance_id_factory = fallback_final_attempt_id
 
     # TODO: Replace this compatibility wrapper with the real streaming RNNT provider.
     def factory() -> RNNTStream:
-        nonlocal utterance_counter
-        utterance_counter += 1
         return BufferedWorkerRNNTStream(
             session_context=session_context,
-            utterance_id=f"utt-{utterance_counter:04d}",
         )
 
     return factory
@@ -744,6 +755,8 @@ async def ws_stt(ws: WebSocket):
     close_reason = "unknown"
     total_audio_bytes = 0
     utterance_count = 0
+    emitted_utterance_id_count = 0
+    transcript_log_entries: list[dict[str, object]] = []
     session: Optional[SessionConfig] = None
     request_id = session_id
     pipeline: StreamingSpeechPipeline | None = None
@@ -774,8 +787,14 @@ async def ws_stt(ws: WebSocket):
             await send_ws_error_and_close(ws, "VALIDATION_ERROR", str(exc), 1008)
             return
 
+        def next_emitted_utterance_id() -> str:
+            nonlocal emitted_utterance_id_count
+            emitted_utterance_id_count += 1
+            return f"utt-{emitted_utterance_id_count:04d}"
+
         request_id = session.request_id
         pipeline, pipeline_session_context = build_streaming_pipeline(session, session_id=session_id)
+        pipeline_session_context.emitted_utterance_id_factory = next_emitted_utterance_id
 
         log.info(
             "WS session started session_id=%s request_id=%s language=%s model=%s mode=%s sample_rate=%s codec=%s binary_audio=%s vad_signals=%s speaker_verification_mode=%s speaker_verification_backend=%s",
@@ -833,8 +852,10 @@ async def ws_stt(ws: WebSocket):
                     )
                     continue
 
+                utterance_id = "-"
                 try:
                     result = event.result
+                    utterance_id = result.utterance_id or next_emitted_utterance_id()
                     UTTERANCES.inc()
                     utterance_count += 1
                     resolved_language = result.language or (
@@ -854,6 +875,7 @@ async def ws_stt(ws: WebSocket):
                                 "type": "data",
                                 "data": {
                                     "request_id": session.request_id,
+                                    "utterance_id": utterance_id,
                                     "transcript": result.text,
                                     "raw_text": itn_result.raw_text,
                                     "canonical_text": itn_result.canonical_text,
@@ -875,10 +897,23 @@ async def ws_stt(ws: WebSocket):
                     if event.final_latency is not None:
                         E2E_LATENCY.observe(event.final_latency)
                     if LOG_TRANSCRIPTS:
+                        transcript_log_entries.append(
+                            {
+                                "utterance_id": utterance_id,
+                                "transcript": result.text,
+                                "raw_text": itn_result.raw_text,
+                                "canonical_text": itn_result.canonical_text,
+                                "display_text": itn_result.display_text,
+                                "language_code": resolved_language,
+                                "language_source": resolved_language_source,
+                                "audio_duration": event.audio_duration,
+                                "processing_latency": event.processing_latency,
+                            }
+                        )
                         log.info(
                             "Data sent session_id=%s utterance_id=%s latency_ms=%s audio_ms=%s text_chars=%s text=%s language=%s language_source=%s context_biasing_mode=%s",
                             session_id,
-                            f"utt-{utterance_count:04d}",
+                            utterance_id,
                             int(event.processing_latency * 1000),
                             int(round(event.audio_duration * 1000)),
                             len(result.text),
@@ -891,7 +926,7 @@ async def ws_stt(ws: WebSocket):
                         log.info(
                             "Data sent session_id=%s utterance_id=%s latency_ms=%s audio_ms=%s text_chars=%s language=%s language_source=%s context_biasing_mode=%s",
                             session_id,
-                            f"utt-{utterance_count:04d}",
+                            utterance_id,
                             int(event.processing_latency * 1000),
                             int(round(event.audio_duration * 1000)),
                             len(result.text),
@@ -903,7 +938,7 @@ async def ws_stt(ws: WebSocket):
                     log.exception(
                         "Final transcription emission failed session_id=%s utterance_id=%s",
                         session_id,
-                        f"utt-{utterance_count:04d}",
+                        utterance_id,
                     )
                     await send_ws_error(ws, "WORKER_ERROR", "worker transcription failed")
                     return False
@@ -1062,6 +1097,31 @@ async def ws_stt(ws: WebSocket):
         WS_CONNECTIONS.dec()
         if close_reason != "unknown":
             WS_DISCONNECTS.labels(reason=close_reason).inc()
+        if LOG_TRANSCRIPTS and transcript_log_entries:
+            complete_transcript = " ".join(
+                str(entry["transcript"]).strip()
+                for entry in transcript_log_entries
+                if str(entry["transcript"]).strip()
+            )
+            complete_display_text = " ".join(
+                str(entry["display_text"]).strip()
+                for entry in transcript_log_entries
+                if str(entry["display_text"]).strip()
+            )
+            complete_payload = {
+                "complete_transcript": complete_transcript,
+                "complete_display_text": complete_display_text,
+                "utterances": transcript_log_entries,
+            }
+            log.info(
+                "Complete transcript session_id=%s request_id=%s close_reason=%s utterance_count=%s text_chars=%s payload=%s",
+                session_id,
+                request_id,
+                close_reason,
+                len(transcript_log_entries),
+                len(complete_transcript),
+                json.dumps(complete_payload, ensure_ascii=False, separators=(",", ":")),
+            )
         log.info(
             "WS session closed session_id=%s request_id=%s close_reason=%s duration_ms=%s total_audio_bytes=%s utterance_count=%s",
             session_id,

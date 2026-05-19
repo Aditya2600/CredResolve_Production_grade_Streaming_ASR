@@ -40,9 +40,19 @@ class _TimeoutRuntime:
         raise ContextBiasingTimeoutError("timed out", reason=self.reason)
 
 
-@pytest.mark.parametrize("module_name", ["worker.app.main", "worker.app.main_v2"])
-@pytest.mark.parametrize("reason", ["queue_timeout", "inference_timeout"])
-def test_worker_entrypoints_fall_back_to_baseline_with_specific_timeout_reason(monkeypatch, module_name, reason):
+def test_context_biasing_timeout_error_exposes_queue_timeout_reason():
+    error = ContextBiasingTimeoutError("timed out", reason="queue_timeout")
+
+    assert error.reason == "queue_timeout"
+
+
+def test_context_biasing_timeout_error_exposes_inference_timeout_reason():
+    error = ContextBiasingTimeoutError("timed out", reason="inference_timeout")
+
+    assert error.reason == "inference_timeout"
+
+
+def _assert_entrypoint_falls_back_with_timeout_reason(monkeypatch, module_name: str, reason: str):
     module = importlib.import_module(module_name)
     fallbacks = _RecordingCounter()
     requests = _RecordingCounter()
@@ -73,3 +83,13 @@ def test_worker_entrypoints_fall_back_to_baseline_with_specific_timeout_reason(m
     assert response is not None
     assert response["fallback_reason"] == reason
     assert fallbacks.label_calls[-1] == {"reason": reason}
+
+
+@pytest.mark.parametrize("reason", ["queue_timeout", "inference_timeout"])
+def test_main_py_fallback_uses_timeout_reason(monkeypatch, reason):
+    _assert_entrypoint_falls_back_with_timeout_reason(monkeypatch, "worker.app.main", reason)
+
+
+@pytest.mark.parametrize("reason", ["queue_timeout", "inference_timeout"])
+def test_main_v2_py_fallback_uses_timeout_reason(monkeypatch, reason):
+    _assert_entrypoint_falls_back_with_timeout_reason(monkeypatch, "worker.app.main_v2", reason)

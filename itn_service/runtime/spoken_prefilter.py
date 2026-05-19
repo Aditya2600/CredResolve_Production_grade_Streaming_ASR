@@ -154,6 +154,35 @@ _NUMBER_WORDS: frozenset[str] = frozenset(
 _SCALE_WORDS: frozenset[str] = frozenset(
     {"सौ", "हज़ार", "हजार", "लाख", "करोड़", "करोड", "अरब"}
 )
+_CODE_SWITCH_NUMBER_WORDS: frozenset[str] = frozenset(
+    {
+        "वन",
+        "वान",
+        "टू",
+        "टु",
+        "थ्री",
+        "फोर",
+        "फॉर",
+        "फाइव",
+        "फाईव",
+        "सिक्स",
+        "सेवन",
+        "एट",
+        "ऐट",
+        "नाइन",
+        "टेन",
+    }
+)
+_CODE_SWITCH_SCALE_WORDS: frozenset[str] = frozenset(
+    {
+        "हंड्रेड",
+        "हन्ड्रेड",
+        "थाउजेंड",
+        "थाउजंड",
+        "थाउज़ेंड",
+        "थाउज़ंड",
+    }
+)
 _COMPOUND_WORDS: frozenset[str] = frozenset(
     {"सवा", "डेढ़", "डेढ", "ढाई", "साढ़े", "साढे", "पौने"}
 )
@@ -275,7 +304,20 @@ def _is_number_word(tok: _Token) -> bool:
 
 
 def _is_numberish(tok: _Token) -> bool:
-    return tok.norm in (_NUMBER_WORDS | _SCALE_WORDS | _COMPOUND_WORDS | _DECIMAL_MARKERS)
+    return tok.norm in (
+        _NUMBER_WORDS
+        | _SCALE_WORDS
+        | _CODE_SWITCH_NUMBER_WORDS
+        | _CODE_SWITCH_SCALE_WORDS
+        | _COMPOUND_WORDS
+        | _DECIMAL_MARKERS
+    )
+
+
+def _is_native_numberish(tok: _Token) -> bool:
+    return tok.norm in (
+        _NUMBER_WORDS | _SCALE_WORDS | _COMPOUND_WORDS | _DECIMAL_MARKERS
+    )
 
 
 def _is_digit_word(tok: _Token) -> bool:
@@ -312,23 +354,49 @@ def _scan_right_numberish(tokens: list[_Token], idx: int, *, limit: int) -> int:
     return end
 
 
+def _scan_left_native_numberish(tokens: list[_Token], idx: int, *, limit: int) -> int:
+    start = idx
+    while (
+        start > 0
+        and idx - (start - 1) <= limit
+        and _is_native_numberish(tokens[start - 1])
+    ):
+        start -= 1
+    return start
+
+
+def _scan_right_native_numberish(tokens: list[_Token], idx: int, *, limit: int) -> int:
+    end = idx
+    while (
+        end < len(tokens)
+        and end - idx < limit
+        and _is_native_numberish(tokens[end])
+    ):
+        end += 1
+    return end
+
+
 def _detect_money(text: str, tokens: list[_Token]) -> list[Span]:
     out: list[Span] = []
     for i, tok in enumerate(tokens):
         if tok.norm not in _RUPEE_CUES:
             continue
 
-        left_start = _scan_left_numberish(tokens, i, limit=_MAX_NUMBER_TOKENS)
+        left_start = _scan_left_native_numberish(tokens, i, limit=_MAX_NUMBER_TOKENS)
         if left_start < i:
             end = i + 1
             # Preserve the money grammar's optional "... रुपये <N> पैसे" tail
             # when present; unsupported variants still safely fall back later.
-            paise_end = _scan_right_numberish(tokens, end, limit=2)
-            if paise_end > end and paise_end < len(tokens) and tokens[paise_end].norm in _PAISE_CUES:
+            paise_end = _scan_right_native_numberish(tokens, end, limit=2)
+            if (
+                paise_end > end
+                and paise_end < len(tokens)
+                and tokens[paise_end].norm in _PAISE_CUES
+            ):
                 end = paise_end + 1
             out.append(_span(text, tokens, left_start, end, "amount"))
 
-        right_end = _scan_right_numberish(tokens, i + 1, limit=_MAX_NUMBER_TOKENS)
+        right_end = _scan_right_native_numberish(tokens, i + 1, limit=_MAX_NUMBER_TOKENS)
         if right_end > i + 1:
             out.append(_span(text, tokens, i, right_end, "amount"))
     return out

@@ -21,6 +21,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODEL_REPO="${REPO_ROOT}/triton/model_repository"
 ENCODER_DIR="${MODEL_REPO}/indic_asr_encoder/1"
+PREPROC_DIR="${MODEL_REPO}/indic_asr_preproc/1"
+CTC_DIR="${MODEL_REPO}/indic_asr_ctc_decoder/1"
+DOCKER_COMPOSE="${DOCKER_COMPOSE:-docker compose}"
 
 # Default to the parity-safe FP32 baseline if no flags provided
 TRT_FLAGS="${*:- --noTF32}"
@@ -30,11 +33,71 @@ echo "TRITON DEPLOY GATE: Building and Validating TensorRT Engine"
 echo "======================================================================"
 echo "[gate] Build flags: ${TRT_FLAGS}"
 
+print_staging_help() {
+    cat <<EOF
+[gate][error] Required Triton model artifacts are missing.
+
+Stage them first:
+
+  ./scripts/stage_triton_model_repo.sh
+
+Expected files after staging:
+
+  ${PREPROC_DIR}/model.pt
+  ${ENCODER_DIR}/model.onnx
+  ${ENCODER_DIR}/layers.* / Constant_* / onnx__* / pre*
+  ${CTC_DIR}/model.onnx
+
+If this is a fresh host, the staging step needs either a populated HF cache at
+HF_HOME or HUGGINGFACE_HUB_TOKEN/HF_TOKEN with access to the model repository.
+EOF
+}
+
+missing_artifacts=0
+if [[ ! -s "${PREPROC_DIR}/model.pt" ]]; then
+    echo "[gate][missing] ${PREPROC_DIR}/model.pt"
+    missing_artifacts=1
+fi
+if [[ ! -s "${ENCODER_DIR}/model.onnx" ]]; then
+    echo "[gate][missing] ${ENCODER_DIR}/model.onnx"
+    missing_artifacts=1
+fi
+if [[ ! -s "${CTC_DIR}/model.onnx" ]]; then
+    echo "[gate][missing] ${CTC_DIR}/model.onnx"
+    missing_artifacts=1
+fi
+
+shopt -s nullglob
+encoder_external_weights=(
+    "${ENCODER_DIR}"/layers.*
+    "${ENCODER_DIR}"/Constant_*
+    "${ENCODER_DIR}"/onnx__*
+    "${ENCODER_DIR}"/pre*
+)
+shopt -u nullglob
+if [[ ${#encoder_external_weights[@]} -eq 0 ]]; then
+    echo "[gate][missing] encoder external weight blobs in ${ENCODER_DIR}"
+    missing_artifacts=1
+fi
+
+if [[ ${missing_artifacts} -ne 0 ]]; then
+    print_staging_help
+    exit 2
+fi
+
 # Build the engine as model.plan.candidate inside the Triton container
 echo "[gate] Building candidate engine (model.plan.candidate)..."
-docker compose -f docker-compose.yml -f docker-compose.triton.yml \
+${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml \
     run --rm --entrypoint bash triton -c "
-      trtexec \
+      TRTEXEC=\$(command -v trtexec || true)
+      if [[ -z \"\${TRTEXEC}\" && -x /usr/src/tensorrt/bin/trtexec ]]; then
+        TRTEXEC=/usr/src/tensorrt/bin/trtexec
+      fi
+      if [[ -z \"\${TRTEXEC}\" ]]; then
+        echo '[gate][error] trtexec not found in Triton container'
+        exit 127
+      fi
+      \"\${TRTEXEC}\" \
         --onnx=/models/indic_asr_encoder/1/model.onnx \
         ${TRT_FLAGS} \
         --minShapes=audio_signal:1x80x100,length:1 \
@@ -61,9 +124,10 @@ fi
 echo "[gate] Swapping in candidate engine..."
 mv "${ENCODER_DIR}/model.plan.candidate" "${ENCODER_DIR}/model.plan"
 
-# Restart Triton to load the new engine
-echo "[gate] Restarting Triton..."
-docker compose -f docker-compose.yml -f docker-compose.triton.yml restart triton
+# Start or recreate Triton to load the new engine. `restart` is not enough on
+# a fresh host because Compose will not create an absent service.
+echo "[gate] Starting Triton..."
+${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml up -d triton
 
 # Wait for Triton readiness
 echo -n "[gate] Waiting for Triton readiness..."
@@ -76,7 +140,7 @@ until curl -sf http://localhost:8100/v2/health/ready > /dev/null; do
         if [[ $HAS_BACKUP -eq 1 ]]; then
             echo "[gate] Reverting to backup engine..."
             mv "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
-            docker compose -f docker-compose.yml -f docker-compose.triton.yml restart triton
+            ${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml up -d triton
         fi
         exit 1
     fi
@@ -90,7 +154,7 @@ echo " READY"
 # Note: Requires PYTHONPATH to find the worker modules
 echo "[gate] Running validation fixtures (RNNT)..."
 if ! PYTHONPATH="${REPO_ROOT}" python3 "${REPO_ROOT}/scripts/validate_triton_deploy.py" \
-    --triton-url localhost:8001 \
+    --triton-url localhost:8101 \
     --audio-dir "${REPO_ROOT}/tests/fixtures/audio_bench" \
     --reference-json "${REPO_ROOT}/tests/fixtures/audio_bench/reference_transcripts.json" \
     --decoder rnnt; then
@@ -99,14 +163,14 @@ if ! PYTHONPATH="${REPO_ROOT}" python3 "${REPO_ROOT}/scripts/validate_triton_dep
     if [[ $HAS_BACKUP -eq 1 ]]; then
         echo "[gate] Reverting to backup engine..."
         mv "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
-        docker compose -f docker-compose.yml -f docker-compose.triton.yml restart triton
+        ${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml up -d triton
     fi
     exit 1
 fi
 
 echo "[gate] Running validation fixtures (CTC)..."
 if ! PYTHONPATH="${REPO_ROOT}" python3 "${REPO_ROOT}/scripts/validate_triton_deploy.py" \
-    --triton-url localhost:8001 \
+    --triton-url localhost:8101 \
     --audio-dir "${REPO_ROOT}/tests/fixtures/audio_bench" \
     --reference-json "${REPO_ROOT}/tests/fixtures/audio_bench/reference_transcripts.json" \
     --decoder ctc; then
@@ -115,7 +179,7 @@ if ! PYTHONPATH="${REPO_ROOT}" python3 "${REPO_ROOT}/scripts/validate_triton_dep
     if [[ $HAS_BACKUP -eq 1 ]]; then
         echo "[gate] Reverting to backup engine..."
         mv "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
-        docker compose -f docker-compose.yml -f docker-compose.triton.yml restart triton
+        ${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml up -d triton
     fi
     exit 1
 fi

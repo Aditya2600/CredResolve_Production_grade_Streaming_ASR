@@ -20,6 +20,7 @@ class RNNTFinalResult:
     language: str = ""
     language_source: str = ""
     context_biasing: dict[str, object] | None = None
+    utterance_id: str = ""
 
 
 @dataclass(frozen=True)

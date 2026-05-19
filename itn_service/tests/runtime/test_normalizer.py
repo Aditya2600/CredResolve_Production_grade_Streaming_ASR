@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import pytest
+
 from itn_service.runtime.contract import Span
 from itn_service.runtime.locale_policy import TenantPolicy
 from itn_service.runtime.normalizer import default_classifier, normalize_segment
@@ -180,6 +182,39 @@ def test_spoken_hindi_examples_rewrite_through_wfst_classifier() -> None:
         assert result.raw_text == raw
         assert result.canonical_text == expected
         assert all(span.fallback_reason is None for span in result.spans)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("टू थाउजेंड", "2000"),
+        ("मेरा अमाउंट टू थाउजेंड है", "मेरा अमाउंट 2000 है"),
+        ("पेमेंट फाइव हंड्रेड रुपये", "पेमेंट 500 रुपये"),
+    ],
+)
+def test_code_switched_devanagari_english_numbers_rewrite_through_normalizer(
+    raw: str,
+    expected: str,
+) -> None:
+    classifier = make_wfst_classifier(_DMY_POLICY)
+
+    result = _normalise(raw, classifier=classifier)
+
+    assert result.canonical_text == expected
+
+
+def test_number_itn_regressions_remain_stable() -> None:
+    classifier = make_wfst_classifier(_DMY_POLICY)
+    cases = [
+        ("दो हजार", "2000"),
+        ("दो हज़ार", "2000"),
+        ("two thousand", "two thousand"),
+        ("यह सामान्य वाक्य है", "यह सामान्य वाक्य है"),
+    ]
+
+    for raw, expected in cases:
+        result = _normalise(raw, classifier=classifier)
+        assert result.canonical_text == expected
 
 
 def test_spoken_digits_without_phone_cue_do_not_become_phone() -> None:
