@@ -32,7 +32,75 @@ The plan doc has the full reasoning. Short version:
 
 Three sequential steps. Run on the box that will serve the model.
 
-### 2.0 Prepare the host-side Conda environment
+### 2.0 Prepare Docker permissions and the host-side Conda environment
+
+#### 2.0.1 Docker Permissions Setup
+
+Before running any Docker or Docker Compose commands, ensure your user has the required permissions to run Docker without `sudo`. Add the current user to the `docker` group and apply the group changes in your current terminal session:
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+Verify that the group membership has been applied correctly and the docker daemon is accessible:
+
+```bash
+id
+docker ps
+```
+
+#### 2.0.2 Docker Compose Installation & Compatibility
+
+Depending on how Docker was installed on the host, the modern `docker compose` CLI plugin may or may not be pre-installed. 
+
+##### Installing the Docker Compose Plugin
+To install `docker-compose-plugin` on Ubuntu, you must first register Docker's official APT repository (as it is not available in default Ubuntu repositories under that name):
+
+```bash
+# 1. Add Docker's official GPG key
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+# 2. Add the repository to Apt sources
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# 3. Update index and install the plugin
+sudo apt-get update
+sudo apt-get install -y docker-compose-plugin
+```
+
+To verify the installation:
+
+```bash
+docker compose version
+```
+
+##### Handling Signature / GPG Repository Warnings
+During `sudo apt-get update`, you may encounter signature verification warnings or errors for unrelated third-party repositories (e.g., `GPG error: https://repo.r1soft.com/apt stable Release: NO_PUBKEY 37B2BAF45650A294`). 
+- These warnings will not prevent the Docker repository from updating successfully.
+- You can safely ignore them, or temporarily move/disable the failing source lists in `/etc/apt/sources.list.d/` if you want a clean update run.
+
+##### Troubleshooting & Fallback
+If the package `docker-compose-plugin` is not found, or you encounter the error:
+```text
+docker: unknown command: docker compose
+```
+This means your system is using the standalone `docker-compose` (hyphenated) binary. In this case:
+1. You can install the legacy/standalone compose via `sudo apt-get install -y docker-compose` if not already installed.
+2. For all steps in this runbook, substitute the space-separated `docker compose` command with the hyphenated version:
+   ```bash
+   # Example:
+   docker-compose -f docker-compose.yml -f docker-compose.triton.yml up -d triton
+   ```
+
+#### 2.0.3 Conda Environment Setup
 
 The staging script runs on the host before Triton starts, so it needs a host Python with
 `huggingface_hub` available. This repo keeps that setup in [`environment.yml`](../environment.yml).

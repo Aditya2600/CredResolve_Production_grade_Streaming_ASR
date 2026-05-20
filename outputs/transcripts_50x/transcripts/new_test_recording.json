@@ -1,0 +1,551 @@
+{
+  "file": "new_test_recording.wav",
+  "source_audio_path": "/workspace/recordings/new_test_recording.wav",
+  "normalized_audio_path": "/workspace/outputs/transcripts_50x/normalized_audio/new_test_recording_mono16000.wav",
+  "duration_sec": 30.16,
+  "text": "लोो हेलो नमस्कार सरँर ज बैंक की तरफ से बात कर रहा हूँ ज बंक बोला था म बोला था दस तारीख को न तारीख को पेमेंट क्लियर कर दूंग अब इतने बार कल करते हो मै बोला बारह तारीख को चेष्टा तो जरूर करूंगी अभी मेरे पास पैसा नहीं है मैं तोल पेमेंट कर दूी करना चाहती ह दस तारीख को कॉल करता हूँ सर ओके",
+  "language": "hi",
+  "language_source": "client",
+  "lid_language": "hi",
+  "lid_language_source": "auto_default",
+  "context_biasing": {
+    "mode": "active",
+    "reason": "not_ready",
+    "requested_mode": "active",
+    "dynamic_context_attached": false,
+    "dynamic_context_used": false,
+    "fields_provided": [],
+    "phrase_count_before_pruning": 0,
+    "phrase_count_after_pruning": 0,
+    "phrase_count_total": 0,
+    "top_phrases": [],
+    "phrase_source": "static",
+    "errors": [],
+    "fallback_reason": "not_ready"
+  },
+  "metrics": {
+    "chunks": 2,
+    "audio_duration": 30.16
+  },
+  "final_chunk_count": 2,
+  "timestamp_chunk_count": 2,
+  "timestamp_text": "ललो नमस्कार सरँ ज बैंक की तरफ से बात कर रहा हूँ बंक म बो था मै बोला था दस तारीख को न तारीख को पेमेंट क्लियर कर दूंग अब इतने बार कल करते हो मै बोला बारह तारीख को चेष्टा तो जरूर करूंगी अभी मेरे पास पैसा नहीं है मैं तोल पेमेंट कर दूी करना चाहती ह दस तारीख को कॉल करता हूँ सर ओके",
+  "diarization_provider": "nemo_clustering",
+  "diarization_error": null,
+  "rttm_path": "/workspace/outputs/transcripts_50x/rttm/new_test_recording_mono16000.rttm",
+  "speaker_turns": [
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 0.06,
+      "end_sec": 1.61,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 2.38,
+      "end_sec": 3.8499999999999996,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 4.06,
+      "end_sec": 4.89,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 5.34,
+      "end_sec": 6.33,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 6.7,
+      "end_sec": 8.075,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 8.075,
+      "end_sec": 9.129999999999999,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 9.34,
+      "end_sec": 13.215,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 13.215,
+      "end_sec": 27.61,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 28.06,
+      "end_sec": 29.93,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    }
+  ],
+  "speaker_segments": [
+    {
+      "speaker": "speaker_1",
+      "text": "नमस्कार",
+      "start_sec": 5.84,
+      "end_sec": 6.24
+    },
+    {
+      "speaker": "speaker_0",
+      "text": "सरँ ज बैंक की तरफ से बात कर रहा हूँ",
+      "start_sec": 6.4,
+      "end_sec": 12.08
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "बंक म बो था मै बोला था दस तारीख को न तारीख को पेमेंट क्लियर कर दूंग अब इतने बार कल करते हो मै बोला बारह तारीख को चेष्टा तो जरूर करूंगी अभी मेरे पास पैसा नहीं है मैं तोल पेमेंट कर दूी करना चाहती",
+      "start_sec": 13.28,
+      "end_sec": 27.52
+    },
+    {
+      "speaker": null,
+      "text": "ह दस",
+      "start_sec": 27.6,
+      "end_sec": 28.08
+    },
+    {
+      "speaker": "speaker_0",
+      "text": "तारीख को कॉल करता हूँ सर ओके",
+      "start_sec": 28.08,
+      "end_sec": 30.0
+    }
+  ],
+  "word_timestamps": [
+    {
+      "word": "नमस्कार",
+      "start_sec": 5.84,
+      "end_sec": 6.24,
+      "word_index": 1
+    },
+    {
+      "word": "सरँ",
+      "start_sec": 6.4,
+      "end_sec": 8.32,
+      "word_index": 2
+    },
+    {
+      "word": "ज",
+      "start_sec": 9.76,
+      "end_sec": 9.84,
+      "word_index": 3
+    },
+    {
+      "word": "बैंक",
+      "start_sec": 10.16,
+      "end_sec": 10.48,
+      "word_index": 4
+    },
+    {
+      "word": "की",
+      "start_sec": 10.48,
+      "end_sec": 10.56,
+      "word_index": 5
+    },
+    {
+      "word": "तरफ",
+      "start_sec": 10.56,
+      "end_sec": 10.8,
+      "word_index": 6
+    },
+    {
+      "word": "से",
+      "start_sec": 10.88,
+      "end_sec": 10.96,
+      "word_index": 7
+    },
+    {
+      "word": "बात",
+      "start_sec": 11.44,
+      "end_sec": 11.6,
+      "word_index": 8
+    },
+    {
+      "word": "कर",
+      "start_sec": 11.6,
+      "end_sec": 11.68,
+      "word_index": 9
+    },
+    {
+      "word": "रहा",
+      "start_sec": 11.68,
+      "end_sec": 11.84,
+      "word_index": 10
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 11.84,
+      "end_sec": 12.08,
+      "word_index": 11
+    },
+    {
+      "word": "बंक",
+      "start_sec": 13.28,
+      "end_sec": 13.6,
+      "word_index": 12
+    },
+    {
+      "word": "म",
+      "start_sec": 13.76,
+      "end_sec": 13.84,
+      "word_index": 13
+    },
+    {
+      "word": "बो",
+      "start_sec": 14.0,
+      "end_sec": 14.16,
+      "word_index": 14
+    },
+    {
+      "word": "था",
+      "start_sec": 14.32,
+      "end_sec": 14.4,
+      "word_index": 15
+    },
+    {
+      "word": "मै",
+      "start_sec": 14.56,
+      "end_sec": 14.72,
+      "word_index": 16
+    },
+    {
+      "word": "बोला",
+      "start_sec": 14.8,
+      "end_sec": 15.04,
+      "word_index": 17
+    },
+    {
+      "word": "था",
+      "start_sec": 15.12,
+      "end_sec": 15.2,
+      "word_index": 18
+    },
+    {
+      "word": "दस",
+      "start_sec": 15.28,
+      "end_sec": 15.52,
+      "word_index": 19
+    },
+    {
+      "word": "तारीख",
+      "start_sec": 15.52,
+      "end_sec": 15.76,
+      "word_index": 20
+    },
+    {
+      "word": "को",
+      "start_sec": 15.76,
+      "end_sec": 15.84,
+      "word_index": 21
+    },
+    {
+      "word": "न",
+      "start_sec": 15.92,
+      "end_sec": 16.0,
+      "word_index": 22
+    },
+    {
+      "word": "तारीख",
+      "start_sec": 16.48,
+      "end_sec": 16.72,
+      "word_index": 23
+    },
+    {
+      "word": "को",
+      "start_sec": 16.8,
+      "end_sec": 16.88,
+      "word_index": 24
+    },
+    {
+      "word": "पेमेंट",
+      "start_sec": 16.96,
+      "end_sec": 17.44,
+      "word_index": 25
+    },
+    {
+      "word": "क्लियर",
+      "start_sec": 17.6,
+      "end_sec": 18.08,
+      "word_index": 26
+    },
+    {
+      "word": "कर",
+      "start_sec": 18.08,
+      "end_sec": 18.16,
+      "word_index": 27
+    },
+    {
+      "word": "दूंग",
+      "start_sec": 18.16,
+      "end_sec": 18.4,
+      "word_index": 28
+    },
+    {
+      "word": "अब",
+      "start_sec": 18.56,
+      "end_sec": 18.72,
+      "word_index": 29
+    },
+    {
+      "word": "इतने",
+      "start_sec": 18.72,
+      "end_sec": 18.96,
+      "word_index": 30
+    },
+    {
+      "word": "बार",
+      "start_sec": 18.96,
+      "end_sec": 19.12,
+      "word_index": 31
+    },
+    {
+      "word": "कल",
+      "start_sec": 19.2,
+      "end_sec": 19.36,
+      "word_index": 32
+    },
+    {
+      "word": "करते",
+      "start_sec": 19.36,
+      "end_sec": 19.52,
+      "word_index": 33
+    },
+    {
+      "word": "हो",
+      "start_sec": 19.6,
+      "end_sec": 19.68,
+      "word_index": 34
+    },
+    {
+      "word": "मै",
+      "start_sec": 19.76,
+      "end_sec": 19.92,
+      "word_index": 35
+    },
+    {
+      "word": "बोला",
+      "start_sec": 20.64,
+      "end_sec": 20.88,
+      "word_index": 0
+    },
+    {
+      "word": "बारह",
+      "start_sec": 21.04,
+      "end_sec": 21.28,
+      "word_index": 1
+    },
+    {
+      "word": "तारीख",
+      "start_sec": 21.28,
+      "end_sec": 21.6,
+      "word_index": 2
+    },
+    {
+      "word": "को",
+      "start_sec": 21.68,
+      "end_sec": 21.76,
+      "word_index": 3
+    },
+    {
+      "word": "चेष्टा",
+      "start_sec": 21.84,
+      "end_sec": 22.24,
+      "word_index": 4
+    },
+    {
+      "word": "तो",
+      "start_sec": 22.24,
+      "end_sec": 22.32,
+      "word_index": 5
+    },
+    {
+      "word": "जरूर",
+      "start_sec": 22.4,
+      "end_sec": 22.72,
+      "word_index": 6
+    },
+    {
+      "word": "करूंगी",
+      "start_sec": 22.72,
+      "end_sec": 23.12,
+      "word_index": 7
+    },
+    {
+      "word": "अभी",
+      "start_sec": 23.12,
+      "end_sec": 23.36,
+      "word_index": 8
+    },
+    {
+      "word": "मेरे",
+      "start_sec": 23.36,
+      "end_sec": 23.68,
+      "word_index": 9
+    },
+    {
+      "word": "पास",
+      "start_sec": 23.68,
+      "end_sec": 23.92,
+      "word_index": 10
+    },
+    {
+      "word": "पैसा",
+      "start_sec": 23.92,
+      "end_sec": 24.24,
+      "word_index": 11
+    },
+    {
+      "word": "नहीं",
+      "start_sec": 24.24,
+      "end_sec": 24.32,
+      "word_index": 12
+    },
+    {
+      "word": "है",
+      "start_sec": 24.4,
+      "end_sec": 24.48,
+      "word_index": 13
+    },
+    {
+      "word": "मैं",
+      "start_sec": 24.56,
+      "end_sec": 24.8,
+      "word_index": 14
+    },
+    {
+      "word": "तोल",
+      "start_sec": 24.8,
+      "end_sec": 25.36,
+      "word_index": 15
+    },
+    {
+      "word": "पेमेंट",
+      "start_sec": 25.76,
+      "end_sec": 26.24,
+      "word_index": 16
+    },
+    {
+      "word": "कर",
+      "start_sec": 26.24,
+      "end_sec": 26.32,
+      "word_index": 17
+    },
+    {
+      "word": "दूी",
+      "start_sec": 26.4,
+      "end_sec": 26.8,
+      "word_index": 18
+    },
+    {
+      "word": "करना",
+      "start_sec": 26.96,
+      "end_sec": 27.2,
+      "word_index": 19
+    },
+    {
+      "word": "चाहती",
+      "start_sec": 27.2,
+      "end_sec": 27.52,
+      "word_index": 20
+    },
+    {
+      "word": "ह",
+      "start_sec": 27.6,
+      "end_sec": 27.68,
+      "word_index": 21
+    },
+    {
+      "word": "दस",
+      "start_sec": 27.84,
+      "end_sec": 28.08,
+      "word_index": 22
+    },
+    {
+      "word": "तारीख",
+      "start_sec": 28.08,
+      "end_sec": 28.4,
+      "word_index": 23
+    },
+    {
+      "word": "को",
+      "start_sec": 28.48,
+      "end_sec": 28.56,
+      "word_index": 24
+    },
+    {
+      "word": "कॉल",
+      "start_sec": 28.64,
+      "end_sec": 28.96,
+      "word_index": 25
+    },
+    {
+      "word": "करता",
+      "start_sec": 28.96,
+      "end_sec": 29.2,
+      "word_index": 26
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 29.28,
+      "end_sec": 29.52,
+      "word_index": 27
+    },
+    {
+      "word": "सर",
+      "start_sec": 29.52,
+      "end_sec": 29.68,
+      "word_index": 28
+    },
+    {
+      "word": "ओके",
+      "start_sec": 29.76,
+      "end_sec": 30.0,
+      "word_index": 29
+    }
+  ],
+  "timing_ms": {
+    "load_audio": 12,
+    "lid_probe": 408,
+    "final_transcribe": 784,
+    "timestamp_pass": 551,
+    "diarization": 54821,
+    "file_total": 56587
+  }
+}

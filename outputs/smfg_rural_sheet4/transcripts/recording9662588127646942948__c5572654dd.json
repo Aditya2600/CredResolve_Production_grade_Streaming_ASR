@@ -1,0 +1,1033 @@
+{
+  "file": "recording9662588127646942948__c5572654dd.mp3",
+  "source_audio_path": "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/outputs/smfg_rural_sheet4/downloaded_audio/recording9662588127646942948__c5572654dd.mp3",
+  "normalized_audio_path": "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/outputs/smfg_rural_sheet4/normalized_audio/recording9662588127646942948__c5572654dd_mono16000.wav",
+  "duration_sec": 87.48,
+  "text": "हेलो मै राधा बात कर रही हूँ ग्राम शक्ति पुलेटन ऐसी क्या मेरी बात रसा ऐसी हो रही है हलो नमस्ते मै राधा बात कर रही हूँ ग्राम शक्ति पुलेटन ऐसी क्या मेरी बात रहीसा ऐसी हो रही है धन्यवाद रसा जी आपने ग्राम शक्ति पलेटन ट ऐसी लोन लिया था पर आपने पेमेंट नहीं किया है ड्यू अमाउंट है एक हजार छह सौ सड़सठ रूपए क्या आप इनका पेमेंट कर देंगे मैडमउटया डिस्टर्ब करने के लिए क्षमा करें लेकिन हमारे सिस्टम में ड्यू दिखा रहा है हमारे विवाद समाधान टीम कॉल करके डॉक्यूमेंट वेरीफाई करेगी कोई सवाल है जिसका मै जवाब दे सकूँ सिस्टम हने तो हमी जमा करा को भेज हमारे साथ ठीक है हमारी विवाद समाधान टीम कॉल करके एक्सप्लेन करेगी की इस इशू को कैसे रिजोल्व करना है कोई सवाल है जिसका मै जवाब दे सकूँ मैंने आपकी क्वेरी नोट कर ली है और अपने सीनियर को अपडेट कर दिया है तो आपको इसके बारे में बताने के लिए कॉल करेंगे",
+  "language": "hi",
+  "language_source": "client",
+  "lid_language": "hi",
+  "lid_language_source": "auto_default",
+  "context_biasing": {
+    "mode": "active",
+    "reason": "not_ready",
+    "requested_mode": "active",
+    "dynamic_context_attached": false,
+    "dynamic_context_used": false,
+    "fields_provided": [],
+    "phrase_count_before_pruning": 0,
+    "phrase_count_after_pruning": 0,
+    "phrase_count_total": 0,
+    "top_phrases": [],
+    "phrase_source": "static",
+    "errors": [],
+    "fallback_reason": "not_ready"
+  },
+  "metrics": {
+    "chunks": 4,
+    "audio_duration": 87.48
+  },
+  "final_chunk_count": 4,
+  "timestamp_chunk_count": 4,
+  "timestamp_text": "हेलो मै राधा बात कर रही हूँ ग्राम शक्ति पुलेटन ऐसी क्या मेरी बात रसा ऐसी हो रही है हलो नमस्ते मै राधा बात कर रही हूँ ग्राम शक्ति पुलेटन ऐसी क्या मेरी बात रहीसा ऐसी हो रही है धन्यवाद रसा जी आपने ग्राम शक्ति पलेटन ऐसी लोन लिया था पर आपने पेमेंट नहीं किया है ड्यू अमाउंट है एक हज़ार छह सौ सड़सठ रूप क्या आप इसका पेमेंट कर देंगे मैडम करने के लिए क्षमा करें लेकिन हमारे सिस्टम में डू दिखा रहा है हमारीे बात समाधान तीन कॉल करके डॉक्यूमेंट वेरीफाई करेगी कोई सवाल है जिसका मै जवाब दे सकूँ सिस्टम हने तो हमी जमा करा को भेज हमारे साथ ठीक है हमारी विवाद समाधान टीम कॉल करके एक्सप्लेन करेगी की इस इशू को कैसे रिजोल्व करना है कोई सवाल है जिसका मै जवाब दे सकूँ मैंने आपकी क्वेरी नोट कर ली है और अपने सीनियर को अपडेट कर दिया है तो आपको इसके बारे में बताने के लिए कॉल करेंगे",
+  "diarization_provider": null,
+  "diarization_error": null,
+  "rttm_path": null,
+  "speaker_turns": [],
+  "speaker_segments": [
+    {
+      "speaker": null,
+      "text": "हेलो मै राधा बात कर रही हूँ ग्राम शक्ति पुलेटन ऐसी क्या मेरी बात रसा ऐसी हो रही है हलो नमस्ते मै राधा बात कर रही हूँ ग्राम शक्ति पुलेटन ऐसी क्या मेरी बात रहीसा ऐसी हो रही है धन्यवाद रसा जी आपने ग्राम शक्ति पलेटन ऐसी लोन लिया था पर आपने पेमेंट नहीं किया है ड्यू अमाउंट है एक हज़ार छह सौ सड़सठ रूप क्या आप इसका पेमेंट कर देंगे मैडम करने के लिए क्षमा करें लेकिन हमारे सिस्टम में डू दिखा रहा है हमारीे बात समाधान तीन कॉल करके डॉक्यूमेंट वेरीफाई करेगी कोई सवाल है जिसका मै जवाब दे सकूँ सिस्टम हने तो हमी जमा करा को भेज हमारे साथ ठीक है हमारी विवाद समाधान टीम कॉल करके एक्सप्लेन करेगी की इस इशू को कैसे रिजोल्व करना है कोई सवाल है जिसका मै जवाब दे सकूँ मैंने आपकी क्वेरी नोट कर ली है और अपने सीनियर को अपडेट कर दिया है तो आपको इसके बारे में बताने के लिए कॉल करेंगे",
+      "start_sec": 1.2,
+      "end_sec": 84.04
+    }
+  ],
+  "word_timestamps": [
+    {
+      "word": "हेलो",
+      "start_sec": 1.2,
+      "end_sec": 1.6,
+      "word_index": 0
+    },
+    {
+      "word": "मै",
+      "start_sec": 1.68,
+      "end_sec": 1.84,
+      "word_index": 1
+    },
+    {
+      "word": "राधा",
+      "start_sec": 2.0,
+      "end_sec": 2.4,
+      "word_index": 2
+    },
+    {
+      "word": "बात",
+      "start_sec": 2.48,
+      "end_sec": 2.64,
+      "word_index": 3
+    },
+    {
+      "word": "कर",
+      "start_sec": 2.64,
+      "end_sec": 2.72,
+      "word_index": 4
+    },
+    {
+      "word": "रही",
+      "start_sec": 2.8,
+      "end_sec": 2.96,
+      "word_index": 5
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 3.04,
+      "end_sec": 3.28,
+      "word_index": 6
+    },
+    {
+      "word": "ग्राम",
+      "start_sec": 3.28,
+      "end_sec": 3.52,
+      "word_index": 7
+    },
+    {
+      "word": "शक्ति",
+      "start_sec": 3.68,
+      "end_sec": 4.0,
+      "word_index": 8
+    },
+    {
+      "word": "पुलेटन",
+      "start_sec": 4.08,
+      "end_sec": 4.64,
+      "word_index": 9
+    },
+    {
+      "word": "ऐसी",
+      "start_sec": 4.72,
+      "end_sec": 4.96,
+      "word_index": 10
+    },
+    {
+      "word": "क्या",
+      "start_sec": 4.96,
+      "end_sec": 5.12,
+      "word_index": 11
+    },
+    {
+      "word": "मेरी",
+      "start_sec": 5.2,
+      "end_sec": 5.44,
+      "word_index": 12
+    },
+    {
+      "word": "बात",
+      "start_sec": 5.44,
+      "end_sec": 5.68,
+      "word_index": 13
+    },
+    {
+      "word": "रसा",
+      "start_sec": 5.76,
+      "end_sec": 6.24,
+      "word_index": 14
+    },
+    {
+      "word": "ऐसी",
+      "start_sec": 6.32,
+      "end_sec": 6.56,
+      "word_index": 15
+    },
+    {
+      "word": "हो",
+      "start_sec": 6.56,
+      "end_sec": 6.64,
+      "word_index": 16
+    },
+    {
+      "word": "रही",
+      "start_sec": 6.72,
+      "end_sec": 6.88,
+      "word_index": 17
+    },
+    {
+      "word": "है",
+      "start_sec": 6.96,
+      "end_sec": 7.04,
+      "word_index": 18
+    },
+    {
+      "word": "हलो",
+      "start_sec": 7.44,
+      "end_sec": 7.92,
+      "word_index": 19
+    },
+    {
+      "word": "नमस्ते",
+      "start_sec": 12.32,
+      "end_sec": 12.8,
+      "word_index": 20
+    },
+    {
+      "word": "मै",
+      "start_sec": 12.96,
+      "end_sec": 13.12,
+      "word_index": 21
+    },
+    {
+      "word": "राधा",
+      "start_sec": 13.28,
+      "end_sec": 13.68,
+      "word_index": 22
+    },
+    {
+      "word": "बात",
+      "start_sec": 13.76,
+      "end_sec": 13.92,
+      "word_index": 23
+    },
+    {
+      "word": "कर",
+      "start_sec": 14.0,
+      "end_sec": 14.08,
+      "word_index": 24
+    },
+    {
+      "word": "रही",
+      "start_sec": 14.08,
+      "end_sec": 14.24,
+      "word_index": 25
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 14.32,
+      "end_sec": 14.56,
+      "word_index": 26
+    },
+    {
+      "word": "ग्राम",
+      "start_sec": 14.56,
+      "end_sec": 14.8,
+      "word_index": 27
+    },
+    {
+      "word": "शक्ति",
+      "start_sec": 14.88,
+      "end_sec": 15.28,
+      "word_index": 28
+    },
+    {
+      "word": "पुलेटन",
+      "start_sec": 15.36,
+      "end_sec": 15.92,
+      "word_index": 29
+    },
+    {
+      "word": "ऐसी",
+      "start_sec": 15.92,
+      "end_sec": 16.16,
+      "word_index": 30
+    },
+    {
+      "word": "क्या",
+      "start_sec": 16.24,
+      "end_sec": 16.4,
+      "word_index": 31
+    },
+    {
+      "word": "मेरी",
+      "start_sec": 16.4,
+      "end_sec": 16.64,
+      "word_index": 32
+    },
+    {
+      "word": "बात",
+      "start_sec": 16.72,
+      "end_sec": 16.88,
+      "word_index": 33
+    },
+    {
+      "word": "रहीसा",
+      "start_sec": 16.88,
+      "end_sec": 17.36,
+      "word_index": 34
+    },
+    {
+      "word": "ऐसी",
+      "start_sec": 17.44,
+      "end_sec": 17.68,
+      "word_index": 35
+    },
+    {
+      "word": "हो",
+      "start_sec": 17.68,
+      "end_sec": 17.76,
+      "word_index": 36
+    },
+    {
+      "word": "रही",
+      "start_sec": 17.84,
+      "end_sec": 18.0,
+      "word_index": 37
+    },
+    {
+      "word": "है",
+      "start_sec": 18.0,
+      "end_sec": 18.08,
+      "word_index": 38
+    },
+    {
+      "word": "धन्यवाद",
+      "start_sec": 21.76,
+      "end_sec": 22.32,
+      "word_index": 39
+    },
+    {
+      "word": "रसा",
+      "start_sec": 22.4,
+      "end_sec": 22.88,
+      "word_index": 40
+    },
+    {
+      "word": "जी",
+      "start_sec": 22.96,
+      "end_sec": 23.12,
+      "word_index": 41
+    },
+    {
+      "word": "आपने",
+      "start_sec": 23.12,
+      "end_sec": 23.44,
+      "word_index": 42
+    },
+    {
+      "word": "ग्राम",
+      "start_sec": 23.52,
+      "end_sec": 23.84,
+      "word_index": 43
+    },
+    {
+      "word": "शक्ति",
+      "start_sec": 23.92,
+      "end_sec": 24.24,
+      "word_index": 44
+    },
+    {
+      "word": "पलेटन",
+      "start_sec": 24.32,
+      "end_sec": 24.96,
+      "word_index": 45
+    },
+    {
+      "word": "ऐसी",
+      "start_sec": 25.56,
+      "end_sec": 25.8,
+      "word_index": 0
+    },
+    {
+      "word": "लोन",
+      "start_sec": 25.8,
+      "end_sec": 26.04,
+      "word_index": 1
+    },
+    {
+      "word": "लिया",
+      "start_sec": 26.04,
+      "end_sec": 26.2,
+      "word_index": 2
+    },
+    {
+      "word": "था",
+      "start_sec": 26.2,
+      "end_sec": 26.36,
+      "word_index": 3
+    },
+    {
+      "word": "पर",
+      "start_sec": 26.36,
+      "end_sec": 26.44,
+      "word_index": 4
+    },
+    {
+      "word": "आपने",
+      "start_sec": 26.52,
+      "end_sec": 26.76,
+      "word_index": 5
+    },
+    {
+      "word": "पेमेंट",
+      "start_sec": 26.84,
+      "end_sec": 27.32,
+      "word_index": 6
+    },
+    {
+      "word": "नहीं",
+      "start_sec": 27.32,
+      "end_sec": 27.4,
+      "word_index": 7
+    },
+    {
+      "word": "किया",
+      "start_sec": 27.48,
+      "end_sec": 27.56,
+      "word_index": 8
+    },
+    {
+      "word": "है",
+      "start_sec": 27.56,
+      "end_sec": 27.64,
+      "word_index": 9
+    },
+    {
+      "word": "ड्यू",
+      "start_sec": 27.72,
+      "end_sec": 27.96,
+      "word_index": 10
+    },
+    {
+      "word": "अमाउंट",
+      "start_sec": 27.96,
+      "end_sec": 28.52,
+      "word_index": 11
+    },
+    {
+      "word": "है",
+      "start_sec": 28.52,
+      "end_sec": 28.6,
+      "word_index": 12
+    },
+    {
+      "word": "एक",
+      "start_sec": 28.6,
+      "end_sec": 28.68,
+      "word_index": 13
+    },
+    {
+      "word": "हज़ार",
+      "start_sec": 28.76,
+      "end_sec": 29.08,
+      "word_index": 14
+    },
+    {
+      "word": "छह",
+      "start_sec": 29.08,
+      "end_sec": 29.24,
+      "word_index": 15
+    },
+    {
+      "word": "सौ",
+      "start_sec": 29.24,
+      "end_sec": 29.4,
+      "word_index": 16
+    },
+    {
+      "word": "सड़सठ",
+      "start_sec": 29.4,
+      "end_sec": 29.88,
+      "word_index": 17
+    },
+    {
+      "word": "रूप",
+      "start_sec": 29.96,
+      "end_sec": 30.2,
+      "word_index": 18
+    },
+    {
+      "word": "क्या",
+      "start_sec": 30.36,
+      "end_sec": 30.6,
+      "word_index": 19
+    },
+    {
+      "word": "आप",
+      "start_sec": 30.6,
+      "end_sec": 30.68,
+      "word_index": 20
+    },
+    {
+      "word": "इसका",
+      "start_sec": 30.76,
+      "end_sec": 31.08,
+      "word_index": 21
+    },
+    {
+      "word": "पेमेंट",
+      "start_sec": 31.08,
+      "end_sec": 31.64,
+      "word_index": 22
+    },
+    {
+      "word": "कर",
+      "start_sec": 31.64,
+      "end_sec": 31.72,
+      "word_index": 23
+    },
+    {
+      "word": "देंगे",
+      "start_sec": 31.8,
+      "end_sec": 32.2,
+      "word_index": 24
+    },
+    {
+      "word": "मैडम",
+      "start_sec": 32.36,
+      "end_sec": 32.76,
+      "word_index": 25
+    },
+    {
+      "word": "करने",
+      "start_sec": 37.32,
+      "end_sec": 37.4,
+      "word_index": 26
+    },
+    {
+      "word": "के",
+      "start_sec": 37.56,
+      "end_sec": 37.64,
+      "word_index": 27
+    },
+    {
+      "word": "लिए",
+      "start_sec": 37.72,
+      "end_sec": 37.8,
+      "word_index": 28
+    },
+    {
+      "word": "क्षमा",
+      "start_sec": 37.96,
+      "end_sec": 38.36,
+      "word_index": 29
+    },
+    {
+      "word": "करें",
+      "start_sec": 38.44,
+      "end_sec": 38.6,
+      "word_index": 30
+    },
+    {
+      "word": "लेकिन",
+      "start_sec": 38.76,
+      "end_sec": 39.08,
+      "word_index": 31
+    },
+    {
+      "word": "हमारे",
+      "start_sec": 39.08,
+      "end_sec": 39.4,
+      "word_index": 32
+    },
+    {
+      "word": "सिस्टम",
+      "start_sec": 39.4,
+      "end_sec": 39.8,
+      "word_index": 33
+    },
+    {
+      "word": "में",
+      "start_sec": 39.88,
+      "end_sec": 39.96,
+      "word_index": 34
+    },
+    {
+      "word": "डू",
+      "start_sec": 40.04,
+      "end_sec": 40.36,
+      "word_index": 35
+    },
+    {
+      "word": "दिखा",
+      "start_sec": 40.44,
+      "end_sec": 40.76,
+      "word_index": 36
+    },
+    {
+      "word": "रहा",
+      "start_sec": 40.76,
+      "end_sec": 40.92,
+      "word_index": 37
+    },
+    {
+      "word": "है",
+      "start_sec": 40.92,
+      "end_sec": 41.0,
+      "word_index": 38
+    },
+    {
+      "word": "हमारीे",
+      "start_sec": 41.08,
+      "end_sec": 41.48,
+      "word_index": 39
+    },
+    {
+      "word": "बात",
+      "start_sec": 41.64,
+      "end_sec": 41.88,
+      "word_index": 40
+    },
+    {
+      "word": "समाधान",
+      "start_sec": 41.96,
+      "end_sec": 42.36,
+      "word_index": 41
+    },
+    {
+      "word": "तीन",
+      "start_sec": 42.52,
+      "end_sec": 42.84,
+      "word_index": 42
+    },
+    {
+      "word": "कॉल",
+      "start_sec": 42.84,
+      "end_sec": 43.08,
+      "word_index": 43
+    },
+    {
+      "word": "करके",
+      "start_sec": 43.16,
+      "end_sec": 43.4,
+      "word_index": 44
+    },
+    {
+      "word": "डॉक्यूमेंट",
+      "start_sec": 43.48,
+      "end_sec": 44.36,
+      "word_index": 45
+    },
+    {
+      "word": "वेरीफाई",
+      "start_sec": 44.52,
+      "end_sec": 45.16,
+      "word_index": 46
+    },
+    {
+      "word": "करेगी",
+      "start_sec": 45.24,
+      "end_sec": 45.48,
+      "word_index": 47
+    },
+    {
+      "word": "कोई",
+      "start_sec": 45.64,
+      "end_sec": 45.88,
+      "word_index": 48
+    },
+    {
+      "word": "सवाल",
+      "start_sec": 45.88,
+      "end_sec": 46.12,
+      "word_index": 49
+    },
+    {
+      "word": "है",
+      "start_sec": 46.2,
+      "end_sec": 46.28,
+      "word_index": 50
+    },
+    {
+      "word": "जिसका",
+      "start_sec": 46.36,
+      "end_sec": 46.68,
+      "word_index": 51
+    },
+    {
+      "word": "मै",
+      "start_sec": 46.76,
+      "end_sec": 46.92,
+      "word_index": 52
+    },
+    {
+      "word": "जवाब",
+      "start_sec": 47.0,
+      "end_sec": 47.4,
+      "word_index": 53
+    },
+    {
+      "word": "दे",
+      "start_sec": 47.4,
+      "end_sec": 47.48,
+      "word_index": 54
+    },
+    {
+      "word": "सकूँ",
+      "start_sec": 47.64,
+      "end_sec": 48.12,
+      "word_index": 55
+    },
+    {
+      "word": "सिस्टम",
+      "start_sec": 52.0,
+      "end_sec": 52.48,
+      "word_index": 0
+    },
+    {
+      "word": "हने",
+      "start_sec": 58.4,
+      "end_sec": 58.64,
+      "word_index": 1
+    },
+    {
+      "word": "तो",
+      "start_sec": 58.64,
+      "end_sec": 58.72,
+      "word_index": 2
+    },
+    {
+      "word": "हमी",
+      "start_sec": 58.8,
+      "end_sec": 60.08,
+      "word_index": 3
+    },
+    {
+      "word": "जमा",
+      "start_sec": 60.24,
+      "end_sec": 60.48,
+      "word_index": 4
+    },
+    {
+      "word": "करा",
+      "start_sec": 60.56,
+      "end_sec": 60.72,
+      "word_index": 5
+    },
+    {
+      "word": "को",
+      "start_sec": 61.76,
+      "end_sec": 61.84,
+      "word_index": 6
+    },
+    {
+      "word": "भेज",
+      "start_sec": 61.92,
+      "end_sec": 62.24,
+      "word_index": 7
+    },
+    {
+      "word": "हमारे",
+      "start_sec": 62.56,
+      "end_sec": 62.96,
+      "word_index": 8
+    },
+    {
+      "word": "साथ",
+      "start_sec": 62.96,
+      "end_sec": 63.04,
+      "word_index": 9
+    },
+    {
+      "word": "ठीक",
+      "start_sec": 64.24,
+      "end_sec": 64.56,
+      "word_index": 10
+    },
+    {
+      "word": "है",
+      "start_sec": 64.64,
+      "end_sec": 64.72,
+      "word_index": 11
+    },
+    {
+      "word": "हमारी",
+      "start_sec": 64.8,
+      "end_sec": 65.2,
+      "word_index": 12
+    },
+    {
+      "word": "विवाद",
+      "start_sec": 65.2,
+      "end_sec": 65.6,
+      "word_index": 13
+    },
+    {
+      "word": "समाधान",
+      "start_sec": 65.68,
+      "end_sec": 66.16,
+      "word_index": 14
+    },
+    {
+      "word": "टीम",
+      "start_sec": 66.24,
+      "end_sec": 66.56,
+      "word_index": 15
+    },
+    {
+      "word": "कॉल",
+      "start_sec": 66.56,
+      "end_sec": 66.8,
+      "word_index": 16
+    },
+    {
+      "word": "करके",
+      "start_sec": 66.88,
+      "end_sec": 67.04,
+      "word_index": 17
+    },
+    {
+      "word": "एक्सप्लेन",
+      "start_sec": 67.12,
+      "end_sec": 67.84,
+      "word_index": 18
+    },
+    {
+      "word": "करेगी",
+      "start_sec": 67.84,
+      "end_sec": 68.16,
+      "word_index": 19
+    },
+    {
+      "word": "की",
+      "start_sec": 68.24,
+      "end_sec": 68.32,
+      "word_index": 20
+    },
+    {
+      "word": "इस",
+      "start_sec": 68.4,
+      "end_sec": 68.48,
+      "word_index": 21
+    },
+    {
+      "word": "इशू",
+      "start_sec": 68.56,
+      "end_sec": 68.96,
+      "word_index": 22
+    },
+    {
+      "word": "को",
+      "start_sec": 68.96,
+      "end_sec": 69.04,
+      "word_index": 23
+    },
+    {
+      "word": "कैसे",
+      "start_sec": 69.12,
+      "end_sec": 69.36,
+      "word_index": 24
+    },
+    {
+      "word": "रिजोल्व",
+      "start_sec": 69.44,
+      "end_sec": 70.08,
+      "word_index": 25
+    },
+    {
+      "word": "करना",
+      "start_sec": 70.16,
+      "end_sec": 70.32,
+      "word_index": 26
+    },
+    {
+      "word": "है",
+      "start_sec": 70.32,
+      "end_sec": 70.4,
+      "word_index": 27
+    },
+    {
+      "word": "कोई",
+      "start_sec": 70.48,
+      "end_sec": 70.64,
+      "word_index": 28
+    },
+    {
+      "word": "सवाल",
+      "start_sec": 70.72,
+      "end_sec": 70.96,
+      "word_index": 29
+    },
+    {
+      "word": "है",
+      "start_sec": 70.96,
+      "end_sec": 71.04,
+      "word_index": 30
+    },
+    {
+      "word": "जिसका",
+      "start_sec": 71.12,
+      "end_sec": 71.36,
+      "word_index": 31
+    },
+    {
+      "word": "मै",
+      "start_sec": 71.44,
+      "end_sec": 71.6,
+      "word_index": 32
+    },
+    {
+      "word": "जवाब",
+      "start_sec": 71.68,
+      "end_sec": 72.0,
+      "word_index": 33
+    },
+    {
+      "word": "दे",
+      "start_sec": 72.0,
+      "end_sec": 72.08,
+      "word_index": 34
+    },
+    {
+      "word": "सकूँ",
+      "start_sec": 72.16,
+      "end_sec": 72.56,
+      "word_index": 35
+    },
+    {
+      "word": "मैंने",
+      "start_sec": 77.0,
+      "end_sec": 77.4,
+      "word_index": 0
+    },
+    {
+      "word": "आपकी",
+      "start_sec": 77.4,
+      "end_sec": 77.72,
+      "word_index": 1
+    },
+    {
+      "word": "क्वेरी",
+      "start_sec": 77.8,
+      "end_sec": 78.28,
+      "word_index": 2
+    },
+    {
+      "word": "नोट",
+      "start_sec": 78.36,
+      "end_sec": 78.68,
+      "word_index": 3
+    },
+    {
+      "word": "कर",
+      "start_sec": 78.68,
+      "end_sec": 78.76,
+      "word_index": 4
+    },
+    {
+      "word": "ली",
+      "start_sec": 78.84,
+      "end_sec": 79.0,
+      "word_index": 5
+    },
+    {
+      "word": "है",
+      "start_sec": 79.0,
+      "end_sec": 79.08,
+      "word_index": 6
+    },
+    {
+      "word": "और",
+      "start_sec": 79.16,
+      "end_sec": 79.24,
+      "word_index": 7
+    },
+    {
+      "word": "अपने",
+      "start_sec": 79.32,
+      "end_sec": 79.56,
+      "word_index": 8
+    },
+    {
+      "word": "सीनियर",
+      "start_sec": 79.56,
+      "end_sec": 80.04,
+      "word_index": 9
+    },
+    {
+      "word": "को",
+      "start_sec": 80.04,
+      "end_sec": 80.12,
+      "word_index": 10
+    },
+    {
+      "word": "अपडेट",
+      "start_sec": 80.2,
+      "end_sec": 80.68,
+      "word_index": 11
+    },
+    {
+      "word": "कर",
+      "start_sec": 80.76,
+      "end_sec": 80.84,
+      "word_index": 12
+    },
+    {
+      "word": "दिया",
+      "start_sec": 80.92,
+      "end_sec": 81.0,
+      "word_index": 13
+    },
+    {
+      "word": "है",
+      "start_sec": 81.08,
+      "end_sec": 81.16,
+      "word_index": 14
+    },
+    {
+      "word": "तो",
+      "start_sec": 81.24,
+      "end_sec": 81.32,
+      "word_index": 15
+    },
+    {
+      "word": "आपको",
+      "start_sec": 81.4,
+      "end_sec": 81.72,
+      "word_index": 16
+    },
+    {
+      "word": "इसके",
+      "start_sec": 81.72,
+      "end_sec": 82.04,
+      "word_index": 17
+    },
+    {
+      "word": "बारे",
+      "start_sec": 82.04,
+      "end_sec": 82.28,
+      "word_index": 18
+    },
+    {
+      "word": "में",
+      "start_sec": 82.36,
+      "end_sec": 82.44,
+      "word_index": 19
+    },
+    {
+      "word": "बताने",
+      "start_sec": 82.52,
+      "end_sec": 82.84,
+      "word_index": 20
+    },
+    {
+      "word": "के",
+      "start_sec": 82.84,
+      "end_sec": 82.92,
+      "word_index": 21
+    },
+    {
+      "word": "लिए",
+      "start_sec": 83.0,
+      "end_sec": 83.16,
+      "word_index": 22
+    },
+    {
+      "word": "कॉल",
+      "start_sec": 83.32,
+      "end_sec": 83.56,
+      "word_index": 23
+    },
+    {
+      "word": "करेंगे",
+      "start_sec": 83.64,
+      "end_sec": 84.04,
+      "word_index": 24
+    }
+  ],
+  "timing_ms": {
+    "load_audio": 11,
+    "lid_probe": 152,
+    "final_transcribe": 851,
+    "timestamp_pass": 773,
+    "diarization": 0,
+    "file_total": 1802
+  }
+}

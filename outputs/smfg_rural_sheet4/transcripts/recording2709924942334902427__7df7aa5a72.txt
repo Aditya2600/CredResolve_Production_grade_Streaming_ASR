@@ -1,0 +1,10 @@
+file: recording2709924942334902427__7df7aa5a72.mp3
+language: hi (fallback_timeout)
+lid_probe: hi (fallback_timeout)
+context_biasing: null
+
+transcript:
+worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback
+
+diarized:
+speaker_unknown: worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback

@@ -1,0 +1,14 @@
+file: recording5898079471024368327.mp3
+language: hi (client)
+lid_probe: hi (auto_default)
+context_biasing: {"mode": "active", "reason": "not_ready", "requested_mode": "active", "dynamic_context_attached": false, "dynamic_context_used": false, "fields_provided": [], "phrase_count_before_pruning": 0, "phrase_count_after_pruning": 0, "phrase_count_total": 0, "top_phrases": [], "phrase_source": "static", "errors": [], "fallback_reason": "not_ready"}
+
+transcript:
+म बात करती हूँ ग्राम शक्ति पलेटन ऐ क्या मेरी बात मुमताज से हो रही है
+
+diarized:
+speaker_unknown: म
+speaker_0: बात करती
+speaker_unknown: हूँ
+speaker_0: ग्राम शक्ति पलेटन ऐ क्या मेरी बात मुमताज
+speaker_unknown: से हो रही है

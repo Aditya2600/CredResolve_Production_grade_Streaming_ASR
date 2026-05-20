@@ -82,3 +82,4 @@ query_result_*.csv
 
 # Downloaded cache; rebuild or transfer separately if the new server is offline.
 worker/hub/
+Miniconda3-latest-Linux-x86_64.sh

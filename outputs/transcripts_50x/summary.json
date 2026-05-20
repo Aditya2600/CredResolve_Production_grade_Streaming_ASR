@@ -1,0 +1,31 @@
+{
+  "input_dir": "/workspace/recordings",
+  "output_dir": "/workspace/outputs/transcripts_50x",
+  "worker_url": "http://127.0.0.1:9000/v1/transcribe",
+  "concurrency": 10,
+  "files": 10,
+  "generated_at_epoch": 1779284784,
+  "runtime_sec": 59.217,
+  "stage_totals_sec": {
+    "load_audio": 0.094,
+    "lid_probe": 4.188,
+    "final_transcribe": 7.341,
+    "timestamp_pass": 4.622,
+    "diarization": 482.822,
+    "file_total": 499.167
+  },
+  "stage_avg_sec_per_file": {
+    "load_audio": 0.009,
+    "lid_probe": 0.419,
+    "final_transcribe": 0.734,
+    "timestamp_pass": 0.462,
+    "diarization": 48.282,
+    "file_total": 49.917
+  },
+  "outputs": {
+    "jsonl": "/workspace/outputs/transcripts_50x/transcripts.jsonl",
+    "csv": "/workspace/outputs/transcripts_50x/summary.csv",
+    "transcripts_dir": "/workspace/outputs/transcripts_50x/transcripts",
+    "normalized_audio_dir": "/workspace/outputs/transcripts_50x/normalized_audio"
+  }
+}

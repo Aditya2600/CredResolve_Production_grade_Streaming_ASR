@@ -1,0 +1,40 @@
+{
+  "file": "recording10218450491113060136__9d97ad8112.mp3",
+  "source_audio_path": "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/outputs/smfg_rural_sheet4/downloaded_audio/recording10218450491113060136__9d97ad8112.mp3",
+  "normalized_audio_path": "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/outputs/smfg_rural_sheet4/normalized_audio/recording10218450491113060136__9d97ad8112_mono16000.wav",
+  "duration_sec": 143.136,
+  "text": "worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback",
+  "language": "hi",
+  "language_source": "fallback_timeout",
+  "lid_language": "hi",
+  "lid_language_source": "fallback_timeout",
+  "context_biasing": null,
+  "metrics": {
+    "chunks": 6,
+    "audio_duration": 143.136
+  },
+  "final_chunk_count": 6,
+  "timestamp_chunk_count": 6,
+  "timestamp_text": "worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback",
+  "diarization_provider": null,
+  "diarization_error": "diarization_failed:Offline diarization requires nemo_toolkit[asr], torch, and omegaconf.",
+  "rttm_path": null,
+  "speaker_turns": [],
+  "speaker_segments": [
+    {
+      "speaker": null,
+      "text": "worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback",
+      "start_sec": null,
+      "end_sec": null
+    }
+  ],
+  "word_timestamps": [],
+  "timing_ms": {
+    "load_audio": 20,
+    "lid_probe": 24143,
+    "final_transcribe": 145445,
+    "timestamp_pass": 145390,
+    "diarization": 0,
+    "file_total": 315019
+  }
+}

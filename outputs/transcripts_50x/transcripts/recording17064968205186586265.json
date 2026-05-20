@@ -1,0 +1,1088 @@
+{
+  "file": "recording17064968205186586265.mp3",
+  "source_audio_path": "/workspace/recordings/recording17064968205186586265.mp3",
+  "normalized_audio_path": "/workspace/outputs/transcripts_50x/normalized_audio/recording17064968205186586265_mono16000.wav",
+  "duration_sec": 75.528,
+  "text": "हेलो मै बात कर रही हूँ ग्राम शक्ति पलेटन ऐसी क्या मेरी बात नबर है रंग नबर रंग नबर मैं आपको पीन नंबर के बारे में जानकारी प्राप्त करके बताती हूँै डस्ट्रिक में मई मैं आपके जिले के बारे में जानकारी प्राप्त करके बताती हूँ मैड मैं ग्राम पुलेटन ऐसी बात कर रही हूँ क्या मेरी बातन ऐसी हो रही है मैडम हो हलो मै आप आपको इस विषय में जानकारी प्राप्त करके बताती हूँ मु है मैं आपको जिले के बारे में जानकारी नहीं दे सकती हम यहाँ आपके लोन के पेमेंट के बारे में बात कर रहे हैंल मैं तुमसे बात कर रही हूँ क्या मेरी बात तबस्सुम सेसी हो रही है",
+  "language": "hi",
+  "language_source": "client",
+  "lid_language": "hi",
+  "lid_language_source": "auto_default",
+  "context_biasing": {
+    "mode": "active",
+    "reason": "not_ready",
+    "requested_mode": "active",
+    "dynamic_context_attached": false,
+    "dynamic_context_used": false,
+    "fields_provided": [],
+    "phrase_count_before_pruning": 0,
+    "phrase_count_after_pruning": 0,
+    "phrase_count_total": 0,
+    "top_phrases": [],
+    "phrase_source": "static",
+    "errors": [],
+    "fallback_reason": "not_ready"
+  },
+  "metrics": {
+    "chunks": 4,
+    "audio_duration": 75.528
+  },
+  "final_chunk_count": 4,
+  "timestamp_chunk_count": 4,
+  "timestamp_text": "हेलो मै बात कर रही हूँ ग्राम स पटन ऐसी क्या मेरी बातब मै आपको पेन नंबर के बारे में जानकारी प्राप्त करके बताती हूँ मई मैं आपके जिले के बारे में जानकारी प्राप्त करके बताती हूँ मैड मैं ग्राम पुलेटन ऐसी बात कर रही हूँ क्या मेरी बात ऐसी हो रही है मैड कलो मै आप आपको इस विषय में जानकारी प्राप्त करके बताती हूँ मु है मैं आपको जिले के बारे में जानकारी नहीं दे सकती हम यहाँ आपके लोन के पेमेंट के बारे में बात कर रहे हैंल मैं तुमसे बात कर रही हूँ क्या मेरी बात तबस्सुम सेसी हो रही है",
+  "diarization_provider": "nemo_clustering",
+  "diarization_error": null,
+  "rttm_path": "/workspace/outputs/transcripts_50x/rttm/recording17064968205186586265_mono16000.rttm",
+  "speaker_turns": [
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 0.94,
+      "end_sec": 1.3699999999999999,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 1.74,
+      "end_sec": 2.57,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 2.86,
+      "end_sec": 5.484999999999999,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 5.485,
+      "end_sec": 6.33,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 7.34,
+      "end_sec": 8.01,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 10.94,
+      "end_sec": 11.565,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 11.565,
+      "end_sec": 14.565,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 14.565,
+      "end_sec": 16.09,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 16.3,
+      "end_sec": 17.77,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 19.98,
+      "end_sec": 20.855,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 20.855,
+      "end_sec": 21.45,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 21.74,
+      "end_sec": 23.615,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 23.615,
+      "end_sec": 25.13,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 28.46,
+      "end_sec": 32.410000000000004,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 33.34,
+      "end_sec": 34.330000000000005,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 35.5,
+      "end_sec": 36.49,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 38.14,
+      "end_sec": 38.81,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 39.66,
+      "end_sec": 42.489999999999995,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 42.94,
+      "end_sec": 44.169999999999995,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 47.82,
+      "end_sec": 48.49,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 48.94,
+      "end_sec": 49.21,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 49.9,
+      "end_sec": 50.57,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 50.94,
+      "end_sec": 55.769999999999996,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 59.02,
+      "end_sec": 59.61000000000001,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_1",
+      "start_sec": 62.86,
+      "end_sec": 66.57,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_1",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 68.78,
+      "end_sec": 70.57000000000001,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 73.18,
+      "end_sec": 73.45,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 74.7,
+      "end_sec": 75.37,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    }
+  ],
+  "speaker_segments": [
+    {
+      "speaker": "speaker_0",
+      "text": "हेलो",
+      "start_sec": 1.12,
+      "end_sec": 1.52
+    },
+    {
+      "speaker": null,
+      "text": "मै",
+      "start_sec": 1.6,
+      "end_sec": 1.76
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "बात कर रही",
+      "start_sec": 1.84,
+      "end_sec": 2.4
+    },
+    {
+      "speaker": null,
+      "text": "हूँ ग्राम",
+      "start_sec": 2.48,
+      "end_sec": 2.96
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "स पटन ऐसी क्या मेरी",
+      "start_sec": 3.12,
+      "end_sec": 5.04
+    },
+    {
+      "speaker": null,
+      "text": "बातब",
+      "start_sec": 5.04,
+      "end_sec": 8.0
+    },
+    {
+      "speaker": "speaker_0",
+      "text": "मै आपको",
+      "start_sec": 10.96,
+      "end_sec": 11.6
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "पेन नंबर के बारे में जानकारी प्राप्त करके बताती हूँ",
+      "start_sec": 11.6,
+      "end_sec": 14.64
+    },
+    {
+      "speaker": "speaker_0",
+      "text": "मई",
+      "start_sec": 20.0,
+      "end_sec": 20.16
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "मैं आपके",
+      "start_sec": 21.04,
+      "end_sec": 21.52
+    },
+    {
+      "speaker": null,
+      "text": "जिले",
+      "start_sec": 21.52,
+      "end_sec": 21.84
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "के बारे में जानकारी प्राप्त करके बताती",
+      "start_sec": 21.84,
+      "end_sec": 23.76
+    },
+    {
+      "speaker": "speaker_0",
+      "text": "हूँ",
+      "start_sec": 23.76,
+      "end_sec": 24.0
+    },
+    {
+      "speaker": null,
+      "text": "मैड मैं ग्राम",
+      "start_sec": 25.12,
+      "end_sec": 28.4
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "पुलेटन ऐसी बात कर रही हूँ क्या मेरी बात ऐसी",
+      "start_sec": 29.12,
+      "end_sec": 32.4
+    },
+    {
+      "speaker": null,
+      "text": "हो रही है मैड कलो मै आप",
+      "start_sec": 32.4,
+      "end_sec": 39.6
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "आपको इस विषय में जानकारी प्राप्त करके",
+      "start_sec": 40.24,
+      "end_sec": 42.32
+    },
+    {
+      "speaker": null,
+      "text": "बताती हूँ",
+      "start_sec": 42.4,
+      "end_sec": 43.04
+    },
+    {
+      "speaker": "speaker_0",
+      "text": "मु",
+      "start_sec": 48.4,
+      "end_sec": 48.48
+    },
+    {
+      "speaker": null,
+      "text": "है",
+      "start_sec": 49.36,
+      "end_sec": 49.44
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "मैं आपको",
+      "start_sec": 49.84,
+      "end_sec": 50.4
+    },
+    {
+      "speaker": null,
+      "text": "जिले के",
+      "start_sec": 50.48,
+      "end_sec": 50.96
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "बारे में जानकारी नहीं दे सकती हम यहाँ आपके लोन के पेमेंट के बारे में बात कर",
+      "start_sec": 50.96,
+      "end_sec": 55.68
+    },
+    {
+      "speaker": null,
+      "text": "रहे हैंल",
+      "start_sec": 55.76,
+      "end_sec": 59.28
+    },
+    {
+      "speaker": "speaker_1",
+      "text": "मैं तुमसे बात कर रही हूँ क्या मेरी बात तबस्सुम",
+      "start_sec": 62.96,
+      "end_sec": 66.32
+    },
+    {
+      "speaker": null,
+      "text": "सेसी हो रही है",
+      "start_sec": 66.48,
+      "end_sec": 67.2
+    }
+  ],
+  "word_timestamps": [
+    {
+      "word": "हेलो",
+      "start_sec": 1.12,
+      "end_sec": 1.52,
+      "word_index": 0
+    },
+    {
+      "word": "मै",
+      "start_sec": 1.6,
+      "end_sec": 1.76,
+      "word_index": 1
+    },
+    {
+      "word": "बात",
+      "start_sec": 1.84,
+      "end_sec": 2.08,
+      "word_index": 2
+    },
+    {
+      "word": "कर",
+      "start_sec": 2.08,
+      "end_sec": 2.16,
+      "word_index": 3
+    },
+    {
+      "word": "रही",
+      "start_sec": 2.24,
+      "end_sec": 2.4,
+      "word_index": 4
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 2.48,
+      "end_sec": 2.72,
+      "word_index": 5
+    },
+    {
+      "word": "ग्राम",
+      "start_sec": 2.72,
+      "end_sec": 2.96,
+      "word_index": 6
+    },
+    {
+      "word": "स",
+      "start_sec": 3.12,
+      "end_sec": 3.2,
+      "word_index": 7
+    },
+    {
+      "word": "पटन",
+      "start_sec": 3.68,
+      "end_sec": 4.24,
+      "word_index": 8
+    },
+    {
+      "word": "ऐसी",
+      "start_sec": 4.32,
+      "end_sec": 4.56,
+      "word_index": 9
+    },
+    {
+      "word": "क्या",
+      "start_sec": 4.56,
+      "end_sec": 4.72,
+      "word_index": 10
+    },
+    {
+      "word": "मेरी",
+      "start_sec": 4.8,
+      "end_sec": 5.04,
+      "word_index": 11
+    },
+    {
+      "word": "बातब",
+      "start_sec": 5.04,
+      "end_sec": 8.0,
+      "word_index": 12
+    },
+    {
+      "word": "मै",
+      "start_sec": 10.96,
+      "end_sec": 11.12,
+      "word_index": 13
+    },
+    {
+      "word": "आपको",
+      "start_sec": 11.2,
+      "end_sec": 11.6,
+      "word_index": 14
+    },
+    {
+      "word": "पेन",
+      "start_sec": 11.6,
+      "end_sec": 12.0,
+      "word_index": 15
+    },
+    {
+      "word": "नंबर",
+      "start_sec": 12.0,
+      "end_sec": 12.4,
+      "word_index": 16
+    },
+    {
+      "word": "के",
+      "start_sec": 12.4,
+      "end_sec": 12.48,
+      "word_index": 17
+    },
+    {
+      "word": "बारे",
+      "start_sec": 12.56,
+      "end_sec": 12.8,
+      "word_index": 18
+    },
+    {
+      "word": "में",
+      "start_sec": 12.8,
+      "end_sec": 12.88,
+      "word_index": 19
+    },
+    {
+      "word": "जानकारी",
+      "start_sec": 12.96,
+      "end_sec": 13.36,
+      "word_index": 20
+    },
+    {
+      "word": "प्राप्त",
+      "start_sec": 13.36,
+      "end_sec": 13.76,
+      "word_index": 21
+    },
+    {
+      "word": "करके",
+      "start_sec": 13.76,
+      "end_sec": 14.0,
+      "word_index": 22
+    },
+    {
+      "word": "बताती",
+      "start_sec": 14.08,
+      "end_sec": 14.4,
+      "word_index": 23
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 14.4,
+      "end_sec": 14.64,
+      "word_index": 24
+    },
+    {
+      "word": "मई",
+      "start_sec": 20.0,
+      "end_sec": 20.16,
+      "word_index": 0
+    },
+    {
+      "word": "मैं",
+      "start_sec": 21.04,
+      "end_sec": 21.28,
+      "word_index": 1
+    },
+    {
+      "word": "आपके",
+      "start_sec": 21.28,
+      "end_sec": 21.52,
+      "word_index": 2
+    },
+    {
+      "word": "जिले",
+      "start_sec": 21.52,
+      "end_sec": 21.84,
+      "word_index": 3
+    },
+    {
+      "word": "के",
+      "start_sec": 21.84,
+      "end_sec": 21.92,
+      "word_index": 4
+    },
+    {
+      "word": "बारे",
+      "start_sec": 22.0,
+      "end_sec": 22.24,
+      "word_index": 5
+    },
+    {
+      "word": "में",
+      "start_sec": 22.24,
+      "end_sec": 22.32,
+      "word_index": 6
+    },
+    {
+      "word": "जानकारी",
+      "start_sec": 22.4,
+      "end_sec": 22.72,
+      "word_index": 7
+    },
+    {
+      "word": "प्राप्त",
+      "start_sec": 22.72,
+      "end_sec": 23.12,
+      "word_index": 8
+    },
+    {
+      "word": "करके",
+      "start_sec": 23.12,
+      "end_sec": 23.36,
+      "word_index": 9
+    },
+    {
+      "word": "बताती",
+      "start_sec": 23.44,
+      "end_sec": 23.76,
+      "word_index": 10
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 23.76,
+      "end_sec": 24.0,
+      "word_index": 11
+    },
+    {
+      "word": "मैड",
+      "start_sec": 25.12,
+      "end_sec": 25.36,
+      "word_index": 12
+    },
+    {
+      "word": "मैं",
+      "start_sec": 27.76,
+      "end_sec": 28.0,
+      "word_index": 13
+    },
+    {
+      "word": "ग्राम",
+      "start_sec": 28.08,
+      "end_sec": 28.4,
+      "word_index": 14
+    },
+    {
+      "word": "पुलेटन",
+      "start_sec": 29.12,
+      "end_sec": 29.68,
+      "word_index": 15
+    },
+    {
+      "word": "ऐसी",
+      "start_sec": 29.68,
+      "end_sec": 29.92,
+      "word_index": 16
+    },
+    {
+      "word": "बात",
+      "start_sec": 29.92,
+      "end_sec": 30.08,
+      "word_index": 17
+    },
+    {
+      "word": "कर",
+      "start_sec": 30.08,
+      "end_sec": 30.16,
+      "word_index": 18
+    },
+    {
+      "word": "रही",
+      "start_sec": 30.16,
+      "end_sec": 30.32,
+      "word_index": 19
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 30.32,
+      "end_sec": 30.64,
+      "word_index": 20
+    },
+    {
+      "word": "क्या",
+      "start_sec": 30.64,
+      "end_sec": 30.8,
+      "word_index": 21
+    },
+    {
+      "word": "मेरी",
+      "start_sec": 30.8,
+      "end_sec": 31.04,
+      "word_index": 22
+    },
+    {
+      "word": "बात",
+      "start_sec": 31.04,
+      "end_sec": 31.2,
+      "word_index": 23
+    },
+    {
+      "word": "ऐसी",
+      "start_sec": 32.16,
+      "end_sec": 32.4,
+      "word_index": 24
+    },
+    {
+      "word": "हो",
+      "start_sec": 32.4,
+      "end_sec": 32.48,
+      "word_index": 25
+    },
+    {
+      "word": "रही",
+      "start_sec": 32.56,
+      "end_sec": 32.72,
+      "word_index": 26
+    },
+    {
+      "word": "है",
+      "start_sec": 32.72,
+      "end_sec": 32.8,
+      "word_index": 27
+    },
+    {
+      "word": "मैड",
+      "start_sec": 34.4,
+      "end_sec": 34.64,
+      "word_index": 28
+    },
+    {
+      "word": "कलो",
+      "start_sec": 35.92,
+      "end_sec": 38.48,
+      "word_index": 29
+    },
+    {
+      "word": "मै",
+      "start_sec": 39.12,
+      "end_sec": 39.28,
+      "word_index": 30
+    },
+    {
+      "word": "आप",
+      "start_sec": 39.52,
+      "end_sec": 39.6,
+      "word_index": 31
+    },
+    {
+      "word": "आपको",
+      "start_sec": 40.24,
+      "end_sec": 40.56,
+      "word_index": 0
+    },
+    {
+      "word": "इस",
+      "start_sec": 40.56,
+      "end_sec": 40.64,
+      "word_index": 1
+    },
+    {
+      "word": "विषय",
+      "start_sec": 40.72,
+      "end_sec": 41.04,
+      "word_index": 2
+    },
+    {
+      "word": "में",
+      "start_sec": 41.04,
+      "end_sec": 41.12,
+      "word_index": 3
+    },
+    {
+      "word": "जानकारी",
+      "start_sec": 41.28,
+      "end_sec": 41.68,
+      "word_index": 4
+    },
+    {
+      "word": "प्राप्त",
+      "start_sec": 41.68,
+      "end_sec": 42.08,
+      "word_index": 5
+    },
+    {
+      "word": "करके",
+      "start_sec": 42.08,
+      "end_sec": 42.32,
+      "word_index": 6
+    },
+    {
+      "word": "बताती",
+      "start_sec": 42.4,
+      "end_sec": 42.72,
+      "word_index": 7
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 42.8,
+      "end_sec": 43.04,
+      "word_index": 8
+    },
+    {
+      "word": "मु",
+      "start_sec": 48.4,
+      "end_sec": 48.48,
+      "word_index": 9
+    },
+    {
+      "word": "है",
+      "start_sec": 49.36,
+      "end_sec": 49.44,
+      "word_index": 10
+    },
+    {
+      "word": "मैं",
+      "start_sec": 49.84,
+      "end_sec": 50.08,
+      "word_index": 11
+    },
+    {
+      "word": "आपको",
+      "start_sec": 50.08,
+      "end_sec": 50.4,
+      "word_index": 12
+    },
+    {
+      "word": "जिले",
+      "start_sec": 50.48,
+      "end_sec": 50.8,
+      "word_index": 13
+    },
+    {
+      "word": "के",
+      "start_sec": 50.88,
+      "end_sec": 50.96,
+      "word_index": 14
+    },
+    {
+      "word": "बारे",
+      "start_sec": 50.96,
+      "end_sec": 51.2,
+      "word_index": 15
+    },
+    {
+      "word": "में",
+      "start_sec": 51.2,
+      "end_sec": 51.28,
+      "word_index": 16
+    },
+    {
+      "word": "जानकारी",
+      "start_sec": 51.44,
+      "end_sec": 51.76,
+      "word_index": 17
+    },
+    {
+      "word": "नहीं",
+      "start_sec": 51.84,
+      "end_sec": 51.92,
+      "word_index": 18
+    },
+    {
+      "word": "दे",
+      "start_sec": 52.0,
+      "end_sec": 52.08,
+      "word_index": 19
+    },
+    {
+      "word": "सकती",
+      "start_sec": 52.16,
+      "end_sec": 52.48,
+      "word_index": 20
+    },
+    {
+      "word": "हम",
+      "start_sec": 52.64,
+      "end_sec": 52.8,
+      "word_index": 21
+    },
+    {
+      "word": "यहाँ",
+      "start_sec": 52.8,
+      "end_sec": 53.12,
+      "word_index": 22
+    },
+    {
+      "word": "आपके",
+      "start_sec": 53.12,
+      "end_sec": 53.44,
+      "word_index": 23
+    },
+    {
+      "word": "लोन",
+      "start_sec": 53.52,
+      "end_sec": 53.76,
+      "word_index": 24
+    },
+    {
+      "word": "के",
+      "start_sec": 53.84,
+      "end_sec": 53.92,
+      "word_index": 25
+    },
+    {
+      "word": "पेमेंट",
+      "start_sec": 54.0,
+      "end_sec": 54.56,
+      "word_index": 26
+    },
+    {
+      "word": "के",
+      "start_sec": 54.64,
+      "end_sec": 54.72,
+      "word_index": 27
+    },
+    {
+      "word": "बारे",
+      "start_sec": 54.8,
+      "end_sec": 55.12,
+      "word_index": 28
+    },
+    {
+      "word": "में",
+      "start_sec": 55.12,
+      "end_sec": 55.2,
+      "word_index": 29
+    },
+    {
+      "word": "बात",
+      "start_sec": 55.36,
+      "end_sec": 55.6,
+      "word_index": 30
+    },
+    {
+      "word": "कर",
+      "start_sec": 55.6,
+      "end_sec": 55.68,
+      "word_index": 31
+    },
+    {
+      "word": "रहे",
+      "start_sec": 55.76,
+      "end_sec": 55.92,
+      "word_index": 32
+    },
+    {
+      "word": "हैंल",
+      "start_sec": 56.0,
+      "end_sec": 59.28,
+      "word_index": 33
+    },
+    {
+      "word": "मैं",
+      "start_sec": 62.96,
+      "end_sec": 63.2,
+      "word_index": 0
+    },
+    {
+      "word": "तुमसे",
+      "start_sec": 63.36,
+      "end_sec": 63.84,
+      "word_index": 1
+    },
+    {
+      "word": "बात",
+      "start_sec": 64.0,
+      "end_sec": 64.16,
+      "word_index": 2
+    },
+    {
+      "word": "कर",
+      "start_sec": 64.24,
+      "end_sec": 64.32,
+      "word_index": 3
+    },
+    {
+      "word": "रही",
+      "start_sec": 64.32,
+      "end_sec": 64.48,
+      "word_index": 4
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 64.56,
+      "end_sec": 64.8,
+      "word_index": 5
+    },
+    {
+      "word": "क्या",
+      "start_sec": 64.8,
+      "end_sec": 64.96,
+      "word_index": 6
+    },
+    {
+      "word": "मेरी",
+      "start_sec": 65.04,
+      "end_sec": 65.36,
+      "word_index": 7
+    },
+    {
+      "word": "बात",
+      "start_sec": 65.36,
+      "end_sec": 65.52,
+      "word_index": 8
+    },
+    {
+      "word": "तबस्सुम",
+      "start_sec": 65.6,
+      "end_sec": 66.32,
+      "word_index": 9
+    },
+    {
+      "word": "सेसी",
+      "start_sec": 66.48,
+      "end_sec": 66.72,
+      "word_index": 10
+    },
+    {
+      "word": "हो",
+      "start_sec": 66.72,
+      "end_sec": 66.8,
+      "word_index": 11
+    },
+    {
+      "word": "रही",
+      "start_sec": 66.88,
+      "end_sec": 67.04,
+      "word_index": 12
+    },
+    {
+      "word": "है",
+      "start_sec": 67.12,
+      "end_sec": 67.2,
+      "word_index": 13
+    }
+  ],
+  "timing_ms": {
+    "load_audio": 18,
+    "lid_probe": 466,
+    "final_transcribe": 1471,
+    "timestamp_pass": 636,
+    "diarization": 56572,
+    "file_total": 59178
+  }
+}

@@ -75,6 +75,9 @@ services:
       context: .
       dockerfile: worker/Dockerfile
     restart: unless-stopped
+    shm_size: 2gb
+    volumes:
+      - .:/workspace
     environment:
       - ASR_MODEL_NAME=${ASR_MODEL_NAME}
       - ASR_DECODER=${ASR_DECODER}

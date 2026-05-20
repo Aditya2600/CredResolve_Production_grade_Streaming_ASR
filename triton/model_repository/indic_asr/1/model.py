@@ -78,6 +78,17 @@ class _StageTimer:
             return f"timing report failed: {exc}"
 
 
+def _emit_timing_log(msg: str) -> None:
+    """Emit timing lines through Triton-native logging, falling back to stdout."""
+    try:
+        pb_utils.Logger.log_info(msg)
+        return
+    except Exception:
+        pass
+
+    print(msg, flush=True)
+
+
 def _decode_string_tensor(tensor, default: str = "") -> str:
     if tensor is None:
         return default
@@ -206,13 +217,13 @@ class TritonPythonModel:
                 if timer is not None:
                     try:
                         audio_len_sec = float(wav_t.shape[-1]) / float(self._sample_rate_hz)
-                        LOG.info(
+                        _emit_timing_log(
                             timer.report(
                                 audio_len_sec=audio_len_sec,
                                 num_frames=int(timer.num_frames),
                                 num_tokens=int(timer.num_tokens),
                                 lang=language,
-                            )
+                            ),
                         )
                     except Exception as exc:
                         LOG.warning("timing instrumentation failed to log: %s", exc)

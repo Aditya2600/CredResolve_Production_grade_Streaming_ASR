@@ -1,0 +1,917 @@
+{
+  "batch_index": 6,
+  "job_id": "20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819",
+  "files": [
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/10/7/recording6771673085648018481.mp3",
+      "source_name": "recording6771673085648018481__c30271fd7d.mp3",
+      "row_indices": [
+        142
+      ],
+      "job_ids": [
+        "tOJ4QiAjQMHUz19XbrjkPw"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording6771673085648018481__c30271fd7d.mp3",
+      "sarvam_name": "000100_recording6771673085648018481__c30271fd7d.mp3",
+      "result_name": "000100_recording6771673085648018481__c30271fd7d.json",
+      "sarvam_output_name": "0.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000100_recording6771673085648018481__c30271fd7d.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/20/recording3135115055639821849.mp3",
+      "source_name": "recording3135115055639821849__59b280a4b0.mp3",
+      "row_indices": [
+        144
+      ],
+      "job_ids": [
+        "lAgM3KWuGABwGG78JkX1Ug"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording3135115055639821849__59b280a4b0.mp3",
+      "sarvam_name": "000101_recording3135115055639821849__59b280a4b0.mp3",
+      "result_name": "000101_recording3135115055639821849__59b280a4b0.json",
+      "sarvam_output_name": "1.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000101_recording3135115055639821849__59b280a4b0.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/25/recording8035383945603531352.mp3",
+      "source_name": "recording8035383945603531352__0c033416b2.mp3",
+      "row_indices": [
+        145
+      ],
+      "job_ids": [
+        "n3bnB3egR9C13jCS0y4AYg"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording8035383945603531352__0c033416b2.mp3",
+      "sarvam_name": "000102_recording8035383945603531352__0c033416b2.mp3",
+      "result_name": "000102_recording8035383945603531352__0c033416b2.json",
+      "sarvam_output_name": "2.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000102_recording8035383945603531352__0c033416b2.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/23/recording1706257545348559357.mp3",
+      "source_name": "recording1706257545348559357__3b1cfa12ed.mp3",
+      "row_indices": [
+        147
+      ],
+      "job_ids": [
+        "HW1jXBAmPBZZH4EkLjS4oQ"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording1706257545348559357__3b1cfa12ed.mp3",
+      "sarvam_name": "000103_recording1706257545348559357__3b1cfa12ed.mp3",
+      "result_name": "000103_recording1706257545348559357__3b1cfa12ed.json",
+      "sarvam_output_name": "3.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000103_recording1706257545348559357__3b1cfa12ed.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/20/recording5124954731956247895.mp3",
+      "source_name": "recording5124954731956247895__9a717ecf10.mp3",
+      "row_indices": [
+        150
+      ],
+      "job_ids": [
+        "ovkYU7Wl3Nkg3Rhz1jocpA"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording5124954731956247895__9a717ecf10.mp3",
+      "sarvam_name": "000104_recording5124954731956247895__9a717ecf10.mp3",
+      "result_name": "000104_recording5124954731956247895__9a717ecf10.json",
+      "sarvam_output_name": "4.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000104_recording5124954731956247895__9a717ecf10.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/23/recording8517275332355562753.mp3",
+      "source_name": "recording8517275332355562753__054fecc4f7.mp3",
+      "row_indices": [
+        151
+      ],
+      "job_ids": [
+        "JDu5NUHwkzlORjj60RztmQ"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording8517275332355562753__054fecc4f7.mp3",
+      "sarvam_name": "000105_recording8517275332355562753__054fecc4f7.mp3",
+      "result_name": "000105_recording8517275332355562753__054fecc4f7.json",
+      "sarvam_output_name": "5.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000105_recording8517275332355562753__054fecc4f7.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/10/3/recording15203054003958204603.mp3",
+      "source_name": "recording15203054003958204603__4cc37c005f.mp3",
+      "row_indices": [
+        152
+      ],
+      "job_ids": [
+        "U7OGpCTo1tz4jEnWJBKEXg"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording15203054003958204603__4cc37c005f.mp3",
+      "sarvam_name": "000106_recording15203054003958204603__4cc37c005f.mp3",
+      "result_name": "000106_recording15203054003958204603__4cc37c005f.json",
+      "sarvam_output_name": "6.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000106_recording15203054003958204603__4cc37c005f.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/10/3/recording44248800258684633.mp3",
+      "source_name": "recording44248800258684633__9c0d420964.mp3",
+      "row_indices": [
+        153
+      ],
+      "job_ids": [
+        "1ffldGDbZxA0f-I8nCNK0A"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording44248800258684633__9c0d420964.mp3",
+      "sarvam_name": "000107_recording44248800258684633__9c0d420964.mp3",
+      "result_name": "000107_recording44248800258684633__9c0d420964.json",
+      "sarvam_output_name": "7.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000107_recording44248800258684633__9c0d420964.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/23/recording392963176325495084.mp3",
+      "source_name": "recording392963176325495084__a905cde9ec.mp3",
+      "row_indices": [
+        154
+      ],
+      "job_ids": [
+        "-xenfAQEvQ6vQMkKXHmktA"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording392963176325495084__a905cde9ec.mp3",
+      "sarvam_name": "000108_recording392963176325495084__a905cde9ec.mp3",
+      "result_name": "000108_recording392963176325495084__a905cde9ec.json",
+      "sarvam_output_name": "8.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000108_recording392963176325495084__a905cde9ec.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/23/recording14375454661257901389.mp3",
+      "source_name": "recording14375454661257901389__557f19057a.mp3",
+      "row_indices": [
+        155
+      ],
+      "job_ids": [
+        "aKSm2YhfK4jm0wwI1_Kwqg"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording14375454661257901389__557f19057a.mp3",
+      "sarvam_name": "000109_recording14375454661257901389__557f19057a.mp3",
+      "result_name": "000109_recording14375454661257901389__557f19057a.json",
+      "sarvam_output_name": "9.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000109_recording14375454661257901389__557f19057a.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/12/8/recording.mp3",
+      "source_name": "recording__59af418551.mp3",
+      "row_indices": [
+        156,
+        157,
+        161,
+        163,
+        168,
+        172,
+        173,
+        175,
+        1152,
+        3422,
+        4544,
+        6326,
+        6395,
+        7009,
+        7729,
+        7917,
+        7921,
+        7923,
+        7925,
+        7945
+      ],
+      "job_ids": [
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg",
+        "-1XRc32W8XtdNezq7w2NZg"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording__59af418551.mp3",
+      "sarvam_name": "000110_recording__59af418551.mp3",
+      "result_name": "000110_recording__59af418551.json",
+      "sarvam_output_name": "10.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000110_recording__59af418551.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/10/5/recording6038025413569731709.mp3",
+      "source_name": "recording6038025413569731709__5ac7b3813a.mp3",
+      "row_indices": [
+        158
+      ],
+      "job_ids": [
+        "oAugj_LO4aU9ViTw4BkiTw"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording6038025413569731709__5ac7b3813a.mp3",
+      "sarvam_name": "000111_recording6038025413569731709__5ac7b3813a.mp3",
+      "result_name": "000111_recording6038025413569731709__5ac7b3813a.json",
+      "sarvam_output_name": "11.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000111_recording6038025413569731709__5ac7b3813a.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/10/2/recording11183867585251459394.mp3",
+      "source_name": "recording11183867585251459394__ec8d4d891d.mp3",
+      "row_indices": [
+        159
+      ],
+      "job_ids": [
+        "aiz2Uu_iT_1jskAqYIEEIA"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording11183867585251459394__ec8d4d891d.mp3",
+      "sarvam_name": "000112_recording11183867585251459394__ec8d4d891d.mp3",
+      "result_name": "000112_recording11183867585251459394__ec8d4d891d.json",
+      "sarvam_output_name": "12.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000112_recording11183867585251459394__ec8d4d891d.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/10/2/recording9978990138136538442.mp3",
+      "source_name": "recording9978990138136538442__0f379f3bc7.mp3",
+      "row_indices": [
+        160
+      ],
+      "job_ids": [
+        "gCqavXrYXlpUjfRfhG31HQ"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording9978990138136538442__0f379f3bc7.mp3",
+      "sarvam_name": "000113_recording9978990138136538442__0f379f3bc7.mp3",
+      "result_name": "000113_recording9978990138136538442__0f379f3bc7.json",
+      "sarvam_output_name": "13.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000113_recording9978990138136538442__0f379f3bc7.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/26/recording17922711945485726923.mp3",
+      "source_name": "recording17922711945485726923__6cda11d24f.mp3",
+      "row_indices": [
+        162
+      ],
+      "job_ids": [
+        "lJoAjgsYilYagrz-f50nrA"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording17922711945485726923__6cda11d24f.mp3",
+      "sarvam_name": "000114_recording17922711945485726923__6cda11d24f.mp3",
+      "result_name": "000114_recording17922711945485726923__6cda11d24f.json",
+      "sarvam_output_name": "14.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000114_recording17922711945485726923__6cda11d24f.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/10/3/recording816730269460229257.mp3",
+      "source_name": "recording816730269460229257__b3955f7127.mp3",
+      "row_indices": [
+        164
+      ],
+      "job_ids": [
+        "NaMGUVRi893-JgxJto4TJg"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording816730269460229257__b3955f7127.mp3",
+      "sarvam_name": "000115_recording816730269460229257__b3955f7127.mp3",
+      "result_name": "000115_recording816730269460229257__b3955f7127.json",
+      "sarvam_output_name": "15.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000115_recording816730269460229257__b3955f7127.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/24/recording15337434688621891754.mp3",
+      "source_name": "recording15337434688621891754__7c93113bb0.mp3",
+      "row_indices": [
+        165
+      ],
+      "job_ids": [
+        "5nZLrD-9qKAmGPx4Ak4scg"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording15337434688621891754__7c93113bb0.mp3",
+      "sarvam_name": "000116_recording15337434688621891754__7c93113bb0.mp3",
+      "result_name": "000116_recording15337434688621891754__7c93113bb0.json",
+      "sarvam_output_name": "16.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000116_recording15337434688621891754__7c93113bb0.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/20/recording6759240500320268804.mp3",
+      "source_name": "recording6759240500320268804__122761b295.mp3",
+      "row_indices": [
+        166
+      ],
+      "job_ids": [
+        "zs56dfD1Y0-yjNV_028sgQ"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording6759240500320268804__122761b295.mp3",
+      "sarvam_name": "000117_recording6759240500320268804__122761b295.mp3",
+      "result_name": "000117_recording6759240500320268804__122761b295.json",
+      "sarvam_output_name": "17.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000117_recording6759240500320268804__122761b295.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/24/recording14964616572261827205.mp3",
+      "source_name": "recording14964616572261827205__250730c359.mp3",
+      "row_indices": [
+        167
+      ],
+      "job_ids": [
+        "gBwmnUgwA92W5TnDhplKEw"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording14964616572261827205__250730c359.mp3",
+      "sarvam_name": "000118_recording14964616572261827205__250730c359.mp3",
+      "result_name": "000118_recording14964616572261827205__250730c359.json",
+      "sarvam_output_name": "18.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000118_recording14964616572261827205__250730c359.json"
+    },
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/23/recording4201798305062085580.mp3",
+      "source_name": "recording4201798305062085580__26440480ae.mp3",
+      "row_indices": [
+        169
+      ],
+      "job_ids": [
+        "YYGTr0wajZ1sK-mfDO0j2A"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording4201798305062085580__26440480ae.mp3",
+      "sarvam_name": "000119_recording4201798305062085580__26440480ae.mp3",
+      "result_name": "000119_recording4201798305062085580__26440480ae.json",
+      "sarvam_output_name": "19.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819/000119_recording4201798305062085580__26440480ae.json"
+    }
+  ],
+  "created": {
+    "job_id": "20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819",
+    "storage_container_type": "Azure_V1",
+    "job_parameters": {
+      "language_code": "unknown",
+      "model": "saaras:v3",
+      "mode": "transcribe",
+      "with_timestamps": true,
+      "with_diarization": true,
+      "num_speakers": null,
+      "input_audio_codec": null
+    },
+    "job_state": "Accepted"
+  },
+  "upload": {
+    "job_id": "20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819",
+    "job_state": "Accepted",
+    "upload_urls": {
+      "000100_recording6771673085648018481__c30271fd7d.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000100_recording6771673085648018481__c30271fd7d.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=46hdWuYIuti5XeyqHssElhA3a7OH8/snrm4lfnxy7j4%3D",
+        "file_metadata": null
+      },
+      "000101_recording3135115055639821849__59b280a4b0.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000101_recording3135115055639821849__59b280a4b0.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=HWWXT5xqBBjrXWNm4yVngizYXu7ieSlrbcOxaHfXjw0%3D",
+        "file_metadata": null
+      },
+      "000102_recording8035383945603531352__0c033416b2.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000102_recording8035383945603531352__0c033416b2.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=59S459InvhuAJlK%2BXsgx5B8N1R2jorBt4v5p16gMMmI%3D",
+        "file_metadata": null
+      },
+      "000103_recording1706257545348559357__3b1cfa12ed.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000103_recording1706257545348559357__3b1cfa12ed.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=cVVzDJlnjEZQBSVoIT09/V2ssibCH5E4bF1H4tEMwR8%3D",
+        "file_metadata": null
+      },
+      "000104_recording5124954731956247895__9a717ecf10.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000104_recording5124954731956247895__9a717ecf10.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=GS2rkdAgMXml2wqEfhusx9Dzcv%2B/66yFkkCOx3JvQ4s%3D",
+        "file_metadata": null
+      },
+      "000105_recording8517275332355562753__054fecc4f7.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000105_recording8517275332355562753__054fecc4f7.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=W6z/SnhCeYZTAIPB6ikfI0RxokPxyvfk77cTD5HWVeM%3D",
+        "file_metadata": null
+      },
+      "000106_recording15203054003958204603__4cc37c005f.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000106_recording15203054003958204603__4cc37c005f.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=wVtXk%2BWheTXQd4XSMGybsRv0hOa2YRvkMpj9rhPJAFc%3D",
+        "file_metadata": null
+      },
+      "000107_recording44248800258684633__9c0d420964.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000107_recording44248800258684633__9c0d420964.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=92Q75JTGVQ7Edvq3BM1ntg69qRwtZ4kdaR2kkOKiKDk%3D",
+        "file_metadata": null
+      },
+      "000108_recording392963176325495084__a905cde9ec.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000108_recording392963176325495084__a905cde9ec.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=slPIj0iRP985vysgzVMRdYMstsADpYyN/QUGLiZd%2B2M%3D",
+        "file_metadata": null
+      },
+      "000109_recording14375454661257901389__557f19057a.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000109_recording14375454661257901389__557f19057a.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=CPq3zMTikA4kIrEP9Eig7FqONC8KS9japrMHzAT2p5c%3D",
+        "file_metadata": null
+      },
+      "000110_recording__59af418551.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000110_recording__59af418551.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=eGNz3lPHjcB%2BZI6O2p6fxewAsCh0%2B%2B3QkBj1N11Yuw4%3D",
+        "file_metadata": null
+      },
+      "000111_recording6038025413569731709__5ac7b3813a.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000111_recording6038025413569731709__5ac7b3813a.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=%2BB/2BKm27hlq6x6yk2RPp5c6D1eT4S3hFyaCOwAX9JQ%3D",
+        "file_metadata": null
+      },
+      "000112_recording11183867585251459394__ec8d4d891d.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000112_recording11183867585251459394__ec8d4d891d.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=B25fEUHNIJuIv2nArWfKx%2BVRG5CQBzGJqnUeiE%2BzHXI%3D",
+        "file_metadata": null
+      },
+      "000113_recording9978990138136538442__0f379f3bc7.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000113_recording9978990138136538442__0f379f3bc7.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=xirKXcrScf2kGdh5frotfdmkWhIjUa7CQing/x8yTTc%3D",
+        "file_metadata": null
+      },
+      "000114_recording17922711945485726923__6cda11d24f.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000114_recording17922711945485726923__6cda11d24f.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=FiYHyJ4xnLr5qmdu4BaXGmYMV/njlFerzLG%2BEJDlL5Q%3D",
+        "file_metadata": null
+      },
+      "000115_recording816730269460229257__b3955f7127.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000115_recording816730269460229257__b3955f7127.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=umBSK1MyD4KruD4rctSd7bFL5fLPP%2BQm4d4p908QcYw%3D",
+        "file_metadata": null
+      },
+      "000116_recording15337434688621891754__7c93113bb0.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000116_recording15337434688621891754__7c93113bb0.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=TE9bFZkX8gqkk9qYa15WHJqLlZsLOwGebq00IsjjPrQ%3D",
+        "file_metadata": null
+      },
+      "000117_recording6759240500320268804__122761b295.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000117_recording6759240500320268804__122761b295.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=Zx1u3KjSURIxaPhQ/6w2ZbTcbPcmm31iGParaqvCdhI%3D",
+        "file_metadata": null
+      },
+      "000118_recording14964616572261827205__250730c359.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000118_recording14964616572261827205__250730c359.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=WSLM3SHRaLUrqQoqIxPl0GgjptKgbKcyobcESWWgQ60%3D",
+        "file_metadata": null
+      },
+      "000119_recording4201798305062085580__26440480ae.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/inputs/000119_recording4201798305062085580__26440480ae.mp3?se=2026-05-20T15%3A30%3A39Z&sp=w&sv=2025-05-05&sr=b&sig=cUHEccV6hMSxVk0QhgyQzLZPBVtUjzBgl2qUgGqe5vA%3D",
+        "file_metadata": null
+      }
+    },
+    "storage_container_type": "Azure_V1"
+  },
+  "started": {
+    "job_state": "Pending",
+    "created_at": "2026-05-20T14:30:38.975382+00:00",
+    "updated_at": "2026-05-20T14:30:39.996913+00:00",
+    "job_id": "20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819",
+    "total_files": 20,
+    "successful_files_count": 0,
+    "failed_files_count": 0,
+    "storage_container_type": "Azure_V1",
+    "error_message": "",
+    "job_details": []
+  },
+  "status": {
+    "job_state": "Completed",
+    "created_at": "2026-05-20T14:30:38.975382+00:00",
+    "updated_at": "2026-05-20T14:32:14.682384+00:00",
+    "job_id": "20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819",
+    "total_files": 20,
+    "successful_files_count": 20,
+    "failed_files_count": 0,
+    "storage_container_type": "Azure_V1",
+    "error_message": "",
+    "job_details": [
+      {
+        "inputs": [
+          {
+            "file_name": "000100_recording6771673085648018481__c30271fd7d.mp3",
+            "file_id": "0"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "0.json",
+            "file_id": "0.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000101_recording3135115055639821849__59b280a4b0.mp3",
+            "file_id": "1"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "1.json",
+            "file_id": "1.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000102_recording8035383945603531352__0c033416b2.mp3",
+            "file_id": "2"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "2.json",
+            "file_id": "2.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000103_recording1706257545348559357__3b1cfa12ed.mp3",
+            "file_id": "3"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "3.json",
+            "file_id": "3.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000104_recording5124954731956247895__9a717ecf10.mp3",
+            "file_id": "4"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "4.json",
+            "file_id": "4.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000105_recording8517275332355562753__054fecc4f7.mp3",
+            "file_id": "5"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "5.json",
+            "file_id": "5.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000106_recording15203054003958204603__4cc37c005f.mp3",
+            "file_id": "6"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "6.json",
+            "file_id": "6.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000107_recording44248800258684633__9c0d420964.mp3",
+            "file_id": "7"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "7.json",
+            "file_id": "7.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000108_recording392963176325495084__a905cde9ec.mp3",
+            "file_id": "8"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "8.json",
+            "file_id": "8.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000109_recording14375454661257901389__557f19057a.mp3",
+            "file_id": "9"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "9.json",
+            "file_id": "9.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000110_recording__59af418551.mp3",
+            "file_id": "10"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "10.json",
+            "file_id": "10.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000111_recording6038025413569731709__5ac7b3813a.mp3",
+            "file_id": "11"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "11.json",
+            "file_id": "11.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000112_recording11183867585251459394__ec8d4d891d.mp3",
+            "file_id": "12"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "12.json",
+            "file_id": "12.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000113_recording9978990138136538442__0f379f3bc7.mp3",
+            "file_id": "13"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "13.json",
+            "file_id": "13.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000114_recording17922711945485726923__6cda11d24f.mp3",
+            "file_id": "14"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "14.json",
+            "file_id": "14.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000115_recording816730269460229257__b3955f7127.mp3",
+            "file_id": "15"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "15.json",
+            "file_id": "15.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000116_recording15337434688621891754__7c93113bb0.mp3",
+            "file_id": "16"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "16.json",
+            "file_id": "16.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000117_recording6759240500320268804__122761b295.mp3",
+            "file_id": "17"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "17.json",
+            "file_id": "17.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000118_recording14964616572261827205__250730c359.mp3",
+            "file_id": "18"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "18.json",
+            "file_id": "18.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      },
+      {
+        "inputs": [
+          {
+            "file_name": "000119_recording4201798305062085580__26440480ae.mp3",
+            "file_id": "19"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "19.json",
+            "file_id": "19.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      }
+    ]
+  },
+  "download": {
+    "job_id": "20260520_46e5b5d6-3f18-4f80-89ab-0d5645c91819",
+    "job_state": "Completed",
+    "download_urls": {
+      "0.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/0.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=F42ByWWJP%2BM9MWCUzBCrjTngaTBZvpJ4hLYVr%2BCXRS4%3D",
+        "file_metadata": null
+      },
+      "1.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/1.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=DCwJJdAysrnZOsU692oRZmBTfDVocTxZlDQeHaZrlhs%3D",
+        "file_metadata": null
+      },
+      "2.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/2.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=ctBGklGj0jW39RqHFi3mO2kz7ZazQwWwE3sAY4InuWU%3D",
+        "file_metadata": null
+      },
+      "3.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/3.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=G/Mx3bdqdoeUOM7kTLExraF5zqmGeuyMg%2BP5bfAQ6cY%3D",
+        "file_metadata": null
+      },
+      "4.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/4.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=5xGUDFv8yQ73MciYDu/eu7ZvNmHdRWp9pPhWSwuHcgI%3D",
+        "file_metadata": null
+      },
+      "5.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/5.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=cNEym9E6JWMKGk7pBArq3V8ZHlcIVC56NHk87r410gE%3D",
+        "file_metadata": null
+      },
+      "6.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/6.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=M4iTDzm2kLBLUhH0miVJuXFr0e%2Bz2%2Beagd0TJxrQehw%3D",
+        "file_metadata": null
+      },
+      "7.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/7.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=FQwmBr7PWN3679FwTun1lHaPOnoyJsGbKZmMZvaQk6I%3D",
+        "file_metadata": null
+      },
+      "8.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/8.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=QlK8xJf70xuY5RyRCZY8y5XMe7orW%2BwCvEX0TfoXbZ0%3D",
+        "file_metadata": null
+      },
+      "9.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/9.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=cT7GY0xxLvSs4bxrxxBcWuPrQ6devjJue8LZZM7OWgs%3D",
+        "file_metadata": null
+      },
+      "10.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/10.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=VQIM4ezK6p%2BhdjG2i4WSMRZOiOrzwdmgdHIllG22IG4%3D",
+        "file_metadata": null
+      },
+      "11.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/11.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=kq/c3y7NgYB4cZwaMkx6Q%2B40E508CkDtC1WokDb1ieI%3D",
+        "file_metadata": null
+      },
+      "12.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/12.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=Z8os%2BuSnZ0gwHt8tk0nVzhQhvFNNhNaUsxQ%2BR4LfAd0%3D",
+        "file_metadata": null
+      },
+      "13.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/13.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=dDGz8w%2Bpo7D1fUhqiyUaNFygRUDigJoAdUR3sqPfLvs%3D",
+        "file_metadata": null
+      },
+      "14.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/14.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=Z3cGVU/a7rEnWzhulLo%2B3MJ85YwpTdJtnMmqJDveud4%3D",
+        "file_metadata": null
+      },
+      "15.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/15.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=kdjhGFpbajXiL9TiRVa0LcHedez27CoNm3tnrsAlRXg%3D",
+        "file_metadata": null
+      },
+      "16.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/16.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=gZ05iif4hPOPPuxSmUSYeWgct0AyTD7mGEaC9PzLcZY%3D",
+        "file_metadata": null
+      },
+      "17.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/17.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=3XNkXsitY/pqvd5xgf336d9vPAd9CIKJ9cdLyhJ9PyY%3D",
+        "file_metadata": null
+      },
+      "18.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/18.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=XlX86/gUdFt542yaJ8R6HsFLO1JdtBdDkZi3im6rTm0%3D",
+        "file_metadata": null
+      },
+      "19.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/46e5b5d6-3f18-4f80-89ab-0d5645c91819/outputs/19.json?se=2026-05-20T15%3A32%3A21Z&sp=r&sv=2025-05-05&sr=b&sig=6p2tSGs/pIolJgx5RI%2B%2BQfMFQVSMPyUtUUCkE%2BIfDdg%3D",
+        "file_metadata": null
+      }
+    },
+    "storage_container_type": "Azure_V1"
+  }
+}

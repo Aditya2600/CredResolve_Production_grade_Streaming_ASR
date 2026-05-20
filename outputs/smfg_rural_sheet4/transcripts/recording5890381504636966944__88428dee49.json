@@ -1,0 +1,40 @@
+{
+  "file": "recording5890381504636966944__88428dee49.mp3",
+  "source_audio_path": "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/outputs/smfg_rural_sheet4/downloaded_audio/recording5890381504636966944__88428dee49.mp3",
+  "normalized_audio_path": "/home/ubuntu/CredResolve_Production_grade_Streaming_ASR/outputs/smfg_rural_sheet4/normalized_audio/recording5890381504636966944__88428dee49_mono16000.wav",
+  "duration_sec": 96.12,
+  "text": "worker-fallback worker-fallback worker-fallback worker-fallback",
+  "language": "hi",
+  "language_source": "fallback_timeout",
+  "lid_language": "hi",
+  "lid_language_source": "fallback_timeout",
+  "context_biasing": null,
+  "metrics": {
+    "chunks": 4,
+    "audio_duration": 96.12
+  },
+  "final_chunk_count": 4,
+  "timestamp_chunk_count": 4,
+  "timestamp_text": "worker-fallback worker-fallback worker-fallback worker-fallback",
+  "diarization_provider": null,
+  "diarization_error": null,
+  "rttm_path": null,
+  "speaker_turns": [],
+  "speaker_segments": [
+    {
+      "speaker": null,
+      "text": "worker-fallback worker-fallback worker-fallback worker-fallback",
+      "start_sec": null,
+      "end_sec": null
+    }
+  ],
+  "word_timestamps": [],
+  "timing_ms": {
+    "load_audio": 12,
+    "lid_probe": 24190,
+    "final_transcribe": 96954,
+    "timestamp_pass": 96948,
+    "diarization": 0,
+    "file_total": 218118
+  }
+}

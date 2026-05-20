@@ -1,0 +1,10 @@
+file: recording4200836825800557252__46b847953f.mp3
+language: hi (fallback_timeout)
+lid_probe: hi (fallback_timeout)
+context_biasing: null
+
+transcript:
+worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback
+
+diarized:
+speaker_unknown: worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback worker-fallback

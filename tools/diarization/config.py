@@ -33,3 +33,4 @@ class DiarizationConfig:
     nemo_vad_model: str = "vad_multilingual_marblenet"
     nemo_speaker_model: str = "titanet_large"
     nemo_msdd_model: str = "diar_msdd_telephonic"
+    device: str = "auto"

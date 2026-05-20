@@ -205,12 +205,18 @@ def build_transcribe_response(
     result,
     *,
     include_timestamps: bool,
+    audio_duration_s: float,
+    processing_latency_ms: int,
     context_biasing: dict[str, object] | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "text": result.text,
         "language": result.language,
         "language_source": result.language_source,
+        "metrics": {
+            "audio_duration": audio_duration_s,
+            "processing_latency": processing_latency_ms,
+        },
     }
     if context_biasing is not None:
         payload["context_biasing"] = context_biasing
@@ -225,11 +231,17 @@ def build_fallback_response(
     language: str,
     language_source: str,
     include_timestamps: bool,
+    audio_duration_s: float,
+    processing_latency_ms: int,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "text": "worker-fallback",
         "language": language,
         "language_source": language_source,
+        "metrics": {
+            "audio_duration": audio_duration_s,
+            "processing_latency": processing_latency_ms,
+        },
     }
     if include_timestamps:
         payload["word_timestamps"] = []
@@ -910,12 +922,14 @@ async def transcribe(
                     )
 
                 REQS.labels(mode=mode, status="ok").inc()
+                processing_latency_ms = int((time.time() - t0) * 1000)
+                audio_duration_s = len(pcm) / float(sample_rate * 2) if sample_rate > 0 else 0.0
                 log.info(
                     "Transcribe request completed session_id=%s utterance_id=%s mode=%s latency_ms=%s text_chars=%s language=%s language_source=%s context_biasing_mode=%s context_biasing_reason=%s context_biasing_fallback_reason=%s",
                     session_id or "-",
                     utterance_id or "-",
                     mode,
-                    int((time.time() - t0) * 1000),
+                    processing_latency_ms,
                     len(result.text),
                     result.language,
                     result.language_source,
@@ -931,7 +945,7 @@ async def transcribe(
                     sampled=sampled,
                     mode=mode,
                     sample_rate=sample_rate,
-                    latency_ms=int((time.time() - t0) * 1000),
+                    latency_ms=processing_latency_ms,
                     resolved_language=result.language,
                     language_source=result.language_source,
                     timestamp_type=timestamp_type,
@@ -954,6 +968,8 @@ async def transcribe(
                 return build_transcribe_response(
                     result,
                     include_timestamps=include_timestamps,
+                    audio_duration_s=audio_duration_s,
+                    processing_latency_ms=processing_latency_ms,
                     context_biasing=context_biasing_response,
                 )
             except (UnsupportedLanguageError, ValueError) as exc:
@@ -1005,6 +1021,8 @@ async def transcribe(
                     language=x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
                     language_source="fallback_timeout",
                     include_timestamps=include_timestamps,
+                    audio_duration_s=len(pcm) / float(sample_rate * 2) if sample_rate > 0 else 0.0,
+                    processing_latency_ms=int((time.time() - t0) * 1000),
                 )
             except ModelNotReadyError as exc:
                 ERRORS.labels(type="ModelNotReady").inc()
@@ -1033,6 +1051,8 @@ async def transcribe(
                     language=x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
                     language_source="fallback_not_ready",
                     include_timestamps=include_timestamps,
+                    audio_duration_s=len(pcm) / float(sample_rate * 2) if sample_rate > 0 else 0.0,
+                    processing_latency_ms=int((time.time() - t0) * 1000),
                 )
             except InferenceError as exc:
                 ERRORS.labels(type="InferenceError").inc()
@@ -1062,6 +1082,8 @@ async def transcribe(
                     language=x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
                     language_source="fallback_inference_error",
                     include_timestamps=include_timestamps,
+                    audio_duration_s=len(pcm) / float(sample_rate * 2) if sample_rate > 0 else 0.0,
+                    processing_latency_ms=int((time.time() - t0) * 1000),
                 )
             except Exception as exc:
                 ERRORS.labels(type="Unknown").inc()
@@ -1091,6 +1113,8 @@ async def transcribe(
                     language=x_language if x_language != "auto" else ASR_DEFAULT_LANGUAGE,
                     language_source="fallback_unexpected",
                     include_timestamps=include_timestamps,
+                    audio_duration_s=len(pcm) / float(sample_rate * 2) if sample_rate > 0 else 0.0,
+                    processing_latency_ms=int((time.time() - t0) * 1000),
                 )
             finally:
                 LAT.observe(time.time() - t0)

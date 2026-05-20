@@ -97,10 +97,10 @@ class IndicASRModel(PreTrainedModel):
             f'{config.ts_folder}/assets/preprocessor.ts', map_location=self.d
         )
 
-        providers = (
-            ['CUDAExecutionProvider', 'CPUExecutionProvider']
-            if torch.cuda.is_available() else ['CPUExecutionProvider']
-        )
+        # The encoder already runs on GPU through Triton/BLS. Keeping the
+        # remaining RNNT/CTC helper ONNX graphs on CPU avoids per-session CUDA
+        # handle allocation failures when the TRT encoder owns most GPU memory.
+        providers = ['CPUExecutionProvider']
         for n in _INPROC_COMPONENT_NAMES:
             component_path = f'{config.ts_folder}/assets/{n}.onnx'
             if os.path.exists(component_path):

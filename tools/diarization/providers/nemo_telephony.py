@@ -87,13 +87,17 @@ class NeMoTelephonyDiarizationProvider:
         fixed_mode = config.speaker_count_mode == "fixed" and config.fixed_speakers is not None
         max_num_speakers = int(config.fixed_speakers if fixed_mode else config.max_speakers)
         multiscale_weights = [1.0] * len(config.multiscale_window_sec)
+        requested_device = str(getattr(config, "device", "auto") or "auto").strip().lower()
+        device = "cuda" if requested_device == "auto" and torch.cuda.is_available() else requested_device
+        if device not in {"cpu", "cuda"}:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
         nemo_cfg = OmegaConf.create(
             {
                 "name": "ClusterDiarizer",
-                "num_workers": 1,
+                "num_workers": 0,
                 "sample_rate": prepared_audio.sample_rate,
                 "batch_size": 64,
-                "device": "cuda" if torch.cuda.is_available() else "cpu",
+                "device": device,
                 "verbose": False,
                 "diarizer": {
                     "manifest_filepath": str(manifest_path),

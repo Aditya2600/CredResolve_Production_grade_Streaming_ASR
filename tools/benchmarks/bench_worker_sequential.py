@@ -143,6 +143,9 @@ def main() -> int:
             try:
                 body = resp.json()
                 hyp_text = (body.get("text") or "").replace("\n", " ").replace("\r", " ")
+                language_source = str(body.get("language_source") or "")
+                if hyp_text == "worker-fallback" or language_source.startswith("fallback_"):
+                    status = f"fallback:{language_source or hyp_text}"
                 metrics = body.get("metrics") or {}
                 worker_audio_s = metrics.get("audio_duration", "")
                 worker_proc_ms = metrics.get("processing_latency", "")

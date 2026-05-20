@@ -1,0 +1,17 @@
+file: recording.mp3
+language: hi (client)
+lid_probe: hi (auto_default)
+context_biasing: {"mode": "active", "reason": "not_ready", "requested_mode": "active", "dynamic_context_attached": false, "dynamic_context_used": false, "fields_provided": [], "phrase_count_before_pruning": 0, "phrase_count_after_pruning": 0, "phrase_count_total": 0, "top_phrases": [], "phrase_source": "static", "errors": [], "fallback_reason": "not_ready"}
+
+transcript:
+मैं राधा बात कर रही हूँ जनशक्तिुलेटन ऐ क्या मेरी बात हो रही है
+
+diarized:
+speaker_1: मैं राधा बात कर
+speaker_unknown: रही हूँ
+speaker_1: जनशक्तिुलेटन ऐ क्या
+speaker_unknown: मेरी
+speaker_0: बात
+speaker_1: हो
+speaker_unknown: रही
+speaker_0: है

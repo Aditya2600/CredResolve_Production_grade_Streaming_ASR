@@ -1,0 +1,60 @@
+{"utt_id": "bench_001", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_000.wav", "transcript": "सामने की तरफ एक औरत बैठी हुई है।", "duration_s": 2.2500625}
+{"utt_id": "bench_002", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_001.wav", "transcript": "<static_noise> गमले में पौधे लगे हुए हैं। </static_noise>", "duration_s": 1.706}
+{"utt_id": "bench_003", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_002.wav", "transcript": "डॉक्टर {Doctors} लोगों ने <pause> सामने पर <pause> कॉफ़ी {coffee} रखे हुए हैं खोलकर।</pause></pause>", "duration_s": 4.407}
+{"utt_id": "bench_004", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_003.wav", "transcript": "वहां उसके नीचे भी मछली रखी हुई है।", "duration_s": 2.494}
+{"utt_id": "bench_005", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_004.wav", "transcript": "यह एक छोटा सा नदी है।", "duration_s": 2.78}
+{"utt_id": "bench_006", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_005.wav", "transcript": "यहां पे अच्छी डेकोरेशन {decoration} की गई है।", "duration_s": 2.52}
+{"utt_id": "bench_007", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_006.wav", "transcript": "मकान की ईंटें दिख रही हैं।", "duration_s": 2.37}
+{"utt_id": "bench_008", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_007.wav", "transcript": "<noise> [inaudible] छोटे जीव होते है। </noise>", "duration_s": 1.889}
+{"utt_id": "bench_009", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_008.wav", "transcript": "<talking> एक आदमी कार {car} को सजा रहा है। </talking>", "duration_s": 2.876}
+{"utt_id": "bench_010", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_009.wav", "transcript": "<noise> इस यहाँ पास पूरा स्वच्छ वातावरण मिलता है। </noise>", "duration_s": 3.5140625}
+{"utt_id": "bench_011", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_010.wav", "transcript": "<noise> जेह एक <pause> गांव का <pause> व्यू {view} है। </pause></pause></noise>", "duration_s": 3.71}
+{"utt_id": "bench_012", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_011.wav", "transcript": "इसमे तार ताना हुआ [horn] है।", "duration_s": 2.14}
+{"utt_id": "bench_013", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_012.wav", "transcript": "यहां पर गाड़ी धो रही है।", "duration_s": 1.652}
+{"utt_id": "bench_014", "language": "hi", "bucket": "medium", "wav": "/tmp/vaani_hi_60/vaani_013.wav", "transcript": "<noise> पिंक {pink} पानी का पहाड़ पर <pause> यहाँ पे पानी पहाड़ पर से गिर रहा [inaudible] -- </pause></noise>", "duration_s": 5.971875}
+{"utt_id": "bench_015", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_014.wav", "transcript": "अगरबत्तियां भी दिखाई दे रही है।", "duration_s": 3.259}
+{"utt_id": "bench_016", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_015.wav", "transcript": "जहाँ पे दो गोरे आगे की ओर।", "duration_s": 2.68}
+{"utt_id": "bench_017", "language": "hi", "bucket": "medium", "wav": "/tmp/vaani_hi_60/vaani_016.wav", "transcript": "यह एक हॉल {Hall} है जिसमें <pause> फैन {Fan} सब लगा हुआ है और <pause> लड़की लोग डान्स {Dance} कर रही है।</pause></pause>", "duration_s": 8.007}
+{"utt_id": "bench_018", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_017.wav", "transcript": "''<noise> स्टील {steel} की तथा बहुत सारी मशीन {machine} भी और एकिपमेंट {equipment''''s} भी नजर आ रहे है। </noise>''", "duration_s": 4.082}
+{"utt_id": "bench_019", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_018.wav", "transcript": "सामने काफी अच्छा इमेज {image} है।", "duration_s": 2.171}
+{"utt_id": "bench_020", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_019.wav", "transcript": "एक ठेला रखा हुआ है।", "duration_s": 2.15}
+{"utt_id": "bench_021", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_020.wav", "transcript": "<noise> यहां पर लोग पूजा करने के-- </noise>", "duration_s": 4.34}
+{"utt_id": "bench_022", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_021.wav", "transcript": "<static_noise> शाम [whispering] हो रहे हैं। </static_noise>", "duration_s": 2.83}
+{"utt_id": "bench_023", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_022.wav", "transcript": "यहां पर बहुत सारा पानी बह रहा है।", "duration_s": 2.14}
+{"utt_id": "bench_024", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_023.wav", "transcript": "इस फोटो {photo} में मकई दिखाई दे रहा है।", "duration_s": 3.196}
+{"utt_id": "bench_025", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_024.wav", "transcript": "<noise> और ईसाईयो मंदिर भी है। </noise>", "duration_s": 2.22}
+{"utt_id": "bench_026", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_025.wav", "transcript": "यह एक मछली की दूकान है जहा{जँहा} पर हमें मछली देखने को मिल रहा है।", "duration_s": 4.063}
+{"utt_id": "bench_027", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_026.wav", "transcript": "यह यह एक रूम {room} है.", "duration_s": 2.381}
+{"utt_id": "bench_028", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_027.wav", "transcript": "घर बने हुए हैं एक घर सफेद रंग--", "duration_s": 2.238}
+{"utt_id": "bench_029", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_028.wav", "transcript": "और छोटा सा एक दुकान है।", "duration_s": 1.924}
+{"utt_id": "bench_030", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_029.wav", "transcript": "<noise> हरे हरे घास ये बड़े बड़े घास है। </noise>", "duration_s": 2.97}
+{"utt_id": "bench_031", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_030.wav", "transcript": "पहाड़ दिखाई दे रहा है।", "duration_s": 2.01}
+{"utt_id": "bench_032", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_031.wav", "transcript": "यह एक नदी का किनारा है।", "duration_s": 2.43}
+{"utt_id": "bench_033", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_032.wav", "transcript": "<people_talking>यह एक  घर है।</people_talking>", "duration_s": 3.71}
+{"utt_id": "bench_034", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_033.wav", "transcript": "<noise> आलू भी दिखाई दे रहे हैं। </noise>", "duration_s": 2.252}
+{"utt_id": "bench_035", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_034.wav", "transcript": "किस्म-किस्म [noise] के गिलास है झोला है।", "duration_s": 3.62}
+{"utt_id": "bench_036", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_035.wav", "transcript": "यहां पे चारों साइड {side} में --", "duration_s": 1.4354375}
+{"utt_id": "bench_037", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_036.wav", "transcript": "कुछ बच्चे बैठे हुए हैं।", "duration_s": 2.096}
+{"utt_id": "bench_038", "language": "hi", "bucket": "medium", "wav": "/tmp/vaani_hi_60/vaani_037.wav", "transcript": "जो कि पतझड़ का [unintelligible] --", "duration_s": 7.3173125}
+{"utt_id": "bench_039", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_038.wav", "transcript": "यहाँ ये तो दुकान है।", "duration_s": 2.204}
+{"utt_id": "bench_040", "language": "hi", "bucket": "medium", "wav": "/tmp/vaani_hi_60/vaani_039.wav", "transcript": " [unintelligible] पेड़ दिखाई दे रहा है।", "duration_s": 5.5588125}
+{"utt_id": "bench_041", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_040.wav", "transcript": "पूरा कैफे {Cafe} खाली-खाली है।", "duration_s": 2.08}
+{"utt_id": "bench_042", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_041.wav", "transcript": "<noise> और यहां पे बहोत सारे लोग-- </noise>", "duration_s": 2.218}
+{"utt_id": "bench_043", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_042.wav", "transcript": "और ठंडी की समय है।", "duration_s": 1.6426875}
+{"utt_id": "bench_044", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_043.wav", "transcript": "बहुत सारा कितने लोग चल के भी है।", "duration_s": 2.076}
+{"utt_id": "bench_045", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_044.wav", "transcript": "एक बच्चा पार हो रहा--", "duration_s": 2.003}
+{"utt_id": "bench_046", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_045.wav", "transcript": "इसमें दो बालक हैं बैठे हुए।", "duration_s": 2.06}
+{"utt_id": "bench_047", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_046.wav", "transcript": "<noise> सन राइस {sun rise} दिख रहा है। </noise>", "duration_s": 1.378}
+{"utt_id": "bench_048", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_047.wav", "transcript": "यहाँ पर एक बहुत बड़ा--", "duration_s": 2.74}
+{"utt_id": "bench_049", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_048.wav", "transcript": "कई [noise] आदमी दिख रहा है।", "duration_s": 2.61}
+{"utt_id": "bench_050", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_049.wav", "transcript": "एक <pause> गार्डन {garden} का ये चित्र दिख रहा है वहां लगता है स्कूल {school} का छोटा-सा गार्डन {garden} है।</pause>", "duration_s": 4.832}
+{"utt_id": "bench_051", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_050.wav", "transcript": "छोटे-छोटे पौधे भी यहां दिख रहे--", "duration_s": 3.2}
+{"utt_id": "bench_052", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_051.wav", "transcript": "इस तस्वीर में कुछ मकान भी दिख रहा है।", "duration_s": 3.7}
+{"utt_id": "bench_053", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_052.wav", "transcript": "पीछे में बहुत सारे पर्दे भी है।", "duration_s": 2.3}
+{"utt_id": "bench_054", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_053.wav", "transcript": "एक कार है ब्लू {blue} रंग का--", "duration_s": 2.87}
+{"utt_id": "bench_055", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_054.wav", "transcript": "<talking> तो ये आर्टिफिशियल {artificial} अपार्टमेंट {apartment} टाइप {type} का घर बन रहा है आप भी बनावा सकते हैं इनसे। </talking>", "duration_s": 3.8399375}
+{"utt_id": "bench_056", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_055.wav", "transcript": "<noise> कई पेड़ लगे हुए हैं। </noise>", "duration_s": 1.436}
+{"utt_id": "bench_057", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_056.wav", "transcript": "इसमें कुछ व्यक्ति [noise] भी--", "duration_s": 2.09}
+{"utt_id": "bench_058", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_057.wav", "transcript": "यह एक मिठाई की दुकान है।", "duration_s": 1.76}
+{"utt_id": "bench_059", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_058.wav", "transcript": "<noise> यह मस्जिद बहुत पुराना है। </noise>", "duration_s": 1.828}
+{"utt_id": "bench_060", "language": "hi", "bucket": "short", "wav": "/tmp/vaani_hi_60/vaani_059.wav", "transcript": "<static_noise> जाल के अंदर बंद है।</static_noise>", "duration_s": 2.7}

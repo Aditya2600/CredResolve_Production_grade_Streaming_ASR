@@ -1,0 +1,100 @@
+{
+  "batch_index": 1,
+  "job_id": "20260520_2d276cd2-f570-4d76-8803-73e413a2f2b5",
+  "files": [
+    {
+      "url": "https://crworkspace.s3.ap-south-1.amazonaws.com/crdhs/private/2024/9/23/recording17064968205186586265.mp3",
+      "source_name": "recording17064968205186586265__cfb528247b.mp3",
+      "row_indices": [
+        1
+      ],
+      "job_ids": [
+        "nFbs5Z0bkVnl7XE6188UGA"
+      ],
+      "audio_path": "outputs/smfg_rural_sheet4_sarvam/downloaded_audio/recording17064968205186586265__cfb528247b.mp3",
+      "sarvam_name": "000000_recording17064968205186586265__cfb528247b.mp3",
+      "result_name": "000000_recording17064968205186586265__cfb528247b.json",
+      "sarvam_output_name": "0.json",
+      "sarvam_error": "",
+      "result_path": "outputs/smfg_rural_sheet4_sarvam/sarvam_results/20260520_2d276cd2-f570-4d76-8803-73e413a2f2b5/000000_recording17064968205186586265__cfb528247b.json"
+    }
+  ],
+  "created": {
+    "job_id": "20260520_2d276cd2-f570-4d76-8803-73e413a2f2b5",
+    "storage_container_type": "Azure_V1",
+    "job_parameters": {
+      "language_code": "unknown",
+      "model": "saaras:v3",
+      "mode": "transcribe",
+      "with_timestamps": true,
+      "with_diarization": true,
+      "num_speakers": null,
+      "input_audio_codec": null
+    },
+    "job_state": "Accepted"
+  },
+  "upload": {
+    "job_id": "20260520_2d276cd2-f570-4d76-8803-73e413a2f2b5",
+    "job_state": "Accepted",
+    "upload_urls": {
+      "000000_recording17064968205186586265__cfb528247b.mp3": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/2d276cd2-f570-4d76-8803-73e413a2f2b5/inputs/000000_recording17064968205186586265__cfb528247b.mp3?se=2026-05-20T15%3A23%3A36Z&sp=w&sv=2025-05-05&sr=b&sig=TgujS1g4AxhegGZ0lfaTb1SyOSQjQKNm4f4meDQf8uw%3D",
+        "file_metadata": null
+      }
+    },
+    "storage_container_type": "Azure_V1"
+  },
+  "started": {
+    "job_state": "Pending",
+    "created_at": "2026-05-20T14:23:36.596092+00:00",
+    "updated_at": "2026-05-20T14:23:37.110312+00:00",
+    "job_id": "20260520_2d276cd2-f570-4d76-8803-73e413a2f2b5",
+    "total_files": 1,
+    "successful_files_count": 0,
+    "failed_files_count": 0,
+    "storage_container_type": "Azure_V1",
+    "error_message": "",
+    "job_details": []
+  },
+  "status": {
+    "job_state": "Completed",
+    "created_at": "2026-05-20T14:23:36.596092+00:00",
+    "updated_at": "2026-05-20T14:23:40.704505+00:00",
+    "job_id": "20260520_2d276cd2-f570-4d76-8803-73e413a2f2b5",
+    "total_files": 1,
+    "successful_files_count": 1,
+    "failed_files_count": 0,
+    "storage_container_type": "Azure_V1",
+    "error_message": "",
+    "job_details": [
+      {
+        "inputs": [
+          {
+            "file_name": "000000_recording17064968205186586265__cfb528247b.mp3",
+            "file_id": "0"
+          }
+        ],
+        "outputs": [
+          {
+            "file_name": "0.json",
+            "file_id": "0.json"
+          }
+        ],
+        "state": "Success",
+        "error_message": "",
+        "exception_name": null
+      }
+    ]
+  },
+  "download": {
+    "job_id": "20260520_2d276cd2-f570-4d76-8803-73e413a2f2b5",
+    "job_state": "Completed",
+    "download_urls": {
+      "0.json": {
+        "file_url": "https://appsprodpublicsa.blob.core.windows.net/bulk-upload-storage/jobs/2026-05-20/SPEECH_TO_TEXT_BULK/2d276cd2-f570-4d76-8803-73e413a2f2b5/outputs/0.json?se=2026-05-20T15%3A23%3A47Z&sp=r&sv=2025-05-05&sr=b&sig=0KUN/VnYXO/8x2uwt61kx3O%2B745ja06AehoWowvRp3U%3D",
+        "file_metadata": null
+      }
+    },
+    "storage_container_type": "Azure_V1"
+  }
+}

@@ -1,0 +1,194 @@
+{
+  "file": "recording5898079471024368327.mp3",
+  "source_audio_path": "/workspace/recordings/recording5898079471024368327.mp3",
+  "normalized_audio_path": "/workspace/outputs/transcripts_50x/normalized_audio/recording5898079471024368327_mono16000.wav",
+  "duration_sec": 14.472,
+  "text": "म बात करती हूँ ग्राम शक्ति पलेटन ऐ क्या मेरी बात मुमताज से हो रही है",
+  "language": "hi",
+  "language_source": "client",
+  "lid_language": "hi",
+  "lid_language_source": "auto_default",
+  "context_biasing": {
+    "mode": "active",
+    "reason": "not_ready",
+    "requested_mode": "active",
+    "dynamic_context_attached": false,
+    "dynamic_context_used": false,
+    "fields_provided": [],
+    "phrase_count_before_pruning": 0,
+    "phrase_count_after_pruning": 0,
+    "phrase_count_total": 0,
+    "top_phrases": [],
+    "phrase_source": "static",
+    "errors": [],
+    "fallback_reason": "not_ready"
+  },
+  "metrics": {
+    "audio_duration": 14.472,
+    "processing_latency": 389
+  },
+  "final_chunk_count": 1,
+  "timestamp_chunk_count": 1,
+  "timestamp_text": "म बात करती हूँ ग्राम शक्ति पलेटन ऐ क्या मेरी बात मुमताज से हो रही है",
+  "diarization_provider": "nemo_clustering",
+  "diarization_error": null,
+  "rttm_path": "/workspace/outputs/transcripts_50x/rttm/recording5898079471024368327_mono16000.rttm",
+  "speaker_turns": [
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 1.9,
+      "end_sec": 2.57,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    },
+    {
+      "speaker_label": "speaker_0",
+      "start_sec": 2.86,
+      "end_sec": 6.25,
+      "confidence": null,
+      "overlap_flag": false,
+      "provider_speaker_label": "speaker_0",
+      "metadata": {}
+    }
+  ],
+  "speaker_segments": [
+    {
+      "speaker": null,
+      "text": "म",
+      "start_sec": 1.68,
+      "end_sec": 1.76
+    },
+    {
+      "speaker": "speaker_0",
+      "text": "बात करती",
+      "start_sec": 2.0,
+      "end_sec": 2.56
+    },
+    {
+      "speaker": null,
+      "text": "हूँ",
+      "start_sec": 2.64,
+      "end_sec": 2.88
+    },
+    {
+      "speaker": "speaker_0",
+      "text": "ग्राम शक्ति पलेटन ऐ क्या मेरी बात मुमताज",
+      "start_sec": 2.88,
+      "end_sec": 6.24
+    },
+    {
+      "speaker": null,
+      "text": "से हो रही है",
+      "start_sec": 6.4,
+      "end_sec": 7.12
+    }
+  ],
+  "word_timestamps": [
+    {
+      "word": "म",
+      "start_sec": 1.68,
+      "end_sec": 1.76,
+      "word_index": 0
+    },
+    {
+      "word": "बात",
+      "start_sec": 2.0,
+      "end_sec": 2.16,
+      "word_index": 1
+    },
+    {
+      "word": "करती",
+      "start_sec": 2.24,
+      "end_sec": 2.56,
+      "word_index": 2
+    },
+    {
+      "word": "हूँ",
+      "start_sec": 2.64,
+      "end_sec": 2.88,
+      "word_index": 3
+    },
+    {
+      "word": "ग्राम",
+      "start_sec": 2.88,
+      "end_sec": 3.12,
+      "word_index": 4
+    },
+    {
+      "word": "शक्ति",
+      "start_sec": 3.28,
+      "end_sec": 3.76,
+      "word_index": 5
+    },
+    {
+      "word": "पलेटन",
+      "start_sec": 3.84,
+      "end_sec": 4.4,
+      "word_index": 6
+    },
+    {
+      "word": "ऐ",
+      "start_sec": 4.4,
+      "end_sec": 4.56,
+      "word_index": 7
+    },
+    {
+      "word": "क्या",
+      "start_sec": 4.72,
+      "end_sec": 4.88,
+      "word_index": 8
+    },
+    {
+      "word": "मेरी",
+      "start_sec": 4.88,
+      "end_sec": 5.12,
+      "word_index": 9
+    },
+    {
+      "word": "बात",
+      "start_sec": 5.12,
+      "end_sec": 5.28,
+      "word_index": 10
+    },
+    {
+      "word": "मुमताज",
+      "start_sec": 5.44,
+      "end_sec": 6.24,
+      "word_index": 11
+    },
+    {
+      "word": "से",
+      "start_sec": 6.4,
+      "end_sec": 6.48,
+      "word_index": 12
+    },
+    {
+      "word": "हो",
+      "start_sec": 6.64,
+      "end_sec": 6.72,
+      "word_index": 13
+    },
+    {
+      "word": "रही",
+      "start_sec": 6.8,
+      "end_sec": 6.96,
+      "word_index": 14
+    },
+    {
+      "word": "है",
+      "start_sec": 7.04,
+      "end_sec": 7.12,
+      "word_index": 15
+    }
+  ],
+  "timing_ms": {
+    "load_audio": 6,
+    "lid_probe": 383,
+    "final_transcribe": 402,
+    "timestamp_pass": 423,
+    "diarization": 38833,
+    "file_total": 40055
+  }
+}

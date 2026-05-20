@@ -1,0 +1,10 @@
+file: recording14341333192992496973__2bd01365bd.mp3
+language: hi (client)
+lid_probe: hi (auto_default)
+context_biasing: {"mode": "active", "reason": "not_ready", "requested_mode": "active", "dynamic_context_attached": false, "dynamic_context_used": false, "fields_provided": [], "phrase_count_before_pruning": 0, "phrase_count_after_pruning": 0, "phrase_count_total": 0, "top_phrases": [], "phrase_source": "static", "errors": [], "fallback_reason": "not_ready"}
+
+transcript:
+ॉर्डिंग आई अंडरस्टैंड ब प्लीज नोटई एम यर लोेमट प्र बताए सर मुझे सुनाई नहीं दिया रिपीट करेंगे प्लीज सर मुझे सुनाई नहीं दिया रिपीट करेंगे प्लीज सरी मुझे सुनाई नहीं दिया रिपीट करेंगे प्लीज
+
+diarized:
+speaker_unknown: बात कर रही हूँ ग्राम पायन ऐसी्या मे बाीी ऐसी रहीि रिकॉर्डिंगू आई अंडरस्टैंड ब प्लीज नोट आई एम हेयर ट यू योर लोन पेमेंटी प्र बताए सर मुझे सुनाई नहीं दिया रिपीट करेंगे प्लीज सर मुझे सुनाई नहीं दिया रिपीट करेंगे प्लीज सरी मुझे सुनाई नहीं दिया रिपीट करेंगे प्लीज

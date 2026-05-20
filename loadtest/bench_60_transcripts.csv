@@ -1,0 +1,61 @@
+utt_id,wav,language,bucket,duration_s,district,state,transcript
+bench_001,/tmp/vaani_hi_60/vaani_000.wav,hi,short,2.250062,Lucknow,UttarPradesh,सामने की तरफ एक औरत बैठी हुई है।
+bench_002,/tmp/vaani_hi_60/vaani_001.wav,hi,short,1.706000,Darbhanga,Bihar,<static_noise> गमले में पौधे लगे हुए हैं। </static_noise>
+bench_003,/tmp/vaani_hi_60/vaani_002.wav,hi,short,4.407000,Begusarai,Bihar,डॉक्टर {Doctors} लोगों ने <pause> सामने पर <pause> कॉफ़ी {coffee} रखे हुए हैं खोलकर।</pause></pause>
+bench_004,/tmp/vaani_hi_60/vaani_003.wav,hi,short,2.494000,Palamu,Jharkhand,वहां उसके नीचे भी मछली रखी हुई है।
+bench_005,/tmp/vaani_hi_60/vaani_004.wav,hi,short,2.780000,Patna,Bihar,यह एक छोटा सा नदी है।
+bench_006,/tmp/vaani_hi_60/vaani_005.wav,hi,short,2.520000,Kapurthala,Punjab,यहां पे अच्छी डेकोरेशन {decoration} की गई है।
+bench_007,/tmp/vaani_hi_60/vaani_006.wav,hi,short,2.370000,Patna,Bihar,मकान की ईंटें दिख रही हैं।
+bench_008,/tmp/vaani_hi_60/vaani_007.wav,hi,short,1.889000,Gaya,Bihar,<noise> [inaudible] छोटे जीव होते है। </noise>
+bench_009,/tmp/vaani_hi_60/vaani_008.wav,hi,short,2.876000,Palamu,Jharkhand,<talking> एक आदमी कार {car} को सजा रहा है। </talking>
+bench_010,/tmp/vaani_hi_60/vaani_009.wav,hi,short,3.514063,Darbhanga,Bihar,<noise> इस यहाँ पास पूरा स्वच्छ वातावरण मिलता है। </noise>
+bench_011,/tmp/vaani_hi_60/vaani_010.wav,hi,short,3.710000,Lucknow,UttarPradesh,<noise> जेह एक <pause> गांव का <pause> व्यू {view} है। </pause></pause></noise>
+bench_012,/tmp/vaani_hi_60/vaani_011.wav,hi,short,2.140000,Palamu,Jharkhand,इसमे तार ताना हुआ [horn] है।
+bench_013,/tmp/vaani_hi_60/vaani_012.wav,hi,short,1.652000,Shamli,UttarPradesh,यहां पर गाड़ी धो रही है।
+bench_014,/tmp/vaani_hi_60/vaani_013.wav,hi,medium,5.971875,Darbhanga,Bihar,<noise> पिंक {pink} पानी का पहाड़ पर <pause> यहाँ पे पानी पहाड़ पर से गिर रहा [inaudible] -- </pause></noise>
+bench_015,/tmp/vaani_hi_60/vaani_014.wav,hi,short,3.259000,Shamli,UttarPradesh,अगरबत्तियां भी दिखाई दे रही है।
+bench_016,/tmp/vaani_hi_60/vaani_015.wav,hi,short,2.680000,Patna,Bihar,जहाँ पे दो गोरे आगे की ओर।
+bench_017,/tmp/vaani_hi_60/vaani_016.wav,hi,medium,8.007000,Begusarai,Bihar,यह एक हॉल {Hall} है जिसमें <pause> फैन {Fan} सब लगा हुआ है और <pause> लड़की लोग डान्स {Dance} कर रही है।</pause></pause>
+bench_018,/tmp/vaani_hi_60/vaani_017.wav,hi,short,4.082000,Begusarai,Bihar,''<noise> स्टील {steel} की तथा बहुत सारी मशीन {machine} भी और एकिपमेंट {equipment''''s} भी नजर आ रहे है। </noise>''
+bench_019,/tmp/vaani_hi_60/vaani_018.wav,hi,short,2.171000,Darbhanga,Bihar,सामने काफी अच्छा इमेज {image} है।
+bench_020,/tmp/vaani_hi_60/vaani_019.wav,hi,short,2.150000,Patna,Bihar,एक ठेला रखा हुआ है।
+bench_021,/tmp/vaani_hi_60/vaani_020.wav,hi,short,4.340000,Kapurthala,Punjab,<noise> यहां पर लोग पूजा करने के-- </noise>
+bench_022,/tmp/vaani_hi_60/vaani_021.wav,hi,short,2.830000,Patna,Bihar,<static_noise> शाम [whispering] हो रहे हैं। </static_noise>
+bench_023,/tmp/vaani_hi_60/vaani_022.wav,hi,short,2.140000,Shamli,UttarPradesh,यहां पर बहुत सारा पानी बह रहा है।
+bench_024,/tmp/vaani_hi_60/vaani_023.wav,hi,short,3.196000,Palamu,Jharkhand,इस फोटो {photo} में मकई दिखाई दे रहा है।
+bench_025,/tmp/vaani_hi_60/vaani_024.wav,hi,short,2.220000,Shamli,UttarPradesh,<noise> और ईसाईयो मंदिर भी है। </noise>
+bench_026,/tmp/vaani_hi_60/vaani_025.wav,hi,short,4.063000,Saran,Bihar,यह एक मछली की दूकान है जहा{जँहा} पर हमें मछली देखने को मिल रहा है।
+bench_027,/tmp/vaani_hi_60/vaani_026.wav,hi,short,2.381000,Palamu,Jharkhand,यह यह एक रूम {room} है.
+bench_028,/tmp/vaani_hi_60/vaani_027.wav,hi,short,2.238000,Lucknow,UttarPradesh,घर बने हुए हैं एक घर सफेद रंग--
+bench_029,/tmp/vaani_hi_60/vaani_028.wav,hi,short,1.924000,Longding,ArunachalPradesh,और छोटा सा एक दुकान है।
+bench_030,/tmp/vaani_hi_60/vaani_029.wav,hi,short,2.970000,Bangalore,Karnataka,<noise> हरे हरे घास ये बड़े बड़े घास है। </noise>
+bench_031,/tmp/vaani_hi_60/vaani_030.wav,hi,short,2.010000,Patna,Bihar,पहाड़ दिखाई दे रहा है।
+bench_032,/tmp/vaani_hi_60/vaani_031.wav,hi,short,2.430000,Patna,Bihar,यह एक नदी का किनारा है।
+bench_033,/tmp/vaani_hi_60/vaani_032.wav,hi,short,3.710000,Patna,Bihar,<people_talking>यह एक  घर है।</people_talking>
+bench_034,/tmp/vaani_hi_60/vaani_033.wav,hi,short,2.252000,Shamli,UttarPradesh,<noise> आलू भी दिखाई दे रहे हैं। </noise>
+bench_035,/tmp/vaani_hi_60/vaani_034.wav,hi,short,3.620000,Patna,Bihar,किस्म-किस्म [noise] के गिलास है झोला है।
+bench_036,/tmp/vaani_hi_60/vaani_035.wav,hi,short,1.435437,Araria,Bihar,यहां पे चारों साइड {side} में --
+bench_037,/tmp/vaani_hi_60/vaani_036.wav,hi,short,2.096000,Palamu,Jharkhand,कुछ बच्चे बैठे हुए हैं।
+bench_038,/tmp/vaani_hi_60/vaani_037.wav,hi,medium,7.317312,Gaya,Bihar,जो कि पतझड़ का [unintelligible] --
+bench_039,/tmp/vaani_hi_60/vaani_038.wav,hi,short,2.204000,Longding,ArunachalPradesh,यहाँ ये तो दुकान है।
+bench_040,/tmp/vaani_hi_60/vaani_039.wav,hi,medium,5.558813,Fazilka,Punjab, [unintelligible] पेड़ दिखाई दे रहा है।
+bench_041,/tmp/vaani_hi_60/vaani_040.wav,hi,short,2.080000,Patna,Bihar,पूरा कैफे {Cafe} खाली-खाली है।
+bench_042,/tmp/vaani_hi_60/vaani_041.wav,hi,short,2.218000,Jhajjar,Haryana,<noise> और यहां पे बहोत सारे लोग-- </noise>
+bench_043,/tmp/vaani_hi_60/vaani_042.wav,hi,short,1.642688,Gaya,Bihar,और ठंडी की समय है।
+bench_044,/tmp/vaani_hi_60/vaani_043.wav,hi,short,2.076000,PapumPare,ArunachalPradesh,बहुत सारा कितने लोग चल के भी है।
+bench_045,/tmp/vaani_hi_60/vaani_044.wav,hi,short,2.003000,Palamu,Jharkhand,एक बच्चा पार हो रहा--
+bench_046,/tmp/vaani_hi_60/vaani_045.wav,hi,short,2.060000,Patna,Bihar,इसमें दो बालक हैं बैठे हुए।
+bench_047,/tmp/vaani_hi_60/vaani_046.wav,hi,short,1.378000,Bangalore,Karnataka,<noise> सन राइस {sun rise} दिख रहा है। </noise>
+bench_048,/tmp/vaani_hi_60/vaani_047.wav,hi,short,2.740000,Washim,Maharashtra,यहाँ पर एक बहुत बड़ा--
+bench_049,/tmp/vaani_hi_60/vaani_048.wav,hi,short,2.610000,Patna,Bihar,कई [noise] आदमी दिख रहा है।
+bench_050,/tmp/vaani_hi_60/vaani_049.wav,hi,short,4.832000,Darbhanga,Bihar,एक <pause> गार्डन {garden} का ये चित्र दिख रहा है वहां लगता है स्कूल {school} का छोटा-सा गार्डन {garden} है।</pause>
+bench_051,/tmp/vaani_hi_60/vaani_050.wav,hi,short,3.200000,Patna,Bihar,छोटे-छोटे पौधे भी यहां दिख रहे--
+bench_052,/tmp/vaani_hi_60/vaani_051.wav,hi,short,3.700000,Patna,Bihar,इस तस्वीर में कुछ मकान भी दिख रहा है।
+bench_053,/tmp/vaani_hi_60/vaani_052.wav,hi,short,2.300000,PapumPare,ArunachalPradesh,पीछे में बहुत सारे पर्दे भी है।
+bench_054,/tmp/vaani_hi_60/vaani_053.wav,hi,short,2.870000,Patna,Bihar,एक कार है ब्लू {blue} रंग का--
+bench_055,/tmp/vaani_hi_60/vaani_054.wav,hi,short,3.839938,Begusarai,Bihar,<talking> तो ये आर्टिफिशियल {artificial} अपार्टमेंट {apartment} टाइप {type} का घर बन रहा है आप भी बनावा सकते हैं इनसे। </talking>
+bench_056,/tmp/vaani_hi_60/vaani_055.wav,hi,short,1.436000,Palamu,Jharkhand,<noise> कई पेड़ लगे हुए हैं। </noise>
+bench_057,/tmp/vaani_hi_60/vaani_056.wav,hi,short,2.090000,Patna,Bihar,इसमें कुछ व्यक्ति [noise] भी--
+bench_058,/tmp/vaani_hi_60/vaani_057.wav,hi,short,1.760000,Shamli,UttarPradesh,यह एक मिठाई की दुकान है।
+bench_059,/tmp/vaani_hi_60/vaani_058.wav,hi,short,1.828000,Gaya,Bihar,<noise> यह मस्जिद बहुत पुराना है। </noise>
+bench_060,/tmp/vaani_hi_60/vaani_059.wav,hi,short,2.700000,Patna,Bihar,<static_noise> जाल के अंदर बंद है।</static_noise>
