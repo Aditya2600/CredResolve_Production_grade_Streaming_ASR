@@ -25,6 +25,26 @@ PREPROC_DIR="${MODEL_REPO}/indic_asr_preproc/1"
 CTC_DIR="${MODEL_REPO}/indic_asr_ctc_decoder/1"
 DOCKER_COMPOSE="${DOCKER_COMPOSE:-docker compose}"
 
+restart_triton() {
+    # Triton loads TensorRT plans only during model load. Force a recreate so a
+    # swapped model.plan is actually deserialized by a fresh server process.
+    ${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml \
+        up -d --force-recreate --no-deps triton
+}
+
+run_validation() {
+    local decoder="$1"
+
+    ${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml \
+        run --rm --no-deps \
+        -e PYTHONPATH=/workspace \
+        worker python /workspace/scripts/validate_triton_deploy.py \
+            --triton-url triton:8001 \
+            --audio-dir /workspace/tests/fixtures/audio_bench \
+            --reference-json /workspace/tests/fixtures/audio_bench/reference_transcripts.json \
+            --decoder "${decoder}"
+}
+
 # Default to the parity-safe FP32 baseline if no flags provided
 TRT_FLAGS="${*:- --noTF32}"
 
@@ -124,10 +144,9 @@ fi
 echo "[gate] Swapping in candidate engine..."
 mv "${ENCODER_DIR}/model.plan.candidate" "${ENCODER_DIR}/model.plan"
 
-# Start or recreate Triton to load the new engine. `restart` is not enough on
-# a fresh host because Compose will not create an absent service.
+# Start or recreate Triton to load the new engine.
 echo "[gate] Starting Triton..."
-${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml up -d triton
+restart_triton
 
 # Wait for Triton readiness
 echo -n "[gate] Waiting for Triton readiness..."
@@ -139,8 +158,8 @@ until curl -sf http://localhost:8100/v2/health/ready > /dev/null; do
         echo "[gate][error] Triton failed to become ready with the candidate engine"
         if [[ $HAS_BACKUP -eq 1 ]]; then
             echo "[gate] Reverting to backup engine..."
-            mv "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
-            ${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml up -d triton
+            mv -f "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
+            restart_triton
         fi
         exit 1
     fi
@@ -153,33 +172,25 @@ echo " READY"
 # Run validation gate script
 # Note: Requires PYTHONPATH to find the worker modules
 echo "[gate] Running validation fixtures (RNNT)..."
-if ! PYTHONPATH="${REPO_ROOT}" python3 "${REPO_ROOT}/scripts/validate_triton_deploy.py" \
-    --triton-url localhost:8101 \
-    --audio-dir "${REPO_ROOT}/tests/fixtures/audio_bench" \
-    --reference-json "${REPO_ROOT}/tests/fixtures/audio_bench/reference_transcripts.json" \
-    --decoder rnnt; then
+if ! run_validation rnnt; then
     
     echo "[gate][error] RNNT VALIDATION FAILED"
     if [[ $HAS_BACKUP -eq 1 ]]; then
         echo "[gate] Reverting to backup engine..."
-        mv "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
-        ${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml up -d triton
+        mv -f "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
+        restart_triton
     fi
     exit 1
 fi
 
 echo "[gate] Running validation fixtures (CTC)..."
-if ! PYTHONPATH="${REPO_ROOT}" python3 "${REPO_ROOT}/scripts/validate_triton_deploy.py" \
-    --triton-url localhost:8101 \
-    --audio-dir "${REPO_ROOT}/tests/fixtures/audio_bench" \
-    --reference-json "${REPO_ROOT}/tests/fixtures/audio_bench/reference_transcripts.json" \
-    --decoder ctc; then
+if ! run_validation ctc; then
     
     echo "[gate][error] CTC VALIDATION FAILED"
     if [[ $HAS_BACKUP -eq 1 ]]; then
         echo "[gate] Reverting to backup engine..."
-        mv "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
-        ${DOCKER_COMPOSE} -f docker-compose.yml -f docker-compose.triton.yml up -d triton
+        mv -f "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
+        restart_triton
     fi
     exit 1
 fi

@@ -11,8 +11,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY triton/requirements.txt /tmp/requirements.txt
-RUN python3 -m pip install --upgrade pip && \
-    python3 -m pip install -r /tmp/requirements.txt
+RUN python3 -m pip install --break-system-packages -r /tmp/requirements.txt
 
 COPY triton/model_repository /models
 

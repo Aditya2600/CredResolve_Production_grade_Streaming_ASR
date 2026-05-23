@@ -1,12 +1,15 @@
-# Triton Phase 1 deploy runbook + timing instrumentation
+# Triton deploy runbook + BLS timing instrumentation
 
-Companion to [triton_native_serving_plan.md](triton_native_serving_plan.md). The plan doc is forward-looking. This doc records what was *actually* deployed on the gpu_migration branch, the steps to reproduce the deploy, the timing instrumentation that was added to support the Phase 2 decision, and a sketched Phase 2 BLS structure to come back to.
+Companion to [triton_native_serving_plan.md](triton_native_serving_plan.md). The plan doc is forward-looking. This doc records what was *actually* deployed on the gpu_migration branch: the native CTC ensemble, the shared TensorRT encoder, the RNNT Python path using Triton BLS for that encoder, and the timing instrumentation used to verify the serving path.
 
 ---
 
 ## 1. What got deployed
 
-Phase 1 — CTC ensemble running on Triton's native backends, with the encoder served as a parity-safe FP32 TensorRT engine. The Python backend stays as the RNNT path until Phase 2.
+The deployed Triton stack has two serving paths that share the same encoder:
+
+- CTC requests use the native Triton ensemble `indic_asr_ctc`.
+- RNNT requests use the Python backend `indic_asr`, with the encoder executed through Triton BLS against the shared `indic_asr_encoder` TensorRT model.
 
 | Triton model | Backend | Device | Artifact in `1/` |
 |---|---|---|---|
@@ -14,7 +17,7 @@ Phase 1 — CTC ensemble running on Triton's native backends, with the encoder s
 | `indic_asr_encoder` | `tensorrt` | GPU | `model.plan` (FP32, GPU-specific) + `model.onnx` + 367 external weight blobs |
 | `indic_asr_ctc_decoder` | `onnxruntime` | GPU | `model.onnx` (single Linear projection) |
 | `indic_asr_ctc` | `ensemble` | — | wires preproc → encoder → ctc_decoder |
-| `indic_asr` | `python` | GPU | RNNT path (untouched in Phase 1) |
+| `indic_asr` | `python` | GPU | RNNT path; encoder is called via BLS into `indic_asr_encoder` |
 
 All five reach HTTP 200 on `/v2/models/<name>/ready`. Verified after deploy.
 
@@ -311,11 +314,9 @@ Both files coexist in `1/`. Restart Triton to pick up the swap.
 
 ---
 
-## 4. Timing instrumentation (Phase 2 decision support)
+## 4. Timing instrumentation
 
-The question Phase 2 needs to answer: *does the encoder dominate end-to-end latency?* If yes, the BLS work below pays off (TRT speedup propagates through). If no, the decode loop is the bottleneck and BLS is the wrong project.
-
-The Python backend was instrumented to attribute wall-time across four stages: **preproc** → **encoder** → **decode** → **postproc**.
+The Python backend is instrumented to attribute RNNT wall-time across four stages: **preproc** → **encoder** → **decode** → **postproc**. The `encoder` stage is the BLS call into `indic_asr_encoder`, so the logs show how much of RNNT latency is spent in the shared TensorRT encoder versus the remaining Python decode loop.
 
 ### 4.1 Where the timer lives
 
@@ -394,7 +395,7 @@ Goal: a defensible answer to "does encoder dominate?" with enough variance cover
 |---|---|---|
 | 1–3 s | 20 | Short — encoder fixed-cost may dominate; loop barely runs |
 | 3–8 s | 20 | Typical conversational utterance |
-| 8–20 s | 20 | Long — decode loop has many iterations; this is where BLS would win or lose |
+| 8–20 s | 20 | Long — decode loop has many iterations; this is where the encoder-via-BLS split is most likely to be limited by RNNT decode |
 
 **Languages:** 4 spread across script families — `hi`, `ta`, `bn`, `en` (or whichever 4 are most relevant to your traffic). 15 utterances per language. Use real audio from your existing eval set, not synthetic.
 
@@ -421,9 +422,9 @@ The analyzer's verdict block per bucket:
 
 | `encoder_med` | Verdict | Action |
 |---|---|---|
-| ≥ 60% | ✓ GO | Phase 2 BLS worth it. TRT speedup propagates. |
+| ≥ 60% | ✓ GO | Encoder dominates. Further encoder optimization should propagate to RNNT latency. |
 | 45–60% | ~ MEH | Helps the tail but not the median. Defer unless tail latency is a SLO problem. |
-| < 45% | ✗ STOP | Decode loop is the bottleneck. BLS won't help — need a different decoder (chunked/streaming RNNT, or CTC-only). |
+| < 45% | ✗ STOP | Decode loop or preproc dominates. More encoder work is unlikely to move end-to-end RNNT latency much. |
 
 (Thresholds match `analyze_timing_logs.py` exactly. Update both together if you tune them.)
 
@@ -474,105 +475,83 @@ Hand-crafted lines like the above have `total` exactly equal to stage_sum, so th
 
 ---
 
-## 7. Phase 2 — RNNT BLS sketch (deferred until benchmark verdict)
+## 7. Phase 2 — RNNT encoder via BLS
 
-Don't build any of this until the benchmark from §5 produces a GO verdict on the buckets that matter for production traffic.
+Phase 2 is deployed. The RNNT path still lives in the `indic_asr` Python backend, but its encoder is no longer an in-process model object. `encode()` now issues a Triton BLS request to the shared `indic_asr_encoder` model, which is served by TensorRT from `model.plan`.
 
-Phase 2 is intentionally documentation-only during the Phase 1 deploy. Do **not**
-drop placeholder `indic_asr_rnnt*` directories into the live
-`triton/model_repository/` until their versioned ONNX artifacts exist: Triton
-loads every top-level model directory at startup, and config-only placeholders
-make the whole server fail readiness under `--strict-readiness=true`.
+This gives both decoders the same encoder execution path:
 
-### 7.1 Why an ensemble doesn't work for RNNT
+| Request path | Triton entry model | Encoder path | Decoder path |
+|---|---|---|---|
+| CTC | `indic_asr_ctc` | ensemble step into `indic_asr_encoder` | `indic_asr_ctc_decoder` ONNX Runtime |
+| RNNT | `indic_asr` | BLS call into `indic_asr_encoder` | existing Python RNNT greedy loop |
 
-RNNT decoding is a *data-dependent loop*: for each encoder frame, the joint network emits 0…N tokens until it predicts blank. Triton's `ensemble` is a fixed DAG with no loops or conditionals, so it can't express that. RNNT needs **BLS (Business Logic Scripting)**: a Python orchestrator inside Triton that runs the loop and dispatches each step via in-process calls to native sub-models.
+### 7.1 Why RNNT stays in the Python backend
 
-### 7.2 New model files
+RNNT decoding is a data-dependent loop: for each encoder frame, the joint network emits zero or more tokens until it predicts blank. Triton's `ensemble` model is a fixed DAG with no loops or conditionals, so it cannot express RNNT greedy decoding directly.
+
+The implemented compromise is to move the expensive, feed-forward encoder to the shared TensorRT model and keep the dynamic RNNT decode loop in Python. That preserves the TensorRT encoder speedup without adding placeholder predictor/joint model directories or introducing a second RNNT entry model.
+
+### 7.2 Implementation points
+
+The deployed BLS call is in [triton/model_repository/indic_asr/1/indic_asr_model.py](../triton/model_repository/indic_asr/1/indic_asr_model.py):
+
+```python
+encoder_request = pb_utils.InferenceRequest(
+    model_name=_ENCODER_BLS_MODEL_NAME,
+    requested_output_names=["outputs", "encoded_lengths"],
+    inputs=[...],
+)
+encoder_response = encoder_request.exec()
+```
+
+`_ENCODER_BLS_MODEL_NAME` is `indic_asr_encoder`. At Triton startup, [triton/model_repository/indic_asr/1/model.py](../triton/model_repository/indic_asr/1/model.py) logs:
+
+```text
+Triton Indic ASR model ready ... (encoder via BLS)
+```
+
+That line is the quick operational check that the RNNT Python model loaded the BLS-enabled vendored module.
+
+### 7.3 Model repository after Phase 2
+
+No extra `indic_asr_rnnt*` model directories are required for the deployed Phase 2 path.
 
 ```
 triton/model_repository/
-├── indic_asr_preproc/         (existing — reused)
-├── indic_asr_encoder/         (existing — TRT plan reused)
-├── indic_asr_ctc_decoder/     (existing)
-├── indic_asr_ctc/             (existing CTC ensemble)
-│
-├── indic_asr_rnnt_predictor/  ← NEW: single LSTM-step decoder
-│   ├── 1/model.onnx
-│   └── config.pbtxt
-├── indic_asr_rnnt_joint/      ← NEW: enc⊕pred → vocab
-│   ├── 1/model.onnx
-│   └── config.pbtxt
-└── indic_asr_rnnt/            ← NEW: BLS orchestrator (python backend)
-    ├── 1/model.py
-    └── config.pbtxt
+├── indic_asr_preproc/         # TorchScript filterbank, CPU
+├── indic_asr_encoder/         # shared TensorRT encoder, GPU
+├── indic_asr_ctc_decoder/     # CTC projection/argmax support, GPU
+├── indic_asr_ctc/             # CTC ensemble
+└── indic_asr/                 # RNNT Python backend, encoder via BLS
 ```
 
-The existing `indic_asr` python backend stays during rollout — `indic_asr_rnnt` runs alongside, worker flips a flag to switch over.
+This matters operationally because Triton loads every top-level model directory at startup. Empty or config-only placeholder directories can break readiness under `--strict-readiness=true`.
 
-### 7.3 Sub-model configs (key fields only)
+### 7.4 Worker routing
 
-**Predictor** — single LSTM step, stateful via input/output handoff:
+`docker-compose.triton.yml` points the worker at both entry models:
 
-```protobuf
-name: "indic_asr_rnnt_predictor"
-backend: "onnxruntime"
-input  [ tokens int64[B,1], state_h fp32[1,B,640], state_c fp32[1,B,640] ]
-output [ pred_out fp32[B,1,640], state_h_new fp32[1,B,640], state_c_new fp32[1,B,640] ]
-instance_group [{ kind: KIND_GPU count: 1 }]
+```yaml
+TRITON_MODEL_NAME: indic_asr
+TRITON_MODEL_NAME_CTC: indic_asr_ctc
 ```
 
-**Joint** — combines one encoder frame + predictor output:
+RNNT requests route to `indic_asr`; CTC requests route to `indic_asr_ctc`. Both paths reuse `indic_asr_encoder`.
 
-```protobuf
-name: "indic_asr_rnnt_joint"
-backend: "onnxruntime"
-input  [ encoder_frame fp32[B,1,1024], predictor_out fp32[B,1,640] ]
-output [ logits fp32[B,1,1,5633] ]
-instance_group [{ kind: KIND_GPU count: 1 }]
-```
+### 7.5 Performance note
 
-### 7.4 Orchestrator (`indic_asr_rnnt/1/model.py`) — skeleton
-
-```python
-class TritonPythonModel:
-    def execute(self, requests):
-        for req in requests:
-            # 1. Preproc — BLS call
-            mel, mel_len = bls("indic_asr_preproc", {...}, ["OUTPUT__0", "OUTPUT__1"])
-            # 2. Encoder — single TRT call (the ONE expensive op)
-            enc_out, enc_len = bls("indic_asr_encoder", {...}, ["outputs", "encoded_lengths"])
-            # 3. Greedy RNNT loop, calling predictor + joint per step
-            for t in range(T):
-                while not_blank and symbols < MAX:
-                    pred_out, h, c = bls("indic_asr_rnnt_predictor", {...}, [...])
-                    logits = bls("indic_asr_rnnt_joint", {...}, ["logits"])
-                    token = argmax(logits + lang_mask)
-                    ...
-```
-
-### 7.5 The four things that actually matter
-
-1. **Encoder runs once per utterance.** That's the whole point — TRT's win is preserved. Predictor and joint run thousands of times in the loop, but each call is microseconds.
-2. **Keep tensors on GPU between BLS calls.** The naive version using `as_numpy()` round-trips through host memory every iteration — that kills perf. Real version uses `pb_utils.Tensor.from_dlpack()` so predictor state stays in CUDA memory across loop iterations. This is the single biggest perf knob.
-3. **Per-language vocab masking lives in the orchestrator.** `[V]`-shape additive `-inf` mask applied to logits before argmax. Cheap, and avoids per-language model variants.
-4. **Sub-model export is a one-time script.** `scripts/export_rnnt_subnets.py` (does not yet exist) loads the NeMo `EncDecRNNTModel`, pulls `model.decoder` (predictor LSTM) and `model.joint`, wraps each as a single-step `nn.Module` with explicit `(h, c)` state I/O, exports to ONNX.
-
-### 7.6 Risk
-
-The Python BLS loop has overhead — ~50–200 µs per iteration for dispatch + interpreter. For a 5 s utterance with ~250 encoder frames and ~1 token/frame average, that's ~250–500 BLS pairs = 25–100 ms of pure orchestration overhead. The current python-backend RNNT path probably runs the whole loop in pure Torch on GPU, so BLS is **not automatically faster**. The win comes from the encoder TRT engine, not the loop itself.
-
-This is exactly what the Phase 2 decision benchmark in §5 is designed to answer.
+The current benchmark shows that the deployed RNNT path is working and producing per-stage timing lines. On the sampled Hindi manifest, most wall time is in preproc and decode rather than the encoder, so additional encoder-only work is unlikely to move RNNT end-to-end latency much for that traffic shape. Use the §5 benchmark protocol with a balanced manifest before making production-wide conclusions.
 
 ---
 
-## 8. Files touched in this phase
+## 8. Files touched
 
 - [triton/model_repository/indic_asr_preproc/config.pbtxt](../triton/model_repository/indic_asr_preproc/config.pbtxt) — pytorch backend, CPU
 - [triton/model_repository/indic_asr_encoder/config.pbtxt](../triton/model_repository/indic_asr_encoder/config.pbtxt) — tensorrt backend, GPU, FP16 plan
 - [triton/model_repository/indic_asr_ctc_decoder/config.pbtxt](../triton/model_repository/indic_asr_ctc_decoder/config.pbtxt) — onnxruntime backend, GPU
 - [triton/model_repository/indic_asr_ctc/config.pbtxt](../triton/model_repository/indic_asr_ctc/config.pbtxt) — ensemble (preproc → encoder → ctc_decoder)
-- [triton/model_repository/indic_asr/1/model.py](../triton/model_repository/indic_asr/1/model.py) — added `_StageTimer` class, env-var reads in `initialize()`, sampled timer creation in `execute()`
-- [triton/model_repository/indic_asr/1/indic_asr_model.py](../triton/model_repository/indic_asr/1/indic_asr_model.py) — added `_timer` kwarg to `forward`, `encode`, `_ctc_decode`, `_rnnt_decode`; wrapped the four stage boundaries
+- [triton/model_repository/indic_asr/1/model.py](../triton/model_repository/indic_asr/1/model.py) — added `_StageTimer` class, env-var reads in `initialize()`, sampled timer creation in `execute()`, and startup logging for encoder-via-BLS
+- [triton/model_repository/indic_asr/1/indic_asr_model.py](../triton/model_repository/indic_asr/1/indic_asr_model.py) — vendored RNNT implementation; `encode()` calls `indic_asr_encoder` through `pb_utils.InferenceRequest`, and `_timer` wraps the four stage boundaries
 - [scripts/stage_triton_model_repo.sh](../scripts/stage_triton_model_repo.sh) — staging script (HF blobs → model repo, bypasses broken snapshot dir)
 - [tools/benchmarks/analyze_timing_logs.py](../tools/benchmarks/analyze_timing_logs.py) — log parser, bucketed aggregation, GO/MEH/STOP verdict

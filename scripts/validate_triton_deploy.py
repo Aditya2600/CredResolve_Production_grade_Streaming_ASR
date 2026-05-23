@@ -13,6 +13,8 @@ sys.path.insert(0, str(REPO_ROOT))
 # Setup minimal logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("validate_gate")
+VALIDATION_SESSION_ID = "validate-triton-deploy"
+VALIDATION_MODE = "transcribe"
 
 print("Starting validation script...")
 try:
@@ -37,6 +39,8 @@ def validate(triton_url, audio_dir, reference_json, decoder):
         triton_ctc_model_name="indic_asr_ctc",
         asr_asset_repo=os.environ.get("ASR_MODEL_NAME", "ai4bharat/indic-conformer-600m-multilingual"),
         hf_token=os.environ.get("HUGGINGFACE_HUB_TOKEN"),
+        default_decoder=os.environ.get("ASR_DECODER", "rnnt"),
+        inference_timeout_ms=int(os.environ.get("ASR_INFERENCE_TIMEOUT_MS", "4000")),
         supported_language_allowlist=["hi"],
         default_language="hi"
     )
@@ -52,14 +56,17 @@ def validate(triton_url, audio_dir, reference_json, decoder):
     failed_files = []
     total_wer = 0
     count = 0
+    attempted_count = 0
 
     for filename, expected_text in references.items():
         audio_path = audio_dir / filename
         if not audio_path.exists():
-            log.warning(f"Audio file {audio_path} not found, skipping")
+            log.error(f"FAILURE: Audio file {audio_path} not found")
+            failed_files.append((filename, "MISSING_AUDIO"))
             continue
             
         try:
+            attempted_count += 1
             pcm, sr, duration = read_wav_pcm16_mono(audio_path)
             
             t0 = time.perf_counter()
@@ -67,7 +74,10 @@ def validate(triton_url, audio_dir, reference_json, decoder):
                 pcm16le=pcm,
                 sample_rate=sr,
                 decoder=decoder,
-                language="hi"
+                language="hi",
+                session_id=VALIDATION_SESSION_ID,
+                utterance_id=audio_path.stem,
+                mode=VALIDATION_MODE,
             )
             latency_ms = (time.perf_counter() - t0) * 1000
             
@@ -96,9 +106,12 @@ def validate(triton_url, audio_dir, reference_json, decoder):
             log.error(f"Error processing {filename}: {e}")
             failed_files.append((filename, f"ERROR: {e}"))
 
+    if attempted_count == 0:
+        return False, "NO_AUDIO_FIXTURES_EVALUATED"
+
     if failed_files:
         return False, failed_files
-    
+
     avg_wer = total_wer / count if count > 0 else 0
     log.info(f"Validation PASSED. Average WER: {avg_wer:.4f}")
     return True, avg_wer

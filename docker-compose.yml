@@ -60,12 +60,13 @@ services:
       - "9400:9400"
     environment:
       - DCGM_EXPORTER_LISTEN=:9400
+      - NVIDIA_VISIBLE_DEVICES=0
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              device_ids: ["0"]
               capabilities: [gpu]
     restart: unless-stopped
 
@@ -124,6 +125,8 @@ services:
       - EVAL_LOGS_ENABLED=${EVAL_LOGS_ENABLED}
       - EVAL_LOG_SAMPLE_RATE=${EVAL_LOG_SAMPLE_RATE}
       - EVAL_LOG_TEXT_PREVIEW_CHARS=${EVAL_LOG_TEXT_PREVIEW_CHARS}
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
     ulimits:
       nofile:
         soft: 65535
@@ -140,7 +143,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              device_ids: ["0"]
               capabilities: ["gpu"]
 
   itn-service:

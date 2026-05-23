@@ -96,17 +96,17 @@ Validation gate before flipping the worker default:
 
 ### Phase 2 — RNNT path
 
-RNNT cannot be an ensemble because of the per-symbol loop. Two viable approaches, in order of preference:
+RNNT cannot be an ensemble because of the per-symbol loop. The implemented Phase 2 path keeps RNNT in the Python backend and reuses the shared TensorRT encoder through Triton BLS:
 
-1. **Keep RNNT on a slimmed Python backend, but reuse Phase 1's encoder.** Convert the RNNT python model to call the ensemble's `encoder` model via Triton BLS (`pb_utils.InferenceRequest`) for the heavy 600M encoder, and keep only `joint_*` and `rnnt_decoder` ORT sessions in-process. This shares the TRT-optimized encoder between CTC and RNNT, which is the single largest model in the bundle.
-2. **Custom backend / proper batched greedy decode.** Replace the `for t in T: while not_blank` loop with a vectorized per-batch implementation (still Python but with all states kept on-device via ORT IO Binding + CUDA EP, no `.numpy()` round-trips). This is mostly a refactor of `model_onnx.py` rather than new infrastructure, and gives 2–4× throughput at higher batch.
+1. **RNNT Python backend + BLS encoder.** `triton/model_repository/indic_asr/1/indic_asr_model.py` vendors the RNNT implementation and calls `indic_asr_encoder` via `pb_utils.InferenceRequest`. This shares the TensorRT encoder between CTC and RNNT while leaving the data-dependent RNNT greedy loop in Python.
+2. **Custom backend / proper batched greedy decode remains optional.** Replacing the `for t in T: while not_blank` loop with a vectorized per-batch implementation could improve throughput at higher batch, but it is not part of the deployed Phase 2 path.
 
-Files that would change:
+Files changed for the deployed Phase 2 path:
 
-- Edit: a forked copy of `model_onnx.py` placed under `triton/model_repository/indic_asr/1/` (do not keep the live patch of the HF cache — make it explicit and version-controlled). Move RNNT loop to use `ort.IOBinding` against `CUDAExecutionProvider` and call the shared encoder via BLS.
-- Edit: [triton/model_repository/indic_asr/1/model.py](../triton/model_repository/indic_asr/1/model.py) — drop `_patch_model_onnx_for_cpu_preprocessor` once the preprocessor is served by Triton.
+- [triton/model_repository/indic_asr/1/indic_asr_model.py](../triton/model_repository/indic_asr/1/indic_asr_model.py) — vendored RNNT implementation; `encode()` calls the shared encoder via BLS.
+- [triton/model_repository/indic_asr/1/model.py](../triton/model_repository/indic_asr/1/model.py) — loads the vendored module, wires timing, and logs `encoder via BLS` on startup.
 
-Expected speedup: 1.3–1.8× on RNNT latency from removing host round-trips and reusing the optimized encoder; greater wins (2–4×) if batching multiple concurrent sessions through the loop, which the current single-session Python loop cannot do.
+Expected behavior: RNNT and CTC now share the TensorRT encoder. End-to-end RNNT latency still depends on preproc and the Python decode loop, so measure with the timing runbook before assuming encoder-only work will move production latency.
 
 ### Phase 3 (optional) — WS binary frames
 
@@ -123,7 +123,7 @@ Expected gain: ~33% upstream bandwidth, lower base64 CPU on gateway. Latency imp
 - **TRT engine instability across GPU SKUs.** TRT engines are SM-specific. Mitigate by building inside the Triton container at deploy time and pinning a `min/opt/max` shape envelope. Keep the CUDA EP build as a fallback model version.
 - **WER drift from FP16 / TRT.** Run `eval_serving_model_manifest_wer.py` against a fixed eval manifest before flipping default. Gate the rollout on WER delta ≤ a small absolute threshold per language.
 - **Ensemble + dynamic batching scheduling artifacts.** Start with `preferred_batch_size=[1]` and a small `max_queue_delay_microseconds`; raise only after measuring.
-- **`model_onnx.py` patching is fragile.** Phase 1 leaves the existing python backend untouched as the rollback. Phase 2 replaces the live HF-cache patch with a vendored copy under the model repo.
+- **Vendored RNNT backend drift.** Phase 2 replaces live HF-cache patching with a vendored copy under the model repo. Keep it in sync when upgrading the upstream model package.
 - **External weight files.** Any tooling that copies `encoder.onnx` must also copy the `layers.*` blobs in the same directory. Document in the deploy README.
 
 ## 6. Things explicitly *not* recommended
@@ -134,7 +134,7 @@ Expected gain: ~33% upstream bandwidth, lower base64 CPU on gateway. Latency imp
 
 ---
 
-## Phase 1 status — what's in this branch
+## Deployed status — what's in this branch
 
 Code/config landed (no model artefacts copied — those are deploy-time):
 
@@ -147,10 +147,12 @@ Code/config landed (no model artefacts copied — those are deploy-time):
 - [worker/app/main.py](../worker/app/main.py) and [worker/app/main_v2.py](../worker/app/main_v2.py): pass the new knobs into `TritonIndicASRWorker`.
 - [worker/tests/test_triton_ctc_ensemble.py](../worker/tests/test_triton_ctc_ensemble.py): unit tests for greedy decoding, word timestamps, dispatcher routing, and fallback-on-error.
 - [.env.example](../.env.example): documents `TRITON_MODEL_NAME_CTC`.
+- [triton/model_repository/indic_asr/1/indic_asr_model.py](../triton/model_repository/indic_asr/1/indic_asr_model.py): RNNT Python path calls the shared TensorRT encoder through Triton BLS.
+- [docs/triton_deploy_runbook_bls_and_timing_instrumentation.md](triton_deploy_runbook_bls_and_timing_instrumentation.md): deploy runbook, BLS notes, and timing instrumentation.
 
-The legacy `indic_asr` python backend is untouched and remains the rollback target. RNNT requests still flow through it. With `TRITON_MODEL_NAME_CTC` unset (default), behaviour is identical to before.
+RNNT requests still flow through `indic_asr`, but its encoder stage is served through BLS by `indic_asr_encoder`. With `TRITON_MODEL_NAME_CTC` unset, CTC requests fall back to the Python entry model; RNNT continues to use the BLS-enabled Python entry model.
 
-## Phase 1 deploy runbook
+## Deploy runbook
 
 Inside the Triton container (or whatever build step prepares the model repo):
 

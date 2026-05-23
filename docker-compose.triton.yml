@@ -21,7 +21,7 @@ services:
       context: .
       dockerfile: triton/Dockerfile
       args:
-        TRITON_SERVER_IMAGE: ${TRITON_SERVER_IMAGE:-nvcr.io/nvidia/tritonserver:24.09-py3}
+        TRITON_SERVER_IMAGE: ${TRITON_SERVER_IMAGE:-nvcr.io/nvidia/tritonserver:25.04-py3}
     restart: unless-stopped
     environment:
       - ASR_MODEL_NAME=${ASR_MODEL_NAME}
@@ -31,6 +31,8 @@ services:
       - TRITON_FRAME_DURATION_MS=${TRITON_FRAME_DURATION_MS:-0.08}
       - ASR_TIMING_SAMPLE_RATE=1
       - ASR_TIMING_CUDA_SYNC=1
+      - NVIDIA_VISIBLE_DEVICES=0
+      - CUDA_VISIBLE_DEVICES=0
     # Bind-mount the model repo so artefacts staged at deploy time
     # (encoder.onnx + external weights, ctc_decoder.onnx, preprocessor.ts,
     #  optional model.plan TRT engine) live on host disk rather than baked
@@ -52,5 +54,5 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              device_ids: ["0"]
               capabilities: ["gpu"]

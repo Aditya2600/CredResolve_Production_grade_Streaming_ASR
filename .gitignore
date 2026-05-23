@@ -63,6 +63,7 @@ logs/
 *.pid
 *.pid.lock
 worker/hub/.locks/
+*.bak
 
 # Downloaded/generated audio. Vaani and derived audio can be fetched or rebuilt.
 *.wav
@@ -78,8 +79,13 @@ worker/hub/.locks/
 # Local training artifacts and downloaded model caches.
 artifacts/
 models/
+hub/
 query_result_*.csv
 
 # Downloaded cache; rebuild or transfer separately if the new server is offline.
 worker/hub/
 Miniconda3-latest-Linux-x86_64.sh
+
+# Generated benchmark/evaluation outputs.
+loadtest/*_results.csv
+outputs/
