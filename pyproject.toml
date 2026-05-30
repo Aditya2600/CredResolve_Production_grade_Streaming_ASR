@@ -1,6 +1,7 @@
 [tool.pytest.ini_options]
 markers = [
     "characterization: pin numerical output of process() against committed goldens (loads real Silero VAD + RNNoise; opt out with -m \"not characterization\")",
+    "restore_smoke: opt-in real NeMo .nemo restore smoke tests",
 ]
 
 [tool.ruff]

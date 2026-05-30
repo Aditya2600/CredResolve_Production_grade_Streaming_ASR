@@ -6,8 +6,8 @@ soundfile
 torch==2.4.1
 torchaudio==2.4.1
 onnxruntime-gpu==1.20.1
-huggingface_hub==0.24.6
-transformers==4.41.2
+huggingface_hub>=0.24.6
+transformers==4.52.0
 speechbrain==0.5.16
 tqdm==4.66.5
 prometheus-client==0.20.0
@@ -24,3 +24,8 @@ silero-vad>=5.1.2
 # deepfilterlib (the Rust extension inside deepfilternet) requires Cargo at build
 # time — the Dockerfile installs rustup before pip install, then removes it.
 deepfilternet>=0.5.6
+datasets<3.0.0
+accelerate
+librosa
+nemo_toolkit[asr]==2.4.1
+pyarrow==15.0.0

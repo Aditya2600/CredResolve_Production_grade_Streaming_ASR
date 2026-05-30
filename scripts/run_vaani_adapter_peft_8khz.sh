@@ -9,6 +9,8 @@ EXP_DIR=artifacts/ft_runs/vaani_adapter_peft_8khz
 RUN_NAME=${RUN_NAME:-indicconformer_vaani_8khz_adapter_dim32}
 ADAPTER_DIM=${ADAPTER_DIM:-32}
 LR=${LR:-1e-3}
+PRECISION=${PRECISION:-32-true}
+TRAINING_OBJECTIVE=${TRAINING_OBJECTIVE:-ctc}
 VALIDATION_MODE=${VALIDATION_MODE:-diagnostic}
 DIAGNOSTIC_VAL_SIZE=${DIAGNOSTIC_VAL_SIZE:-200}
 DIAGNOSTIC_VAL_SEED=${DIAGNOSTIC_VAL_SEED:-42}
@@ -25,6 +27,10 @@ fi
 
 if [[ -n "${RESUME_FROM_CHECKPOINT:-}" ]]; then
   EXTRA_TRAIN_ARGS+=(--resume-from-checkpoint "${RESUME_FROM_CHECKPOINT}")
+fi
+
+if [[ "${DEBUG_BAD_BATCH:-0}" == "1" ]]; then
+  EXTRA_TRAIN_ARGS+=(--debug-bad-batch)
 fi
 
 python tools/prepare_vaani_8khz_manifest.py \
@@ -50,6 +56,8 @@ python tools/run_nemo_adapter_peft.py \
   --val-batch-size 1 \
   --accumulate-grad-batches 4 \
   --lr "${LR}" \
+  --precision "${PRECISION}" \
+  --training-objective "${TRAINING_OBJECTIVE}" \
   --max-steps 1000 \
   --val-check-interval 200 \
   --validation-mode "${VALIDATION_MODE}" \

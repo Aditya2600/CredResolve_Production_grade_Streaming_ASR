@@ -1,4 +1,28 @@
-from prometheus_client import Counter, Histogram, Gauge
+from contextlib import nullcontext
+
+try:
+    from prometheus_client import Counter, Histogram, Gauge
+except ModuleNotFoundError:  # pragma: no cover - exercised only in slim/offline envs
+    class _NoopMetric:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def labels(self, *args, **kwargs):
+            return self
+
+        def inc(self, *args, **kwargs):
+            return None
+
+        def observe(self, *args, **kwargs):
+            return None
+
+        def set(self, *args, **kwargs):
+            return None
+
+        def time(self):
+            return nullcontext()
+
+    Counter = Histogram = Gauge = _NoopMetric
 
 # Counters
 REQS = Counter("asr_worker_requests_total", "Worker requests", ["mode", "status"])

@@ -6,6 +6,7 @@ import csv
 import json
 import os
 import re
+import shutil
 import sys
 import tarfile
 import tempfile
@@ -59,6 +60,22 @@ def parse_args() -> argparse.Namespace:
         description="Run offline NeMo transcription on a manifest and compute WER on the resulting hypotheses."
     )
     parser.add_argument("--model", type=Path, required=True, help="Path to a .nemo or .ckpt model artifact.")
+    parser.add_argument(
+        "--base-model",
+        type=Path,
+        help="Optional base .nemo model path when restoring a checkpoint (.ckpt).",
+    )
+    parser.add_argument(
+        "--adapter-name",
+        default="vaani_adapter",
+        help="The name of the adapter module to initialize before loading checkpoint weights. Default: vaani_adapter",
+    )
+    parser.add_argument(
+        "--adapter-dim",
+        type=int,
+        default=32,
+        help="The dimension (bottleneck width) of the linear adapter module. Default: 32",
+    )
     parser.add_argument("--manifest", type=Path, required=True, help="JSONL/JSON/CSV/TSV manifest to evaluate.")
     parser.add_argument("--batch-size", type=int, default=4, help="Inference batch size. Default: 4")
     parser.add_argument("--num-workers", type=int, default=0, help="Transcription dataloader workers. Default: 0")
@@ -359,14 +376,15 @@ def resolve_checkpoint_restore_source(checkpoint_path: Path) -> tuple[Path | Non
     if resolved.name == "last.ckpt" and sibling_nemos:
         return sibling_nemos[0].resolve(), False
 
-    stable_run_config_path = run_dir / "stable_run_config.json"
-    if stable_run_config_path.exists():
-        payload = json.loads(stable_run_config_path.read_text(encoding="utf-8"))
-        model_path = payload.get("model")
-        if isinstance(model_path, str) and model_path.strip():
-            candidate = Path(model_path).expanduser().resolve()
-            if candidate.exists() and candidate.suffix.lower() == ".nemo":
-                return candidate, True
+    for config_name in ("stable_run_config.json", "adapter_run_config.json"):
+        run_config_path = run_dir / config_name
+        if run_config_path.exists():
+            payload = json.loads(run_config_path.read_text(encoding="utf-8"))
+            model_path = payload.get("model")
+            if isinstance(model_path, str) and model_path.strip():
+                candidate = Path(model_path).expanduser().resolve()
+                if candidate.exists() and candidate.suffix.lower() == ".nemo":
+                    return candidate, True
 
     if sibling_nemos:
         return sibling_nemos[0].resolve(), True
@@ -388,22 +406,122 @@ def remove_config_key_recursive(node: Any, key: str) -> bool:
     return changed
 
 
+RNNT_MULTISOFTMAX_HEAD_RE = re.compile(r"^joint\.joint_net\.2\.([^.]+)\.(?:weight|bias)$")
+
+
+def load_nemo_member(model_path: Path, member_name: str) -> bytes | None:
+    with tarfile.open(model_path, "r:*") as archive:
+        member = next(
+            (item for item in archive.getmembers() if item.name.strip("./") == member_name),
+            None,
+        )
+        if member is None:
+            return None
+        handle = archive.extractfile(member)
+        if handle is None:
+            return None
+        return handle.read()
+
+
+def load_nemo_model_config(model_path: Path) -> Any | None:
+    payload = load_nemo_member(model_path, "model_config.yaml")
+    if payload is None:
+        return None
+    return OmegaConf.create(payload.decode("utf-8"))
+
+
+def extract_nemo_member(model_path: Path, member_name: str, output_path: Path) -> bool:
+    with tarfile.open(model_path, "r:*") as archive:
+        member = next(
+            (item for item in archive.getmembers() if item.name.strip("./") == member_name),
+            None,
+        )
+        if member is None:
+            return False
+        handle = archive.extractfile(member)
+        if handle is None:
+            return False
+        with output_path.open("wb") as output:
+            shutil.copyfileobj(handle, output)
+        return True
+
+
+def load_nemo_state_dict_keys(model_path: Path, temp_dir: Path) -> list[str]:
+    weights_path = temp_dir / "model_weights.ckpt"
+    if not extract_nemo_member(model_path, "model_weights.ckpt", weights_path):
+        return []
+    try:
+        state_dict = torch.load(str(weights_path), map_location="cpu", weights_only=False)
+    except TypeError:  # pragma: no cover - older torch has no weights_only kwarg
+        state_dict = torch.load(str(weights_path), map_location="cpu")
+    if not isinstance(state_dict, dict):
+        return []
+    return [str(key) for key in state_dict.keys()]
+
+
+def detect_rnnt_multisoftmax_languages(state_dict_keys: list[str]) -> list[str]:
+    languages: list[str] = []
+    seen: set[str] = set()
+    for key in state_dict_keys:
+        match = RNNT_MULTISOFTMAX_HEAD_RE.match(key)
+        if match is None:
+            continue
+        language = match.group(1)
+        if language not in seen:
+            languages.append(language)
+            seen.add(language)
+    return languages
+
+
+def suppress_embedded_dataset_setup_warnings(config: Any) -> bool:
+    changed = False
+    if not isinstance(config, (dict, DictConfig)):
+        return False
+
+    for key in ("train_ds", "test_ds"):
+        if key in config and config[key] is not None:
+            config[key] = None
+            changed = True
+
+    if "validation_ds" in config and config.validation_ds is not None:
+        config.validation_ds = {"use_start_end_token": False}
+        changed = True
+
+    return changed
+
+
+def patch_rnnt_multisoftmax_config(config: Any, languages: list[str]) -> bool:
+    if not languages:
+        return False
+
+    changed = False
+    decoder = nested_get(config, "decoder")
+    if isinstance(decoder, (dict, DictConfig)) and decoder.get("multisoftmax") is not True:
+        decoder["multisoftmax"] = True
+        changed = True
+
+    joint = nested_get(config, "joint")
+    if isinstance(joint, (dict, DictConfig)):
+        if joint.get("multilingual") is not True:
+            joint["multilingual"] = True
+            changed = True
+        if list(joint.get("language_keys") or []) != languages:
+            joint["language_keys"] = list(languages)
+            changed = True
+
+    return changed
+
+
 def build_nemo_compat_override_config(model_path: Path, temp_dir: Path) -> Path | None:
     try:
-        with tarfile.open(model_path, "r:*") as archive:
-            member = next(
-                (item for item in archive.getmembers() if item.name.strip("./") == "model_config.yaml"),
-                None,
-            )
-            if member is None:
-                return None
-            handle = archive.extractfile(member)
-            if handle is None:
-                return None
-            config = OmegaConf.load(handle)
+        config = load_nemo_model_config(model_path)
+        if config is None:
+            return None
+        state_dict_keys = load_nemo_state_dict_keys(model_path, temp_dir)
     except Exception:
         return None
 
+    multilingual_joint_languages = detect_rnnt_multisoftmax_languages(state_dict_keys)
     tokenizer_type = nested_get(config, "tokenizer", "type")
     tokenizer_langs = nested_get(config, "tokenizer", "langs")
     if tokenizer_type != "multilingual" or not isinstance(tokenizer_langs, (dict, DictConfig)):
@@ -412,14 +530,21 @@ def build_nemo_compat_override_config(model_path: Path, temp_dir: Path) -> Path 
         config.tokenizer.type = "agg"
         changed = True
 
-    changed = remove_config_key_recursive(config, "multisoftmax") or changed
+    changed = suppress_embedded_dataset_setup_warnings(config) or changed
 
-    joint = nested_get(config, "joint")
-    if isinstance(joint, (dict, DictConfig)):
-        for key in ("multilingual", "language_keys"):
-            if key in joint:
-                del joint[key]
-                changed = True
+    if multilingual_joint_languages:
+        patch_rnnt_multisoftmax_config(config, multilingual_joint_languages)
+        print("restore_compat: patched RNNT joint to multilingual multisoftmax", file=sys.stderr)
+        changed = True
+    else:
+        changed = remove_config_key_recursive(config, "multisoftmax") or changed
+
+        joint = nested_get(config, "joint")
+        if isinstance(joint, (dict, DictConfig)):
+            for key in ("multilingual", "language_keys"):
+                if key in joint:
+                    del joint[key]
+                    changed = True
 
     if not changed:
         return None
@@ -434,6 +559,9 @@ def load_model(
     *,
     allow_cpu_fallback: bool,
     restore_compat: str,
+    base_model: Path | None = None,
+    adapter_name: str = "vaani_adapter",
+    adapter_dim: int = 32,
 ):
     configure_hf_cache_env()
     from nemo.collections.asr.models import ASRModel
@@ -460,31 +588,123 @@ def load_model(
                     **kwargs,
                 )
         if suffix == ".ckpt":
-            restore_source, apply_checkpoint_weights = resolve_checkpoint_restore_source(resolved)
-            if restore_source is not None:
-                model = ASRModel.restore_from(restore_path=str(restore_source), map_location=map_location)
-                if apply_checkpoint_weights:
-                    checkpoint = torch.load(str(resolved), map_location="cpu", weights_only=False)
-                    state_dict = checkpoint.get("state_dict")
-                    if not isinstance(state_dict, dict):
-                        raise SystemExit(f"Checkpoint does not contain a state_dict: {resolved}")
-                    model.load_state_dict(state_dict)
-                return model
+            checkpoint = torch.load(str(resolved), map_location="cpu", weights_only=False)
+            state_dict = checkpoint.get("state_dict")
+            if not isinstance(state_dict, dict):
+                raise SystemExit(f"Checkpoint does not contain a state_dict: {resolved}")
+            
+            is_adapter_checkpoint = any(".adapter_layer." in key for key in state_dict.keys())
+            
+            if is_adapter_checkpoint:
+                # 1. Resolve base model path and adapter config from metadata or arguments
+                restore_source, apply_checkpoint_weights = resolve_checkpoint_restore_source(resolved)
+                if base_model is not None:
+                    restore_source = base_model.expanduser().resolve()
+                elif restore_source is None:
+                    # Fallback to the standard path
+                    default_base = Path("/home/ubuntu/models/indicconformer/IndicConformer.nemo")
+                    if default_base.exists():
+                        restore_source = default_base
+                    else:
+                        raise SystemExit(
+                            f"Could not determine base model path for checkpoint {resolved}. "
+                            f"Please specify --base-model explicitly."
+                        )
+                
+                # Read adapter config if available in run folder
+                checkpoint_dir = resolved.parent
+                run_dir = checkpoint_dir.parent
+                run_config_path = run_dir / "adapter_run_config.json"
+                meta_adapter_name = adapter_name
+                meta_adapter_dim = adapter_dim
+                if run_config_path.exists():
+                    try:
+                        payload = json.loads(run_config_path.read_text(encoding="utf-8"))
+                        adapter_meta = payload.get("adapter", {})
+                        name = adapter_meta.get("requested_name") or adapter_meta.get("added_name")
+                        if name:
+                            if name.startswith("encoder:"):
+                                name = name[len("encoder:"):]
+                            meta_adapter_name = name
+                        dim = adapter_meta.get("adapter_dim")
+                        if dim:
+                            meta_adapter_dim = int(dim)
+                    except Exception:
+                        pass
 
-            model_class_path = resolve_checkpoint_model_class_path(resolved)
-            if not model_class_path:
-                raise SystemExit(
-                    "Could not determine the concrete NeMo model class for this checkpoint. "
-                    "If the run directory still exists, keep `hparams.yaml` beside it or evaluate the exported `.nemo` file instead."
+                print(f"Restoring base model from {restore_source} with adapter compatibility...", file=sys.stderr)
+                
+                # Import helper functions from run_nemo_adapter_peft
+                from tools.run_nemo_adapter_peft import (
+                    normalize_aggregate_tokenizer_config,
+                    make_encoder_adapter_compatible,
+                    add_encoder_adapter,
+                    enable_only_adapter,
                 )
-            model_cls = import_class_by_path(model_class_path)
-            # Local Lightning checkpoints may embed OmegaConf objects, which
-            # require `weights_only=False` under PyTorch 2.6+.
-            return model_cls.load_from_checkpoint(
-                checkpoint_path=str(resolved),
-                map_location=map_location,
-                weights_only=False,
-            )
+                
+                # 2. Load the base model config and make encoder adapter compatible
+                from omegaconf import OmegaConf
+                try:
+                    base_cfg = load_nemo_model_config(restore_source)
+                except Exception as e:
+                    raise SystemExit(f"Failed to read model config from base model {restore_source}: {e}")
+                
+                tokenizer_type_changed = False
+                try:
+                    tokenizer_type_changed = normalize_aggregate_tokenizer_config(base_cfg)
+                except Exception:
+                    pass
+                
+                encoder_target_changed = make_encoder_adapter_compatible(base_cfg)
+                print(f"Patched base model config: tokenizer_changed={tokenizer_type_changed}, encoder_changed={encoder_target_changed}", file=sys.stderr)
+                
+                # Suppress dataset setups that might fail or emit warnings
+                suppress_embedded_dataset_setup_warnings(base_cfg)
+                
+                # Restore model with override config
+                with tempfile.TemporaryDirectory(prefix="nemo_adapter_peft_eval_") as tmpdir:
+                    override_path = Path(tmpdir) / "model_config_adapter.yaml"
+                    OmegaConf.save(config=base_cfg, f=str(override_path))
+                    model = ASRModel.restore_from(
+                        restore_path=str(restore_source),
+                        map_location=map_location,
+                        override_config_path=str(override_path),
+                    )
+                
+                # 3. Add and enable the adapter modules in the model instance
+                adapter_info = add_encoder_adapter(model, adapter_name=meta_adapter_name, adapter_dim=meta_adapter_dim)
+                print(f"Added encoder adapter: {adapter_info}", file=sys.stderr)
+                
+                # Enable adapter
+                enable_only_adapter(model, adapter_name=meta_adapter_name, added_name=adapter_info["added_name"])
+                
+                # 4. Load checkpoint weights into the model
+                print(f"Loading checkpoint weights from {resolved} in strict=True mode...", file=sys.stderr)
+                model.load_state_dict(state_dict, strict=True)
+                return model
+            else:
+                # Standard fine-tuning checkpoint, restore normally
+                restore_source, apply_checkpoint_weights = resolve_checkpoint_restore_source(resolved)
+                if base_model is not None:
+                    restore_source = base_model.expanduser().resolve()
+                if restore_source is not None:
+                    model = ASRModel.restore_from(restore_path=str(restore_source), map_location=map_location)
+                    if apply_checkpoint_weights:
+                        model.load_state_dict(state_dict, strict=True)
+                    return model
+
+                model_class_path = resolve_checkpoint_model_class_path(resolved)
+                if not model_class_path:
+                    raise SystemExit(
+                        "Could not determine the concrete NeMo model class for this checkpoint. "
+                        "If the run directory still exists, keep `hparams.yaml` beside it or evaluate the exported `.nemo` file instead."
+                    )
+                model_cls = import_class_by_path(model_class_path)
+                return model_cls.load_from_checkpoint(
+                    checkpoint_path=str(resolved),
+                    map_location=map_location,
+                    weights_only=False,
+                )
         raise SystemExit(f"Unsupported model format for {resolved}. Use .nemo or .ckpt")
 
     model = restore(torch.device("cpu"))
@@ -807,6 +1027,9 @@ def main() -> int:
         requested_device=requested_device,
         allow_cpu_fallback=(args.device == "auto"),
         restore_compat=args.restore_compat,
+        base_model=args.base_model,
+        adapter_name=args.adapter_name,
+        adapter_dim=args.adapter_dim,
     )
     if hasattr(model, "cur_decoder"):
         model.cur_decoder = args.decoder

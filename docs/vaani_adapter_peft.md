@@ -24,13 +24,188 @@ language stays represented in the train/dev/test split.
 - The PEFT script freezes the restored model, enables one adapter, and fails if
   any non-adapter parameters are trainable.
 - T4-safe defaults are used: batch size 1, gradient accumulation 4, workers 0,
-  16-mixed precision, max train duration 8 seconds, max validation duration 10
-  seconds, and gradient clipping 1.0.
+  FP32 precision plus RNNT target remapping for the multilingual multisoftmax
+  path, max train duration 8 seconds, max validation duration 10 seconds, and
+  gradient clipping 1.0.
 
 ## Run
 
 Run from a Python environment with NeMo ASR installed, for example the existing
 `nemo_asr` or export environment:
+
+## Manifest Audio Validation
+
+Before RNN-T adapter training, validate the normalized manifest against the
+actual audio. This catches missing/corrupt files, duration mismatches, stereo or
+wrong-rate audio, empty transcripts, very short/long clips, and transcript-rate
+outliers before they reach the Numba RNN-T loss kernel.
+
+```bash
+python tools/validate_nemo_manifest_audio.py \
+  --input artifacts/vaani_50h_multilingual_train/manifest.normalized.jsonl \
+  --output artifacts/vaani_50h_multilingual_train/manifest.normalized.filtered.drop_cuda_bad_003.jsonl \
+  --rejects artifacts/vaani_50h_multilingual_train/manifest.normalized.audio.rejects.jsonl \
+  --summary-json artifacts/vaani_50h_multilingual_train/manifest.normalized.audio.summary.json \
+  --min-duration-sec 1.0 \
+  --max-duration-sec 20.0 \
+  --max-chars-per-sec 30.0 \
+  --max-words-per-sec 4.5 \
+  --expected-sample-rate 16000 \
+  --require-mono
+```
+
+Then split the filtered manifest and train on that split:
+
+```bash
+python tools/split_vaani_manifest.py \
+  --input artifacts/vaani_50h_multilingual_train/manifest.normalized.filtered.drop_cuda_bad_003.jsonl \
+  --out-dir artifacts/vaani_50h_multilingual_split_filtered_drop_cuda_bad_003 \
+  --train-ratio 0.90 \
+  --dev-ratio 0.05 \
+  --test-ratio 0.05 \
+  --seed 42
+```
+
+For synchronous CUDA traces and Hydra full exception output:
+
+```bash
+export CUDA_LAUNCH_BLOCKING=1
+export HYDRA_FULL_ERROR=1
+```
+
+## RNNT Multisoftmax Target Remap
+
+Production inference uses the RNNT decoder, so final adapter PEFT should keep
+`--training-objective rnnt`. Do not use CTC-only as the final workaround unless
+you are deliberately running a diagnostic experiment.
+
+The IndicConformer multilingual CTEMO model uses `multisoftmax`: the aggregate
+tokenizer has global token IDs across all languages, while the RNNT joint emits
+language-local logits for the current `language_id`. A global target ID such as
+`1842` is valid in the full tokenizer but invalid for a local RNNT head with
+`257` classes including blank. When global IDs reach RNNT loss, PyTorch reports
+a scatter/gather index error and the Numba RNNT kernel can surface it as CUDA
+error 700 or illegal memory access.
+
+The PEFT runner fixes this before RNNT loss:
+
+- It forces `return_language_id` for RNNT multilingual `multisoftmax` datasets.
+- It builds a global-token-ID to local-token-ID map from NeMo `language_masks`.
+- It keeps the decoder input transcripts unchanged, so the frozen RNNT decoder
+  still receives the same global token sequence as before.
+- It remaps only the targets passed into RNNT loss and the local CTC auxiliary
+  loss.
+- It validates the local targets before CUDA runs. The hard invariant is
+  `targets_after_min >= 0` and `targets_after_max < rnnt_num_classes - 1`,
+  because the final class is blank.
+
+Important code locations:
+
+- `tools/run_nemo_adapter_peft.py:1904` forces language IDs into train/val
+  dataloaders for RNNT multisoftmax.
+- `tools/run_nemo_adapter_peft.py:993` remaps global transcript IDs to
+  language-local IDs.
+- `tools/run_nemo_adapter_peft.py:1087` applies the remap in training before
+  RNNT loss.
+- `tools/run_nemo_adapter_peft.py:1137` passes the remapped targets into fused
+  RNNT joint/loss.
+- `tools/run_nemo_adapter_peft.py:1140` passes `language_ids` into the RNNT
+  joint.
+- `tools/run_nemo_adapter_peft.py:1200` applies the same remap during
+  validation.
+
+With `--debug-rnnt-targets`, expected debug output looks like:
+
+```json
+{"event":"debug_rnnt_targets","language_ids":["hi"],"rnnt_num_classes":257,"rnnt_blank_id":256,"targets_before_max":1842,"targets_after_max":143,"targets_after_min":0}
+```
+
+The useful proof is that `targets_after_max` is less than `rnnt_num_classes - 1`
+for every printed batch.
+
+Run a 20-batch RNNT smoke test before full training:
+
+```bash
+cd /home/ubuntu/asr-stt-v3
+
+export CUDA_LAUNCH_BLOCKING=1
+export HYDRA_FULL_ERROR=1
+export DEBUG_BAD_BATCH=1
+export DEBUG_RNNT_TARGETS=1
+export TRAINING_MANIFEST=artifacts/vaani_50h_multilingual_train/manifest.normalized.filtered.drop_cuda_bad_003.jsonl
+export SPLIT_DIR=artifacts/vaani_50h_multilingual_split_filtered_drop_cuda_bad_003
+export PRECISION=32-true
+export RNNT_LOSS_NAME=default
+export TRAINING_OBJECTIVE=rnnt
+export MAX_STEPS=20
+export VAL_CHECK_INTERVAL=20
+export RUN_NAME=indicconformer_vaani_adapter_dim32_rnnt_debug20
+
+bash scripts/run_vaani_adapter_peft.sh
+```
+
+Run full RNNT PEFT training:
+
+```bash
+cd /home/ubuntu/asr-stt-v3
+
+export CUDA_LAUNCH_BLOCKING=1
+export HYDRA_FULL_ERROR=1
+export DEBUG_BAD_BATCH=1
+export DEBUG_RNNT_TARGETS=1
+export TRAINING_MANIFEST=artifacts/vaani_50h_multilingual_train/manifest.normalized.filtered.drop_cuda_bad_003.jsonl
+export SPLIT_DIR=artifacts/vaani_50h_multilingual_split_filtered_drop_cuda_bad_003
+export PRECISION=32-true
+export RNNT_LOSS_NAME=default
+export TRAINING_OBJECTIVE=rnnt
+export MAX_STEPS=1000
+export VAL_CHECK_INTERVAL=200
+
+bash scripts/run_vaani_adapter_peft.sh
+```
+
+To isolate a suspected bad sample, rerun with deterministic batch order and
+batch-size 1:
+
+```bash
+python tools/run_nemo_adapter_peft.py \
+  --model /home/ubuntu/models/indicconformer/IndicConformer.nemo \
+  --train-manifest artifacts/vaani_50h_multilingual_split_filtered_drop_cuda_bad_003/train.jsonl \
+  --val-manifest artifacts/vaani_50h_multilingual_split_filtered_drop_cuda_bad_003/dev.jsonl \
+  --exp-dir artifacts/ft_runs/vaani_adapter_peft_debug \
+  --name indicconformer_vaani_adapter_debug_bad_batch \
+  --adapter-dim 32 \
+  --batch-size 1 \
+  --val-batch-size 1 \
+  --accumulate-grad-batches 4 \
+  --lr 1e-3 \
+  --precision 32-true \
+  --rnnt-loss-name default \
+  --training-objective rnnt \
+  --debug-rnnt-targets \
+  --max-steps 1000 \
+  --val-check-interval 200 \
+  --validation-mode diagnostic \
+  --diagnostic-val-size 200 \
+  --max-duration 8 \
+  --val-max-duration 10 \
+  --return-language-id \
+  --debug-bad-batch
+```
+
+`--training-objective rnnt` keeps the production RNNT objective. For the CTEMO multilingual `multisoftmax` model, the trainer remaps global transcript token IDs to language-local RNNT target IDs immediately before RNNT loss and checks `targets_after_max < rnnt_num_classes - 1` before CUDA kernels run. `--rnnt-loss-name pytorch` is useful diagnostically, but the final training path should stay RNNT with this remap.
+
+`--debug-bad-batch` disables train shuffle, sets dataloader workers to `0`,
+forces train batch size to `1`, writes `debug_bad_batch_order.jsonl` in the run
+directory, and prints the likely manifest line and `audio_filepath` before each
+train batch. When CUDA reports an illegal memory access, the last printed
+`debug_bad_batch` row is the first sample to inspect. Rerun that row through
+`tools/validate_nemo_manifest_audio.py`, listen to the audio if needed, and
+temporarily remove it from the filtered manifest to confirm whether training
+passes the previous failing step. If pure PyTorch RNN-T fails immediately with a
+`ScatterGatherKernel` index assertion, enable `--debug-rnnt-targets`; that
+assertion means the RNN-T path is seeing global labels against a language-local
+output vocabulary.
 
 Before training, inspect likely PEFT/LoRA target module names if you need to
 choose module patterns explicitly:
@@ -58,7 +233,7 @@ renamed because it was an incomplete scratch paste rather than a readable
 architecture note.
 
 ```bash
-cd /home/ubuntu/CredResolve_Production_grade_Streaming_ASR
+cd /home/ubuntu/asr-stt-v3
 bash scripts/run_vaani_adapter_peft.sh
 ```
 
@@ -87,7 +262,7 @@ writing 8 kHz WAVs and letting the training dataloader upsample them for the
 pretrained IndicConformer frontend.
 
 ```bash
-cd /home/ubuntu/CredResolve_Production_grade_Streaming_ASR
+cd /home/ubuntu/asr-stt-v3
 bash scripts/run_vaani_adapter_peft_8khz.sh
 ```
 
@@ -122,6 +297,8 @@ python tools/run_nemo_adapter_peft.py \
   --val-batch-size 1 \
   --accumulate-grad-batches 4 \
   --lr 1e-3 \
+  --precision 32-true \
+  --training-objective rnnt \
   --max-steps 1000 \
   --val-check-interval 200 \
   --validation-mode diagnostic \

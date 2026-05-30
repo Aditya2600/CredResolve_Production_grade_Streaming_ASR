@@ -31,6 +31,7 @@ services:
       - TRITON_FRAME_DURATION_MS=${TRITON_FRAME_DURATION_MS:-0.08}
       - ASR_TIMING_SAMPLE_RATE=1
       - ASR_TIMING_CUDA_SYNC=1
+      - CUDA_LAUNCH_BLOCKING=${CUDA_LAUNCH_BLOCKING:-}
       - NVIDIA_VISIBLE_DEVICES=0
       - CUDA_VISIBLE_DEVICES=0
     # Bind-mount the model repo so artefacts staged at deploy time

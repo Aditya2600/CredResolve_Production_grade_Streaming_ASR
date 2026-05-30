@@ -12,7 +12,8 @@ WORKDIR /srv
 #              pip install so it does not inflate the final image at runtime.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        git curl build-essential pkg-config libssl-dev && \
+        git curl build-essential pkg-config libssl-dev \
+        ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswresample-dev && \
     rm -rf /var/lib/apt/lists/*
 
 COPY worker/requirements.txt /srv/requirements.txt

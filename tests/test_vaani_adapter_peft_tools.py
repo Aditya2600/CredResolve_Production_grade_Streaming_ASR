@@ -12,13 +12,19 @@ from tools.normalize_manifest_text import normalize_manifest_file
 from tools.prepare_vaani_8khz_manifest import prepare_splits
 from tools.run_nemo_adapter_peft import (
     assert_tokenizer_unchanged,
+    build_debug_manifest_order,
+    build_multisoftmax_label_maps,
+    compact_debug_row,
     configure_adapter_optimizer_cfg,
+    configure_rnnt_loss_cfg,
+    debug_batch_rows,
     disable_metric_prediction_logging,
     inspect_matching_module_names,
     log_adapter_gradient_norms_to_tensorboard,
     log_adapter_tensorboard_metadata,
     parse_args as parse_adapter_args,
     parse_module_name_patterns,
+    remap_multisoftmax_targets,
     resolve_validation_manifest,
     sample_manifest_rows,
     summarize_trainable_parameters,
@@ -244,9 +250,149 @@ def test_adapter_cli_defaults_are_adapter_safe(monkeypatch):
     assert args.max_duration == 8.0
     assert args.val_max_duration == 10.0
     assert args.precision == "16-mixed"
+    assert args.rnnt_loss_name == "default"
+    assert args.training_objective == "rnnt"
     assert args.resume_from_checkpoint is None
     assert args.print_grad_norms is False
     assert args.grad_norm_log_every_n_steps == 1
+    assert args.cuda_launch_blocking is False
+    assert args.debug_bad_batch is False
+    assert args.debug_rnnt_targets is False
+
+
+def test_adapter_cli_accepts_pytorch_rnnt_loss(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_nemo_adapter_peft.py",
+            "--model",
+            "/tmp/model.nemo",
+            "--train-manifest",
+            "/tmp/train.jsonl",
+            "--val-manifest",
+            "/tmp/dev.jsonl",
+            "--exp-dir",
+            "/tmp/exp",
+            "--name",
+            "run",
+            "--rnnt-loss-name",
+            "pytorch",
+        ],
+    )
+
+    args = parse_adapter_args()
+
+    assert args.rnnt_loss_name == "pytorch"
+
+
+def test_adapter_cli_accepts_ctc_training_objective(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_nemo_adapter_peft.py",
+            "--model",
+            "/tmp/model.nemo",
+            "--train-manifest",
+            "/tmp/train.jsonl",
+            "--val-manifest",
+            "/tmp/dev.jsonl",
+            "--exp-dir",
+            "/tmp/exp",
+            "--name",
+            "run",
+            "--training-objective",
+            "ctc",
+        ],
+    )
+
+    args = parse_adapter_args()
+
+    assert args.training_objective == "ctc"
+
+
+def test_multisoftmax_label_maps_remap_global_targets_to_local_ids():
+    torch = pytest.importorskip("torch")
+    label_maps = build_multisoftmax_label_maps(
+        [
+            [True, False, True, False, True],
+            [False, True, False, True, True],
+        ]
+    )
+
+    targets = torch.tensor([[0, 2, 4], [1, 3, 4]])
+    target_lengths = torch.tensor([2, 2])
+    language_ids = torch.tensor([0, 1])
+
+    remapped = remap_multisoftmax_targets(targets, target_lengths, language_ids, label_maps)
+
+    assert remapped.tolist() == [[0, 1, 4], [0, 1, 4]]
+    assert label_maps["local_blank_id"] == 2
+
+
+def test_multisoftmax_label_remap_rejects_cross_language_token():
+    torch = pytest.importorskip("torch")
+    label_maps = build_multisoftmax_label_maps(
+        [
+            [True, False, True, False, True],
+            [False, True, False, True, True],
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="outside the language-local"):
+        remap_multisoftmax_targets(
+            torch.tensor([[1]]),
+            torch.tensor([1]),
+            torch.tensor([0]),
+            label_maps,
+        )
+
+
+def test_configure_rnnt_loss_cfg_switches_to_pytorch_and_drops_numba_kwargs():
+    pytest.importorskip("omegaconf")
+    from omegaconf import OmegaConf
+
+    cfg = OmegaConf.create(
+        {
+            "loss": {
+                "loss_name": "default",
+                "warprnnt_numba_kwargs": {"fastemit_lambda": 0.0},
+            }
+        }
+    )
+
+    summary = configure_rnnt_loss_cfg(cfg, "pytorch")
+
+    assert cfg.loss.loss_name == "pytorch"
+    assert "warprnnt_numba_kwargs" not in cfg.loss
+    assert summary["changed"] is True
+    assert summary["removed_loss_kwargs"] == ["warprnnt_numba_kwargs"]
+
+
+def test_adapter_cli_accepts_cuda_launch_blocking(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_nemo_adapter_peft.py",
+            "--model",
+            "/tmp/model.nemo",
+            "--train-manifest",
+            "/tmp/train.jsonl",
+            "--val-manifest",
+            "/tmp/dev.jsonl",
+            "--exp-dir",
+            "/tmp/exp",
+            "--name",
+            "run",
+            "--cuda-launch-blocking",
+        ],
+    )
+
+    args = parse_adapter_args()
+
+    assert args.cuda_launch_blocking is True
 
 
 def test_adapter_cli_accepts_resume_checkpoint(monkeypatch):
@@ -374,6 +520,75 @@ def test_adapter_cli_allows_model_only_module_inspection(monkeypatch):
     assert args.inspect_module_names is True
     assert args.train_manifest is None
     assert parse_module_name_patterns(args.inspect_module_name_patterns) == ["q", "k", "v", "proj", "linear", "ffn"]
+
+
+def test_adapter_cli_accepts_debug_bad_batch(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_nemo_adapter_peft.py",
+            "--model",
+            "/tmp/model.nemo",
+            "--train-manifest",
+            "/tmp/train.jsonl",
+            "--val-manifest",
+            "/tmp/dev.jsonl",
+            "--exp-dir",
+            "/tmp/exp",
+            "--name",
+            "run",
+            "--debug-bad-batch",
+        ],
+    )
+
+    args = parse_adapter_args()
+
+    assert args.debug_bad_batch is True
+
+
+def test_adapter_cli_accepts_debug_rnnt_targets(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_nemo_adapter_peft.py",
+            "--model",
+            "/tmp/model.nemo",
+            "--train-manifest",
+            "/tmp/train.jsonl",
+            "--val-manifest",
+            "/tmp/dev.jsonl",
+            "--exp-dir",
+            "/tmp/exp",
+            "--name",
+            "run",
+            "--debug-rnnt-targets",
+        ],
+    )
+
+    args = parse_adapter_args()
+
+    assert args.debug_rnnt_targets is True
+
+
+def test_build_debug_manifest_order_filters_duration_and_keeps_lines(tmp_path: Path):
+    manifest = tmp_path / "train.jsonl"
+    _write_jsonl(
+        manifest,
+        [
+            {"id": "short", "audio_filepath": "short.wav", "duration": 0.1, "text": "hi"},
+            {"id": "ok", "audio_filepath": "ok.wav", "duration": 1.2, "text": "hello"},
+            {"id": "long", "audio_filepath": "long.wav", "duration": 9.0, "text": "bye"},
+        ],
+    )
+
+    rows = build_debug_manifest_order(manifest, min_duration=1.0, max_duration=8.0)
+
+    assert [row["id"] for row in rows] == ["ok"]
+    assert rows[0]["manifest_lineno"] == 2
+    assert debug_batch_rows(rows, batch_idx=0, batch_size=1)[0]["audio_filepath"] == "ok.wav"
+    assert compact_debug_row({"text": "x" * 130})["text"].endswith("...")
 
 
 def test_adapter_optimizer_replaces_inherited_noam_scheduler():

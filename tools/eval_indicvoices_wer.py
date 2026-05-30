@@ -13,7 +13,11 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import numpy as np
 import soundfile as sf
-import websockets
+
+try:
+    import websockets
+except ImportError:  # Optional for non-WebSocket helper imports.
+    websockets = None
 
 from tools.indicvoices_dataset import load_indicvoices_stream
 
@@ -344,6 +348,9 @@ async def transcribe_wav(
     )
     auth_headers = {"Api-Subscription-Key": api_key}
     started_at = time.time()
+
+    if websockets is None:
+        raise RuntimeError("The websockets package is required for WebSocket ASR evaluation. Install it with: pip install websockets")
 
     async with websockets.connect(ws_url, max_size=20_000_000, additional_headers=auth_headers) as ws:
         wav_bytes = wav_path.read_bytes()
