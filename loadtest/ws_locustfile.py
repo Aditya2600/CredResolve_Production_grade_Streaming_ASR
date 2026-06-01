@@ -13,7 +13,7 @@ Env knobs:
   WS_MODE                 mode query param (default: transcribe)
   WS_PATH                 ws path (default: /ws/stt)
   WS_BINARY_AUDIO         send raw binary audio frames (default: true)
-  WS_VAD_SIGNALS          vad_signals query param (default: true)
+  WS_VAD_SIGNALS          vad_signals query param (default: false)
   WS_FLUSH_SIGNAL         flush_signal query param (default: true)
   STREAM_SECONDS          seconds of audio to stream per session (default: 10)
   FINAL_TIMEOUT_SECONDS   seconds to wait for a final after flush (default: 15)
@@ -62,7 +62,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 BINARY_AUDIO = _env_bool("WS_BINARY_AUDIO", True)
-VAD_SIGNALS = _env_bool("WS_VAD_SIGNALS", True)
+VAD_SIGNALS = _env_bool("WS_VAD_SIGNALS", False)
 FLUSH_SIGNAL = _env_bool("WS_FLUSH_SIGNAL", True)
 
 

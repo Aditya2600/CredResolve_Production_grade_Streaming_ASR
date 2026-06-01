@@ -147,6 +147,51 @@ _NUM_0_99: Final[dict[int, list[str]]] = {
 }
 
 
+_CODE_SWITCH_TENS: Final[dict[int, list[str]]] = {
+    20: ["ट्वेंटी", "ट्वेन्टी"],
+    30: ["थर्टी", "थर्टि"],
+    40: ["फोर्टी", "फॉर्टी"],
+    50: ["फिफ्टी", "फिफ्टि", "फिफटि"],
+    60: ["सिक्स्टी", "सिक्स्टि", "सिक्सटि"],
+    70: ["सेवेंटी", "सेवन्टी", "सेवंटी", "सेवनटी"],
+    80: ["एटी", "ऐटी", "एइटी"],
+    90: ["नाइंटी", "नाइन्टी", "नाइंटि", "नाइन्टि"],
+}
+
+
+def _extend_unique(items: list[str], additions: list[str]) -> None:
+    seen = set(items)
+    for item in additions:
+        if item in seen:
+            continue
+        items.append(item)
+        seen.add(item)
+
+
+def _add_code_switch_tens() -> None:
+    """Add Devanagari-English tens and tens+unit phrases to 0..99.
+
+    Runtime span detection is token based. If the grammar only knows unit
+    aliases such as ``थ्री`` but not the preceding ten word, an utterance like
+    ``थर्टि थ्री`` can be split and partially normalised as ``थर्टि 3``.
+    Keeping the whole phrase in the cardinal lexicon lets callers either
+    rewrite the full number or fall back on the full raw phrase.
+    """
+    unit_words = {n: tuple(_NUM_0_99[n]) for n in range(1, 10)}
+    for tens, tens_words in _CODE_SWITCH_TENS.items():
+        _extend_unique(_NUM_0_99[tens], tens_words)
+        for unit in range(1, 10):
+            phrases = [
+                f"{tens_word} {unit_word}"
+                for tens_word in tens_words
+                for unit_word in unit_words[unit]
+            ]
+            _extend_unique(_NUM_0_99[tens + unit], phrases)
+
+
+_add_code_switch_tens()
+
+
 def _flatten(width: int, *, exclude_zero: bool = False) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
     for n, words in sorted(_NUM_0_99.items()):

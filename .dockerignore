@@ -1,0 +1,31 @@
+# Ignore Git and metadata
+.git
+.gitignore
+.vscode
+.idea
+.gemini
+
+# Ignore node modules and build artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Ignore outputs and sample data
+outputs/
+recordings/
+sample_data/
+
+# Ignore worker Hub caching
+worker/hub/
+
+# Ignore massive staged model binaries/weights in the build context.
+# Since the model repository is bind-mounted via docker-compose at runtime, 
+# these do not need to be baked into the Docker image itself.
+triton/model_repository/*/1/model.onnx
+triton/model_repository/*/1/model.plan
+triton/model_repository/*/1/layers.*
+triton/model_repository/*/1/Constant_*
+triton/model_repository/*/1/onnx__*
+triton/model_repository/*/1/pre*
+triton/model_repository/*/1/preprocessor.ts
+triton/model_repository/*/1/model.pt

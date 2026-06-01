@@ -107,6 +107,9 @@ def test_cardinal_normalises(pipeline: WFSTPipeline, case: dict[str, str]) -> No
         ("टू थाउजेंड फाइव हंड्रेड", "2500"),
         ("टू हजार", "2000"),
         ("दो थाउजेंड", "2000"),
+        ("ट्वेंटी वन", "21"),
+        ("थर्टी थ्री", "33"),
+        ("थर्टि थ्री", "33"),
     ],
 )
 def test_cardinal_normalises_devanagari_english_code_switch_aliases(

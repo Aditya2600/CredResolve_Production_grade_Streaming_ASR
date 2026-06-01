@@ -58,6 +58,23 @@ _CLASSIFIER_FST_NAME: Final[dict[str, str]] = {
     "time": "TIME_CLASSIFIER",
 }
 
+# Classes whose grammars are still landing language-by-language. If a
+# FAR contains one of these entries, expose it; if not, keep the older
+# language artifact loadable and let regression tests skip that class.
+_OPTIONAL_BARE_FST_NAME: Final[dict[str, str]] = {
+    "phone": "PHONE",
+    "pan": "PAN",
+    "aadhaar": "AADHAAR",
+    "id": "ID",
+}
+
+_OPTIONAL_CLASSIFIER_FST_NAME: Final[dict[str, str]] = {
+    "phone": "PHONE_CLASSIFIER",
+    "pan": "PAN_CLASSIFIER",
+    "aadhaar": "AADHAAR_CLASSIFIER",
+    "id": "ID_CLASSIFIER",
+}
+
 
 def _default_far_root() -> Path:
     """Default location of compiled FARs: ``itn_service/compiled_grammars``.
@@ -119,6 +136,12 @@ class WFSTPipeline:
                     f"for class {cls!r}"
                 ) from e
         for cls, name in _CLASSIFIER_FST_NAME.items():
+            if name in loaded:
+                self._classifier[cls] = loaded[name]
+        for cls, name in _OPTIONAL_BARE_FST_NAME.items():
+            if name in loaded:
+                self._bare[cls] = loaded[name]
+        for cls, name in _OPTIONAL_CLASSIFIER_FST_NAME.items():
             if name in loaded:
                 self._classifier[cls] = loaded[name]
 

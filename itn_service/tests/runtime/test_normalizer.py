@@ -188,6 +188,8 @@ def test_spoken_hindi_examples_rewrite_through_wfst_classifier() -> None:
     ("raw", "expected"),
     [
         ("टू थाउजेंड", "2000"),
+        ("थर्टि थ्री", "33"),
+        ("थर्टी थ्री", "33"),
         ("मेरा अमाउंट टू थाउजेंड है", "मेरा अमाउंट 2000 है"),
         ("पेमेंट फाइव हंड्रेड रुपये", "पेमेंट 500 रुपये"),
     ],
@@ -215,6 +217,19 @@ def test_number_itn_regressions_remain_stable() -> None:
     for raw, expected in cases:
         result = _normalise(raw, classifier=classifier)
         assert result.canonical_text == expected
+
+
+def test_code_switched_number_before_month_does_not_partially_rewrite() -> None:
+    raw = "थर्टी थ्री जून"
+
+    result = _normalise(raw, classifier=make_wfst_classifier(_DMY_POLICY))
+
+    assert result.raw_text == raw
+    assert result.canonical_text == raw
+    assert [(span.cls, span.raw, span.canonical) for span in result.spans] == [
+        ("date", raw, raw),
+    ]
+    assert "wfst_no_parse" in (result.spans[0].fallback_reason or "")
 
 
 def test_spoken_digits_without_phone_cue_do_not_become_phone() -> None:

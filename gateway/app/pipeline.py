@@ -47,6 +47,7 @@ class PipelineConfig:
     ring_buffer_ms: int = 600
     partial_poll_interval_ms: int = 900
     min_final_audio_ms: int = 700
+    vad_enabled: bool = True
     vad: VADGateConfig = field(default_factory=VADGateConfig)
 
     def __post_init__(self) -> None:
@@ -107,7 +108,11 @@ class StreamingSpeechPipeline:
         self.rnnt_stream_factory = rnnt_stream_factory
         self.session_id = session_id
         self.log = logger or logging.getLogger("gateway.pipeline")
-        self._vad_detector = (vad_factory or webrtcvad.Vad)(config.vad.vad_mode)
+        self._vad_detector = (
+            (vad_factory or webrtcvad.Vad)(config.vad.vad_mode)
+            if config.vad_enabled
+            else None
+        )
         self._gate = VADGateStateMachine(config.vad)
         self._ring_buffer = deque(maxlen=config.ring_buffer_frames)
         self._apm_buffer = bytearray()
@@ -131,6 +136,9 @@ class StreamingSpeechPipeline:
             apm_frame = bytes(self._apm_buffer[: self.audio_processor.frame_bytes])
             del self._apm_buffer[: self.audio_processor.frame_bytes]
             processed = self.audio_processor.process_frame(apm_frame)
+            if not self.config.vad_enabled:
+                events.extend(await self._process_passthrough_audio(processed))
+                continue
             self._vad_buffer.extend(processed)
             while len(self._vad_buffer) >= self.config.vad.frame_bytes:
                 vad_frame = bytes(self._vad_buffer[: self.config.vad.frame_bytes])
@@ -175,7 +183,12 @@ class StreamingSpeechPipeline:
             )
             self._apm_buffer.clear()
             processed = self.audio_processor.process_frame(padded)
+            if not self.config.vad_enabled:
+                events.extend(await self._process_passthrough_audio(processed))
+                return events
             self._vad_buffer.extend(processed)
+        if not self.config.vad_enabled:
+            return events
         if self._vad_buffer:
             padded = bytes(self._vad_buffer) + b"\x00" * (
                 self.config.vad.frame_bytes - len(self._vad_buffer)
@@ -189,7 +202,19 @@ class StreamingSpeechPipeline:
                 )
         return events
 
+    async def _process_passthrough_audio(self, pcm_bytes: bytes) -> list[PipelineEvent]:
+        if not pcm_bytes:
+            return []
+        if self._utterance_started_at is None:
+            self._utterance_started_at = time.monotonic()
+        await self._ensure_stream_started()
+        await self._push_to_stream(pcm_bytes)
+        partial_event = await self._maybe_collect_partial()
+        return [partial_event] if partial_event is not None else []
+
     async def _process_vad_frame(self, frame: bytes) -> list[PipelineEvent]:
+        if self._vad_detector is None:
+            return await self._process_passthrough_audio(frame)
         is_speech = bool(self._vad_detector.is_speech(frame, self.config.sample_rate))
         VAD_FRAMES.labels(state="speech" if is_speech else "non_speech").inc()
 
@@ -260,7 +285,9 @@ class StreamingSpeechPipeline:
         self._stream_audio_bytes += len(pcm_bytes)
 
     async def _maybe_collect_partial(self) -> PartialTranscriptEvent | None:
-        if self._stream is None or self._gate.state not in {GateState.OPEN, GateState.HANGOVER}:
+        if self._stream is None:
+            return None
+        if self.config.vad_enabled and self._gate.state not in {GateState.OPEN, GateState.HANGOVER}:
             return None
         now = time.monotonic()
         if now - self._last_partial_poll_at < (self.config.partial_poll_interval_ms / 1000.0):

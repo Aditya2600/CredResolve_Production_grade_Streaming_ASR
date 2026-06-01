@@ -1,23 +1,14 @@
-# IndicConformer encoder served through TensorRT.
+# IndicConformer encoder served directly from ONNX Runtime.
 #
-# The model.plan is built inside the Triton+TRT container against the actual
-# production GPU with the parity-safe FP32 baseline:
-#   trtexec --onnx=/models/indic_asr_encoder/1/model.onnx \
-#     --noTF32 \
-#     --minShapes=audio_signal:1x80x100,length:1 \
-#     --optShapes=audio_signal:1x80x800,length:1 \
-#     --maxShapes=audio_signal:1x80x3000,length:1 \
-#     --memPoolSize=workspace:4096 \
-#     --saveEngine=/models/indic_asr_encoder/1/model.plan
+# This deployment intentionally loads `model.onnx`, not a TensorRT `model.plan`.
+# Keep the encoder ONNX plus its external weight blobs (`layers.*`,
+# `Constant_*`, `onnx__*`, `pre*`) together in this version directory; the ONNX
+# graph references those files by name.
 #
-# Do not replace this baseline with an FP16 engine without a real transcript
-# parity pass. On 2026-05-15, the FP16 plan loaded successfully but compressed
-# encoder activations enough that both RNNT and CTC returned blank transcripts.
-# `model.onnx` remains beside the plan for an immediate ORT rollback path.
-#
-# Encoder ONNX + external weight blobs (`layers.*`, `Constant_*`, `onnx__*`,
-# `pre*`) must remain alongside model.plan — Triton TRT backend will pick the
-# .plan, but a future re-build of the engine reads from model.onnx.
+# A TensorRT plan can still be built experimentally from this ONNX export, but
+# it is not required for the current serving path. Do not switch this model back
+# to `backend: "tensorrt"` without a transcript parity pass; an earlier FP16 TRT
+# plan loaded successfully but produced blank RNNT and CTC transcripts.
 
 name: "indic_asr_encoder"
 backend: "tensorrt"

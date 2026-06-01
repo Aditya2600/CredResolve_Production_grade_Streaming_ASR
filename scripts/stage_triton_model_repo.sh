@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # Stage IndicConformer artefacts into the Triton model_repository.
 #
-# Phase 1 layout (CTC ensemble + TensorRT encoder):
+# Phase 1 layout (CTC ensemble + ONNX Runtime encoder):
 #   indic_asr_preproc/1/model.pt             ← preprocessor.ts (TorchScript)
 #   indic_asr_encoder/1/model.onnx           ← encoder.onnx + external weights
 #   indic_asr_encoder/1/layers.* / Constant_* / onnx__*  ← external weight blobs
-#   indic_asr_encoder/1/model.plan           ← built later by trtexec (FP32 TRT baseline)
 #   indic_asr_ctc_decoder/1/model.onnx       ← ctc_decoder.onnx
 #
-# This script does NOT build the TensorRT engine (model.plan). That step needs
-# the production GPU and the Triton+TRT container — see the runbook printed at
-# the end.
+# This script stages the ONNX Runtime serving artifacts. A TensorRT model.plan
+# can still be built separately for experiments, but it is not required for the
+# current ONNX serving path.
 #
 # Implementation notes:
 #   The local HF cache snapshot directory has been clobbered (every snapshot
@@ -208,26 +207,12 @@ PY
 cat <<'NEXT'
 
 ----------------------------------------------------------------------
-NEXT STEP — build the parity-safe FP32 TensorRT engine for the encoder.
+NEXT STEP — run the ONNX Runtime Triton path.
 ----------------------------------------------------------------------
-The encoder config.pbtxt already declares backend: "tensorrt" and
-default_model_filename: "model.plan". Triton will refuse to load the
-encoder until model.plan exists, so build it inside the Triton+TRT
-container against the production GPU:
+The encoder config.pbtxt intentionally declares backend: "onnxruntime" and
+default_model_filename: "model.onnx". No TensorRT model.plan is required.
 
-  docker compose -f docker-compose.yml -f docker-compose.triton.yml \
-      run --rm --entrypoint bash triton -c '
-        trtexec \
-          --onnx=/models/indic_asr_encoder/1/model.onnx \
-          --noTF32 \
-          --minShapes=audio_signal:1x80x100,length:1 \
-          --optShapes=audio_signal:1x80x800,length:1 \
-          --maxShapes=audio_signal:1x80x3000,length:1 \
-          --memPoolSize=workspace:4096 \
-          --saveEngine=/models/indic_asr_encoder/1/model.plan
-      '
-
-Then bring the stack up:
+Bring the stack up:
 
   docker compose -f docker-compose.yml -f docker-compose.triton.yml up -d triton
   curl -sf http://localhost:8100/v2/health/ready && echo  READY
@@ -241,9 +226,9 @@ Then bring the stack up:
 
 (All five should report 200.)
 
-Before promoting any reduced-precision plan, run a transcript parity smoke test
-and the serving WER harness against this FP32 baseline. A previous FP16 plan
-loaded successfully but produced all-blank RNNT and CTC transcripts in live
-traffic, so readiness alone is not a sufficient semantic check.
+Optional TensorRT experiments should be done separately and gated by transcript
+parity. A previous FP16 plan loaded successfully but produced all-blank RNNT and
+CTC transcripts in live traffic, so readiness alone is not a sufficient semantic
+check.
 ----------------------------------------------------------------------
 NEXT

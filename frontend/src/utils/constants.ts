@@ -119,7 +119,7 @@ export function buildWsUrl(
   url.searchParams.set('mode', DEFAULT_MODE);
   url.searchParams.set('sample_rate', String(AUDIO_CONFIG.sampleRate));
   url.searchParams.set('high_vad_sensitivity', 'false');
-  url.searchParams.set('vad_signals', 'true');
+  url.searchParams.set('vad_signals', 'false');
   url.searchParams.set('flush_signal', 'true');
   url.searchParams.set('input_audio_codec', AUDIO_CONFIG.encoding);
   if (AUDIO_CONFIG.binaryAudio) {

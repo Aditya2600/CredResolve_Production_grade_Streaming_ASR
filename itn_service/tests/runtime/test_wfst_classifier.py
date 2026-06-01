@@ -146,11 +146,28 @@ def test_excluded_prefilter_classes_are_ignored(monkeypatch) -> None:
     )
 
     spans = make_wfst_classifier(_DMY_POLICY)(
-        "www.example.com x@y.com IFSC HDFC0001234 PAN ABCDE1234F Aadhaar 234567890123",
+        "www.example.com x@y.com IFSC HDFC0001234",
         "hi",
     )
 
     assert spans == []
+
+
+def test_written_pan_and_aadhaar_use_identifier_formatters(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "itn_service.runtime.wfst_classifier.get_pipeline",
+        lambda lang: None,
+    )
+
+    spans = make_wfst_classifier(_DMY_POLICY)(
+        "PAN abcde1234f Aadhaar 2345 6789 0124",
+        "hi",
+    )
+
+    assert [(span.cls, span.raw, span.canonical, span.rule_id) for span in spans] == [
+        ("pan", "abcde1234f", "ABCDE1234F", "fmt.pan"),
+        ("aadhaar", "2345 6789 0124", "2345 6789 0124", "fmt.aadhaar"),
+    ]
 
 
 def test_spoken_money_routes_raw_span_to_wfst(monkeypatch) -> None:
@@ -256,3 +273,42 @@ def test_spoken_phone_requires_context_cue(monkeypatch) -> None:
         ),
     ]
     assert all(span.cls != "phone" for span in without_cue)
+
+
+def test_spoken_pan_routes_cue_bearing_span_to_id_wfst(monkeypatch) -> None:
+    pipeline = _FakePipeline(
+        span_outputs={("ए बी सी डी ई एक दो तीन चार एफ", "pan"): "ABCDE1234F"}
+    )
+    monkeypatch.setattr(
+        "itn_service.runtime.wfst_classifier.get_pipeline",
+        lambda lang: pipeline,
+    )
+
+    spans = make_wfst_classifier(_DMY_POLICY)(
+        "मेरा पैन नंबर ए बी सी डी ई एक दो तीन चार एफ है",
+        "hi",
+    )
+
+    assert [(span.cls, span.raw, span.canonical) for span in spans] == [
+        ("pan", "ए बी सी डी ई एक दो तीन चार एफ", "ABCDE1234F"),
+    ]
+    assert pipeline.span_calls == [("ए बी सी डी ई एक दो तीन चार एफ", "pan")]
+
+
+def test_spoken_aadhaar_routes_cue_bearing_span_to_id_wfst(monkeypatch) -> None:
+    raw_id = "दो तीन चार पाँच छह सात आठ नौ शून्य एक दो चार"
+    pipeline = _FakePipeline(span_outputs={(raw_id, "aadhaar"): "2345 6789 0124"})
+    monkeypatch.setattr(
+        "itn_service.runtime.wfst_classifier.get_pipeline",
+        lambda lang: pipeline,
+    )
+
+    spans = make_wfst_classifier(_DMY_POLICY)(
+        f"आधार कार्ड नंबर {raw_id} है",
+        "hi",
+    )
+
+    assert [(span.cls, span.raw, span.canonical) for span in spans] == [
+        ("aadhaar", raw_id, "2345 6789 0124"),
+    ]
+    assert pipeline.span_calls == [(raw_id, "aadhaar")]

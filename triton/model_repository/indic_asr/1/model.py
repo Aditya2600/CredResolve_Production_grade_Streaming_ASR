@@ -142,7 +142,7 @@ class TritonPythonModel:
             self._timing_sample_rate = int(os.environ.get("ASR_TIMING_SAMPLE_RATE", "10"))
         except ValueError:
             self._timing_sample_rate = 10
-        self._timing_sync_cuda = os.environ.get("ASR_TIMING_CUDA_SYNC", "1") == "1"
+        self._timing_sync_cuda = os.environ.get("ASR_TIMING_CUDA_SYNC", "0") == "1"
         self._sample_rate_hz = int(os.environ.get("ASR_SAMPLE_RATE_HZ", "16000") or "16000")
 
         self.hf_token = (

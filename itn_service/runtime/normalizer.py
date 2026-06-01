@@ -117,6 +117,11 @@ _PHONE_CUE_RE = re.compile(
     r"(?:\b(?:phone|mobile|number|otp)\b|फ़ोन|फोन|मोबाइल|नंबर|नम्बर|ओटीपी)",
     re.IGNORECASE,
 )
+_PAN_CUE_RE = re.compile(r"(?:\bpan\b|पैन|पेन)", re.IGNORECASE)
+_AADHAAR_CUE_RE = re.compile(
+    r"(?:\b(?:aadhaar|aadhar|uid|uidai)\b|आधार|यूआईडी)",
+    re.IGNORECASE,
+)
 
 
 def _span_has_lex_cue(span: Span, *, context_text: str) -> bool:
@@ -165,6 +170,12 @@ def _span_has_lex_cue(span: Span, *, context_text: str) -> bool:
             span.rule_id.startswith("fmt.")
             or bool(_PHONE_CUE_RE.search(context_text))
         )
+
+    if span.cls == "pan":
+        return bool(_PAN_CUE_RE.search(context_text))
+
+    if span.cls == "aadhaar":
+        return bool(_AADHAAR_CUE_RE.search(context_text))
 
     # Other classes should earn their own semantics explicitly instead
     # of inheriting trust from a generic ``prefilter.*`` location.

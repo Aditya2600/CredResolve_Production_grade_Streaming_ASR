@@ -228,10 +228,8 @@ _raw_vad_select_mode = getenv_str("VAD_SELECT_MODE", "concat").lower()
 VAD_SELECT_MODE = _raw_vad_select_mode if _raw_vad_select_mode in _VALID_VAD_SELECT_MODES else "concat"
 VAD_CONCAT_PADDING_MS = max(0, getenv_int("VAD_CONCAT_PADDING_MS", 100))
 
-# Denoiser selection. DeepFilterNet3 is the default after the eval in
-# docs/audio/denoiser-eval.md (8pp absolute WER improvement, lower p95 latency
-# than RNNoise on the VAANI fixture). RNNoise stays available for one release
-# as a fallback via DENOISER=rnnoise.
+# Denoiser selection. Keep denoising off by default; opt in with
+# DENOISER=deepfilternet or DENOISER=rnnoise when a deployment needs it.
 _VALID_DENOISERS = {"rnnoise", "deepfilternet", "none"}
-_raw_denoiser = getenv_str("DENOISER", "deepfilternet").lower()
-DENOISER = _raw_denoiser if _raw_denoiser in _VALID_DENOISERS else "deepfilternet"
+_raw_denoiser = getenv_str("DENOISER", "none").lower()
+DENOISER = _raw_denoiser if _raw_denoiser in _VALID_DENOISERS else "none"

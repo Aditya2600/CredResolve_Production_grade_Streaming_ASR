@@ -136,3 +136,5 @@ upi reference number_upi ref no_यूपीआई रेफरेंस नं�
 utr_u t r_utr number_यूटीआर_यू टी आर
 video kyc_vkyc_v cip_वीडियो केवाईसी_वीकेवाईसी_वी सी आई पी
 vpa_v p a_virtual payment address_वीपीए_वी पी ए_वर्चुअल पेमेंट एड्रेस
+somya_saumya_सौम्या_सोम्या
+mobikwik_mobi kwik_mobikwick_mobi kwick_मोबिक्विक_मोबीक्विक

@@ -42,6 +42,18 @@ _LANGUAGE_REGISTRY: dict[str, list[tuple[str, list[str]]]] = {
             ["DATE", "DATE_MONTHWORD", "DATE_NUMERIC", "DATE_CLASSIFIER"],
         ),
         ("itn_service.grammars.hi.time", ["TIME", "TIME_CLASSIFIER"]),
+        ("itn_service.grammars.hi.phone", ["PHONE", "PHONE_CLASSIFIER"]),
+        (
+            "itn_service.grammars.hi.id",
+            [
+                "PAN",
+                "PAN_CLASSIFIER",
+                "AADHAAR",
+                "AADHAAR_CLASSIFIER",
+                "ID",
+                "ID_CLASSIFIER",
+            ],
+        ),
     ],
     "mr": [
         ("itn_service.grammars.mr.cardinal", ["CARDINAL", "CARDINAL_CLASSIFIER"]),

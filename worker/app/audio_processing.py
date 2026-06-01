@@ -189,7 +189,7 @@ class AudioPreprocessor:
             log.warning("Failed to load Silero VAD: %s", e)
 
     def _load_denoiser(self):
-        choice = (getattr(config, "DENOISER", "rnnoise") or "rnnoise").strip().lower()
+        choice = (getattr(config, "DENOISER", "none") or "none").strip().lower()
         if choice == "none":
             log.info("DENOISER=none: denoising disabled")
             return None
@@ -272,7 +272,7 @@ class AudioPreprocessor:
             return audio_int16[:0]
         return np.concatenate(pieces)
 
-    def process(self, pcm_bytes, sample_rate, vad_enabled=True, denoise_enabled=True):
+    def process(self, pcm_bytes, sample_rate, vad_enabled=True, denoise_enabled=False):
         out, _ = self.process_with_stats(
             pcm_bytes, sample_rate, vad_enabled=vad_enabled, denoise_enabled=denoise_enabled
         )
@@ -283,7 +283,7 @@ class AudioPreprocessor:
         pcm_bytes,
         sample_rate,
         vad_enabled: bool = True,
-        denoise_enabled: bool = True,
+        denoise_enabled: bool = False,
     ) -> tuple[bytes, dict]:
         stats = _empty_stats()
         if not pcm_bytes:

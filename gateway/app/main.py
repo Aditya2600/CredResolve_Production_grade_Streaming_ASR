@@ -330,6 +330,7 @@ def build_streaming_pipeline(
             ring_buffer_ms=STREAMING_RING_BUFFER_MS,
             partial_poll_interval_ms=PARTIAL_DECODE_INTERVAL_MS,
             min_final_audio_ms=STREAMING_MIN_FINAL_AUDIO_MS,
+            vad_enabled=session.vad_enabled,
             vad=VADGateConfig(
                 sample_rate=session.sample_rate,
                 frame_ms=FRAME_MS,
@@ -818,6 +819,33 @@ async def ws_stt(ws: WebSocket):
                 STREAMING_VAD_MODE,
             )
 
+        async def send_pipeline_text(payload: str, *, context: str) -> bool:
+            nonlocal close_reason
+
+            try:
+                await ws.send_text(payload)
+                return True
+            except WebSocketDisconnect:
+                close_reason = "client_disconnect"
+                log.info(
+                    "WS client disconnected before %s session_id=%s request_id=%s",
+                    context,
+                    session_id,
+                    session.request_id,
+                )
+                return False
+            except RuntimeError as exc:
+                if 'Cannot call "send" once a close message has been sent.' in str(exc):
+                    close_reason = "client_disconnect"
+                    log.info(
+                        "WS already closed before %s session_id=%s request_id=%s",
+                        context,
+                        session_id,
+                        session.request_id,
+                    )
+                    return False
+                raise
+
         async def emit_pipeline_events(events: list[PipelineEvent]) -> bool:
             nonlocal utterance_count
 
@@ -830,7 +858,7 @@ async def ws_stt(ws: WebSocket):
                         event.event,
                     )
                     if session.vad_signals:
-                        await ws.send_text(
+                        ok = await send_pipeline_text(
                             jdump(
                                 {
                                     "type": "vad",
@@ -839,8 +867,11 @@ async def ws_stt(ws: WebSocket):
                                         "event": event.event,
                                     },
                                 }
-                            )
+                            ),
+                            context="VAD event emission",
                         )
+                        if not ok:
+                            return False
                     continue
 
                 if not isinstance(event, FinalTranscriptEvent):
@@ -869,7 +900,7 @@ async def ws_stt(ws: WebSocket):
                         lang_hint=result.language or "",
                         locale_policy=session.locale_policy or ITN_LOCALE_POLICY,
                     )
-                    await ws.send_text(
+                    ok = await send_pipeline_text(
                         jdump(
                             {
                                 "type": "data",
@@ -892,8 +923,11 @@ async def ws_stt(ws: WebSocket):
                                     "context_biasing": result.context_biasing,
                                 },
                             }
-                        )
+                        ),
+                        context="final transcript emission",
                     )
+                    if not ok:
+                        return False
                     if event.final_latency is not None:
                         E2E_LATENCY.observe(event.final_latency)
                     if LOG_TRANSCRIPTS:

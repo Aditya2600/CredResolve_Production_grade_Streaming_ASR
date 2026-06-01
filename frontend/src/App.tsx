@@ -98,7 +98,7 @@ function App() {
   const baseWsUrl = import.meta.env.VITE_WS_URL || DEFAULT_WS_URL;
   const [language, setLanguage] = useState<string>(DEFAULT_LANGUAGE);
   const [audioProcessing, setAudioProcessing] = useState<AudioProcessingSettings>({
-    vadEnabled: true,
+    vadEnabled: false,
     denoiseEnabled: false,
   });
   const wsUrl = useMemo(() => buildWsUrl(baseWsUrl, language, audioProcessing), [audioProcessing, baseWsUrl, language]);

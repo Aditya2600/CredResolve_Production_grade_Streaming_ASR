@@ -5,6 +5,7 @@ stable while upgrading the subset of prefilter spans that the current rollout
 actually needs. By design, this classifier only emits:
 
 * ``phone`` via the deterministic Indian mobile formatter,
+* PAN / Aadhaar via strict identifier formatters,
 * ``amount`` prefilter spans rewritten as threshold-facing ``money``,
 * ``percent``, ``date``, and ``time`` via the WFST pipeline.
 
@@ -20,6 +21,7 @@ from typing import Protocol
 
 from .contract import Span
 from .dateparser_fallback import has_date_cue, try_dateparser_fallback
+from .formatters.id_pan_aadhaar_ifsc import parse_aadhaar, parse_pan
 from .formatters.phone_in import parse_indian_mobile
 from .locale_policy import TenantPolicy
 from .regex_prefilter import prefilter as regex_prefilter
@@ -90,6 +92,10 @@ def make_wfst_classifier(tenant_policy: TenantPolicy) -> Classifier:
             try:
                 if span.cls == "phone":
                     rewritten.append(_rewrite_phone(span))
+                    continue
+
+                if span.cls in {"pan", "aadhaar"}:
+                    rewritten.append(_rewrite_identifier(span, pipeline=pipeline))
                     continue
 
                 if span.cls == "date":
@@ -166,6 +172,50 @@ def _rewrite_phone(span: Span) -> Span:
             "cls": "phone",
             "canonical": canonical,
             "rule_id": "fmt.phone",
+            "fallback_reason": None,
+        }
+    )
+
+
+def _rewrite_identifier(span: Span, *, pipeline: _Pipeline | None) -> Span:
+    if span.cls == "pan":
+        canonical = parse_pan(span.raw)
+        if canonical is None and pipeline is not None:
+            try:
+                normalized = pipeline.normalize_span(span.raw, "pan")
+            except ValueError:
+                normalized = None
+            canonical = parse_pan(normalized or "")
+        if canonical is None:
+            return _fallback(span, cls="pan", rule_id="fmt.pan", reason="fmt_no_parse")
+        return span.model_copy(
+            update={
+                "cls": "pan",
+                "canonical": canonical,
+                "rule_id": "fmt.pan",
+                "fallback_reason": None,
+            }
+        )
+
+    canonical = parse_aadhaar(span.raw)
+    if canonical is None and pipeline is not None:
+        try:
+            normalized = pipeline.normalize_span(span.raw, "aadhaar")
+        except ValueError:
+            normalized = None
+        canonical = parse_aadhaar(normalized or "")
+    if canonical is None:
+        return _fallback(
+            span,
+            cls="aadhaar",
+            rule_id="fmt.aadhaar",
+            reason="fmt_no_parse",
+        )
+    return span.model_copy(
+        update={
+            "cls": "aadhaar",
+            "canonical": canonical,
+            "rule_id": "fmt.aadhaar",
             "fallback_reason": None,
         }
     )
@@ -271,6 +321,15 @@ def _unexpected_error_fallback(span: Span) -> Span | None:
     """
     if span.cls == "phone":
         return _fallback(span, cls="phone", rule_id="fmt.phone", reason="fmt_error")
+    if span.cls == "pan":
+        return _fallback(span, cls="pan", rule_id="fmt.pan", reason="fmt_error")
+    if span.cls == "aadhaar":
+        return _fallback(
+            span,
+            cls="aadhaar",
+            rule_id="fmt.aadhaar",
+            reason="fmt_error",
+        )
     if span.cls == "date":
         return _fallback(span, cls="date", rule_id="wfst.date", reason="wfst_error")
 

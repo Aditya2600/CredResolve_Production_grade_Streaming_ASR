@@ -81,6 +81,18 @@ classes:
     require_lex_cue: true
     defer_on_partial: true
 
+  pan:
+    classifier_min: 0.95
+    asr_min: 0.90
+    require_lex_cue: true
+    defer_on_partial: true
+
+  aadhaar:
+    classifier_min: 0.95
+    asr_min: 0.90
+    require_lex_cue: true
+    defer_on_partial: true
+
   # Identifiers (account, policy, claim, customer ID, etc.). Any
   # uncertainty defers; normalisation is separator cleanup only — never
   # digit substitution.

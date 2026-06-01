@@ -189,3 +189,52 @@ def test_explicit_flush_preserves_final_when_accumulated_audio_is_long_enough():
     assert streams[0].end_calls == 1
     assert len(finals) == 1
     assert finals[0].audio_duration == 0.7
+
+
+def test_vad_disabled_forwards_all_audio_until_flush():
+    streams: list[_RecordingStream] = []
+
+    def _stream_factory() -> _RecordingStream:
+        stream = _RecordingStream()
+        streams.append(stream)
+        return stream
+
+    def _vad_factory(_mode: int):
+        raise AssertionError("VAD should not be constructed when disabled")
+
+    pipeline = StreamingSpeechPipeline(
+        config=PipelineConfig(
+            ring_buffer_ms=20,
+            partial_poll_interval_ms=900,
+            min_final_audio_ms=0,
+            vad_enabled=False,
+            vad=VADGateConfig(
+                open_window_frames=1,
+                open_required_voiced_frames=1,
+                close_window_frames=1,
+                close_required_unvoiced_frames=1,
+                hangover_ms=20,
+            ),
+        ),
+        audio_processor=NoOpAudioProcessor(),
+        speaker_gate=SpeakerVerificationGate(SpeakerGateConfig()),
+        rnnt_stream_factory=_stream_factory,
+        session_id="session-test",
+        vad_factory=_vad_factory,
+    )
+
+    async def _run():
+        events = []
+        events.extend(await pipeline.push_audio(SPEECH_FRAME))
+        events.extend(await pipeline.push_audio(SILENCE_FRAME))
+        events.extend(await pipeline.flush())
+        return events
+
+    events = asyncio.run(_run())
+
+    finals = [event for event in events if isinstance(event, FinalTranscriptEvent)]
+    assert len(streams) == 1
+    assert streams[0].audio == SPEECH_FRAME + SILENCE_FRAME
+    assert streams[0].end_calls == 1
+    assert len(finals) == 1
+    assert finals[0].audio_duration == 0.04

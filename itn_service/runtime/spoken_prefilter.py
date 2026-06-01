@@ -171,6 +171,56 @@ _CODE_SWITCH_NUMBER_WORDS: frozenset[str] = frozenset(
         "ऐट",
         "नाइन",
         "टेन",
+        "ट्वेंटी",
+        "ट्वेन्टी",
+        "थर्टी",
+        "थर्टि",
+        "फोर्टी",
+        "फॉर्टी",
+        "फिफ्टी",
+        "फिफ्टि",
+        "फिफटि",
+        "सिक्स्टी",
+        "सिक्स्टि",
+        "सिक्सटि",
+        "सेवेंटी",
+        "सेवन्टी",
+        "सेवंटी",
+        "सेवनटी",
+        "एटी",
+        "ऐटी",
+        "एइटी",
+        "नाइंटी",
+        "नाइन्टी",
+        "नाइंटि",
+        "नाइन्टि",
+    }
+)
+_CODE_SWITCH_TENS_WORDS: frozenset[str] = frozenset(
+    {
+        "ट्वेंटी",
+        "ट्वेन्टी",
+        "थर्टी",
+        "थर्टि",
+        "फोर्टी",
+        "फॉर्टी",
+        "फिफ्टी",
+        "फिफ्टि",
+        "फिफटि",
+        "सिक्स्टी",
+        "सिक्स्टि",
+        "सिक्सटि",
+        "सेवेंटी",
+        "सेवन्टी",
+        "सेवंटी",
+        "सेवनटी",
+        "एटी",
+        "ऐटी",
+        "एइटी",
+        "नाइंटी",
+        "नाइन्टी",
+        "नाइंटि",
+        "नाइन्टि",
     }
 )
 _CODE_SWITCH_SCALE_WORDS: frozenset[str] = frozenset(
@@ -230,6 +280,91 @@ _PHONE_CUES: frozenset[str] = frozenset(
         "ओटीपी",
     }
 )
+_AADHAAR_CUES: frozenset[str] = frozenset(
+    {
+        "aadhaar",
+        "aadhar",
+        "uid",
+        "uidai",
+        "आधार",
+        "आधारकार्ड",
+        "यूआईडी",
+    }
+)
+_PAN_CUES: frozenset[str] = frozenset(
+    {"pan", "पैन", "पेन"}
+)
+_ID_FILLER_WORDS: frozenset[str] = frozenset(
+    {
+        "card",
+        "number",
+        "no",
+        "is",
+        "कार्ड",
+        "नंबर",
+        "नम्बर",
+        "संख्या",
+        "है",
+    }
+)
+_LETTER_WORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "i",
+        "j",
+        "k",
+        "l",
+        "m",
+        "n",
+        "o",
+        "p",
+        "q",
+        "r",
+        "s",
+        "t",
+        "u",
+        "v",
+        "w",
+        "x",
+        "y",
+        "z",
+        "ए",
+        "बी",
+        "सी",
+        "डी",
+        "ई",
+        "एफ",
+        "जी",
+        "एच",
+        "आई",
+        "जे",
+        "के",
+        "एल",
+        "एम",
+        "एन",
+        "ओ",
+        "पी",
+        "क्यू",
+        "आर",
+        "एस",
+        "टी",
+        "यू",
+        "वी",
+        "डब्ल्यू",
+        "डब्लू",
+        "एक्स",
+        "वाई",
+        "ज़ेड",
+        "जेड",
+    }
+)
 _MONTH_WORDS: frozenset[str] = frozenset(
     {
         "जनवरी",
@@ -259,6 +394,7 @@ _TOKEN_RE = re.compile(r"[^\s,.;:!?()\[\]\"'।]+")
 _MAX_NUMBER_TOKENS = 8
 _MAX_DECIMAL_TOKENS = 8
 _PHONE_CUE_WINDOW = 4
+_ID_CUE_WINDOW = 4
 
 
 @dataclass(frozen=True)
@@ -287,6 +423,7 @@ def prefilter(text: str, lang: str) -> list[Span]:
     candidates.extend(_detect_percent(text, tokens))
     candidates.extend(_detect_time(text, tokens))
     candidates.extend(_detect_date(text, tokens))
+    candidates.extend(_detect_ids(text, tokens))
     candidates.extend(_detect_phone(text, tokens))
     candidates.extend(_detect_generic_numbers(text, tokens))
     return _dedupe(candidates)
@@ -320,8 +457,39 @@ def _is_native_numberish(tok: _Token) -> bool:
     )
 
 
+def _is_code_switch_number_word(tok: _Token) -> bool:
+    return tok.norm in _CODE_SWITCH_NUMBER_WORDS
+
+
 def _is_digit_word(tok: _Token) -> bool:
     return tok.norm in _DIGIT_WORDS
+
+
+def _is_letter_word(tok: _Token) -> bool:
+    return tok.norm in _LETTER_WORDS
+
+
+def _date_day_start(tokens: list[_Token], month_idx: int) -> int | None:
+    """Return the first token of a plausible day phrase before a month word."""
+    if month_idx == 0:
+        return None
+
+    prev = tokens[month_idx - 1]
+    if not (_is_number_word(prev) or _is_code_switch_number_word(prev)):
+        return None
+
+    # Hindi 21..31 are single tokens, but Devanagari-English forms often
+    # arrive as ``थर्टि थ्री``. Include one preceding tens token so the date
+    # candidate owns the whole phrase and generic cardinal cannot rewrite only
+    # the trailing unit.
+    if (
+        month_idx >= 2
+        and tokens[month_idx - 2].norm in _CODE_SWITCH_TENS_WORDS
+        and prev.norm not in _CODE_SWITCH_TENS_WORDS
+    ):
+        return month_idx - 2
+
+    return month_idx - 1
 
 
 def _span(text: str, tokens: list[_Token], start: int, end: int, cls: str) -> Span:
@@ -452,10 +620,11 @@ def _detect_date(text: str, tokens: list[_Token]) -> list[Span]:
     for i, tok in enumerate(tokens):
         if tok.norm not in _MONTH_WORDS:
             continue
-        if i == 0 or not _is_number_word(tokens[i - 1]):
+        start = _date_day_start(tokens, i)
+        if start is None:
             continue
         end = _scan_right_numberish(tokens, i + 1, limit=4)
-        out.append(_span(text, tokens, i - 1, end, "date"))
+        out.append(_span(text, tokens, start, end, "date"))
 
     # Strong cue without a month word: emit only a tightly bounded candidate.
     # The current Hindi WFST will usually reject it, which is desirable; the
@@ -466,6 +635,71 @@ def _detect_date(text: str, tokens: list[_Token]) -> list[Span]:
         end = _scan_right_numberish(tokens, i + 1, limit=4)
         if end > i + 1:
             out.append(_span(text, tokens, i + 1, end, "date"))
+    return out
+
+
+def _skip_id_fillers(tokens: list[_Token], idx: int) -> int:
+    while idx < len(tokens) and tokens[idx].norm in _ID_FILLER_WORDS:
+        idx += 1
+    return idx
+
+
+def _nearby_id_cue(
+    tokens: list[_Token],
+    start: int,
+    end: int,
+    cues: frozenset[str],
+) -> bool:
+    cue_start = max(0, start - _ID_CUE_WINDOW)
+    cue_end = min(len(tokens), end + _ID_CUE_WINDOW)
+    return any(tokens[j].norm in cues for j in range(cue_start, cue_end))
+
+
+def _pan_shape(tokens: list[_Token], start: int, end: int) -> bool:
+    if end - start != 10:
+        return False
+    return (
+        all(_is_letter_word(tok) for tok in tokens[start : start + 5])
+        and all(_is_digit_word(tok) for tok in tokens[start + 5 : start + 9])
+        and _is_letter_word(tokens[start + 9])
+    )
+
+
+def _detect_ids(text: str, tokens: list[_Token]) -> list[Span]:
+    out: list[Span] = []
+    for i, tok in enumerate(tokens):
+        if tok.norm in _AADHAAR_CUES:
+            start = _skip_id_fillers(tokens, i + 1)
+            end = start
+            while end < len(tokens) and _is_digit_word(tokens[end]):
+                end += 1
+            if end - start == 12:
+                out.append(_span(text, tokens, start, end, "aadhaar"))
+
+        if tok.norm in _PAN_CUES:
+            start = _skip_id_fillers(tokens, i + 1)
+            end = start
+            while end < len(tokens) and (
+                _is_letter_word(tokens[end]) or _is_digit_word(tokens[end])
+            ):
+                end += 1
+            if _pan_shape(tokens, start, end):
+                out.append(_span(text, tokens, start, end, "pan"))
+
+    i = 0
+    while i < len(tokens):
+        if not (_is_digit_word(tokens[i]) or _is_letter_word(tokens[i])):
+            i += 1
+            continue
+        end = i
+        while end < len(tokens) and (_is_digit_word(tokens[end]) or _is_letter_word(tokens[end])):
+            end += 1
+        if end - i == 12 and all(_is_digit_word(tok) for tok in tokens[i:end]):
+            if _nearby_id_cue(tokens, i, end, _AADHAAR_CUES):
+                out.append(_span(text, tokens, i, end, "aadhaar"))
+        elif _pan_shape(tokens, i, end) and _nearby_id_cue(tokens, i, end, _PAN_CUES):
+            out.append(_span(text, tokens, i, end, "pan"))
+        i = end
     return out
 
 

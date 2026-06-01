@@ -7,9 +7,8 @@ services:
       - TRITON_URL=${TRITON_URL:-triton:8001}
       - TRITON_MODEL_NAME=${TRITON_MODEL_NAME:-indic_asr}
       - TRITON_MODEL_VERSION=${TRITON_MODEL_VERSION:-}
-      # Phase 1 native serving: route decoding="ctc" requests to the
-      # preproc + TRT encoder + ctc_decoder ensemble. Empty falls back to
-      # the python backend for both decoders.
+      # Route decoding="ctc" requests to the preproc + ONNX encoder +
+      # ctc_decoder ensemble. Empty falls back to the python backend.
       - TRITON_MODEL_NAME_CTC=${TRITON_MODEL_NAME_CTC:-indic_asr_ctc}
       - TRITON_MODEL_VERSION_CTC=${TRITON_MODEL_VERSION_CTC:-}
     depends_on:
@@ -29,17 +28,18 @@ services:
       - HF_TOKEN=${HUGGINGFACE_HUB_TOKEN}
       - HF_HOME=${HF_HOME}
       - TRITON_FRAME_DURATION_MS=${TRITON_FRAME_DURATION_MS:-0.08}
-      - ASR_TIMING_SAMPLE_RATE=1
-      - ASR_TIMING_CUDA_SYNC=1
+      - ASR_TIMING_SAMPLE_RATE=${ASR_TIMING_SAMPLE_RATE:-1}
+      - ASR_TIMING_CUDA_SYNC=${ASR_TIMING_CUDA_SYNC:-0}
       - CUDA_LAUNCH_BLOCKING=${CUDA_LAUNCH_BLOCKING:-}
       - NVIDIA_VISIBLE_DEVICES=0
       - CUDA_VISIBLE_DEVICES=0
     # Bind-mount the model repo so artefacts staged at deploy time
     # (encoder.onnx + external weights, ctc_decoder.onnx, preprocessor.ts,
-    #  optional model.plan TRT engine) live on host disk rather than baked
+    #  optional experimental model.plan) live on host disk rather than baked
     # into the image. See docs/triton_native_serving_plan.md.
     volumes:
       - ./triton/model_repository:/models
+      - /tmp/nvidia-mps:/tmp/nvidia-mps
     ports:
       - "8100:8000"
       - "8101:8001"
