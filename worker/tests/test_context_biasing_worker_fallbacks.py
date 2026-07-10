@@ -88,8 +88,3 @@ def _assert_entrypoint_falls_back_with_timeout_reason(monkeypatch, module_name: 
 @pytest.mark.parametrize("reason", ["queue_timeout", "inference_timeout"])
 def test_main_py_fallback_uses_timeout_reason(monkeypatch, reason):
     _assert_entrypoint_falls_back_with_timeout_reason(monkeypatch, "worker.app.main", reason)
-
-
-@pytest.mark.parametrize("reason", ["queue_timeout", "inference_timeout"])
-def test_main_v2_py_fallback_uses_timeout_reason(monkeypatch, reason):
-    _assert_entrypoint_falls_back_with_timeout_reason(monkeypatch, "worker.app.main_v2", reason)

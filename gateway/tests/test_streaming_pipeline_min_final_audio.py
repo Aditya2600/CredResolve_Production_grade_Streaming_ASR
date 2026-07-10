@@ -11,7 +11,6 @@ from gateway.app.pipeline import (
     RNNTPartialResult,
     StreamingSpeechPipeline,
 )
-from gateway.app.speaker_gate import SpeakerGateConfig, SpeakerVerificationGate
 from gateway.app.vad_gate import VADGateConfig
 
 
@@ -70,7 +69,6 @@ def _build_pipeline(*, min_final_audio_ms: int = 700):
             ),
         ),
         audio_processor=NoOpAudioProcessor(),
-        speaker_gate=SpeakerVerificationGate(SpeakerGateConfig()),
         rnnt_stream_factory=_stream_factory,
         session_id="session-test",
         vad_factory=_FrameContentVAD,
@@ -132,7 +130,6 @@ def test_short_final_utterance_does_not_consume_emitted_utterance_id():
             ),
         ),
         audio_processor=NoOpAudioProcessor(),
-        speaker_gate=SpeakerVerificationGate(SpeakerGateConfig()),
         rnnt_stream_factory=_stream_factory,
         session_id="session-test",
         vad_factory=_FrameContentVAD,

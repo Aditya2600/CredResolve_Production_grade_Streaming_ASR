@@ -16,14 +16,14 @@ flowchart TD
     end
 
     subgraph ingress["Ingress and Public Contract"]
-        nginx["Nginx reverse proxy<br/>port 80<br/>/ -> frontend<br/>/ws/stt -> gateway"]
+        nginx["Nginx reverse proxy<br/>browser/demo ingress only<br/>port 80<br/>/ -> frontend<br/>/ws/stt -> gateway<br/>redundant for telephony"]
         auth["WebSocket auth and session query<br/>Api-Subscription-Key or token subprotocol<br/>language-code, model, mode,<br/>sample_rate, input_audio_codec"]
     end
 
     browser --> audio_client
     audio_client -->|base64 PCM/WAV JSON frames| nginx
-    partner -->|Sarvam-like WS contract| nginx
-    smoke -->|same WS contract| nginx
+    partner -->|direct WS to gateway:8000<br/>no fixed IP, bypasses nginx| auth
+    smoke -->|same WS contract, direct to gateway| auth
     nginx --> auth
 
     %% ---------------------------
@@ -39,8 +39,9 @@ flowchart TD
         gw_speaker["Optional speaker gate<br/>disabled, shadow, or enforce<br/>debug backend or external embedding hook"]
         gw_buffer["Buffered RNNT compatibility stream<br/>collect one utterance of PCM"]
         gw_flush["Endpointing or client flush<br/>finish utterance"]
-        gw_worker_call["WorkerClient HTTP call<br/>POST /v1/transcribe<br/>X-Sample-Rate, X-Decoder, X-Language,<br/>X-Mode, X-Session-Id, X-Utterance-Id,<br/>X-Context-Biasing-Request,<br/>X-Vad-Enabled, X-Denoise-Enabled"]
-        gw_emit["Emit WebSocket response<br/>final-only type=data transcript<br/>optional type=vad speech_start/speech_end<br/>type=error on failures"]
+        gw_worker_call["WorkerClient HTTP call<br/>POST /v1/transcribe<br/>body raw PCM, Content-Type octet-stream<br/>X-Sample-Rate, X-Decoder, X-Language,<br/>X-Mode, X-Session-Id, X-Utterance-Id,<br/>X-Context-Biasing-Request,<br/>X-Vad-Enabled, X-Denoise-Enabled"]
+        gw_itn["ITN normalization (gateway-owned)<br/>normalize_final_transcript on final only<br/>gRPC StreamNormalize to itn-service<br/>ITN_GRPC_TARGET, ITN_TIMEOUT_MS=250<br/>passthrough + deferred on timeout/disabled"]
+        gw_emit["Emit WebSocket response<br/>final-only type=data<br/>raw_text, canonical_text, display_text,<br/>normalization_spans, language_source<br/>optional type=vad speech_start/speech_end<br/>type=error on failures<br/>(partials collected internally, not emitted)"]
     end
 
     auth --> gw_accept --> gw_validate
@@ -66,7 +67,8 @@ flowchart TD
     end
 
     gw_worker_call --> wk_ingress --> wk_headers --> wk_preprocess --> wk_lid --> wk_audio --> wk_baseline
-    wk_baseline --> wk_response --> gw_emit --> downstream
+    wk_baseline --> wk_response
+    wk_response -->|worker JSON result returns to gateway| gw_itn --> gw_emit --> downstream
     wk_baseline -. exceptions .-> wk_timeout --> wk_response
     wk_response -. sampled events .-> wk_eval_log
 
@@ -76,7 +78,7 @@ flowchart TD
     subgraph backend["ASR Backend Selection"]
         backend_choice{"ASR_BACKEND"}
         onnx["ONNXIndicASRWorker<br/>Hugging Face snapshot_download<br/>model_onnx.py<br/>TorchScript preprocessor on CPU<br/>ONNX Runtime CUDA sessions"]
-        triton_worker["TritonIndicASRWorker<br/>thin adapter<br/>validates supported langs<br/>calls Triton HTTP"]
+        triton_worker["TritonIndicASRWorker<br/>thin adapter, validates supported langs<br/>calls Triton gRPC :8001<br/>circuit breaker: fail/recover/half-open"]
         triton["NVIDIA Triton Inference Server<br/>triton/model_repository/indic_asr<br/>AUDIO_SIGNAL + LANGUAGE + DECODER<br/>TRANSCRIPT and optional TIMESTAMPS_JSON"]
         hf_cache["Model artifacts and HF cache<br/>ASR_MODEL_NAME<br/>HUGGINGFACE_HUB_TOKEN<br/>HF_HOME"]
     end
@@ -110,12 +112,24 @@ flowchart TD
     selector --> bias_meta
 
     %% ---------------------------
+    %% Inverse Text Normalization service
+    %% ---------------------------
+    subgraph itn["Inverse Text Normalization Service - gRPC :50051"]
+        itn_ingress["StreamNormalize bidi gRPC<br/>one stream per session<br/>NormalizeRequest: text, is_final,<br/>lang_hint, locale_policy (tenant)"]
+        itn_engine["WFST-first deterministic ITN<br/>regex prefilter + pynini/pyICU FAR grammars<br/>hi.far, mr.far (extensible langs)<br/>cardinal, money, percent, date, time,<br/>phone, PAN, Aadhaar, IFSC, account ids<br/>confidence + lexical-cue gating"]
+        itn_response["NormalizeResponse<br/>raw_text (audit), canonical_text,<br/>display_text, spans (class/rule/confidence),<br/>deferred flag, lang/script, itn_version"]
+    end
+
+    gw_itn -->|gRPC StreamNormalize| itn_ingress --> itn_engine --> itn_response
+    itn_response -->|canonical/display/spans| gw_itn
+
+    %% ---------------------------
     %% Observability and operations
     %% ---------------------------
     subgraph ops["Observability and Local Deployment"]
-        compose["Docker Compose stack<br/>nginx, frontend, gateway, worker<br/>prometheus, grafana,<br/>node-exporter, dcgm-exporter<br/>optional triton overlay"]
+        compose["Docker Compose stack<br/>nginx:80, frontend:5173, gateway:8003->8000,<br/>worker:9000, itn-service:50051 (gRPC)<br/>prometheus:9090, grafana:3000,<br/>node-exporter:9100, dcgm-exporter:9400<br/>overlays: triton, diarization, context_biasing<br/>(diarization/biasing swap worker Dockerfile)"]
         env[".env / .env.example<br/>runtime knobs, API keys,<br/>model names, timeouts,<br/>feature flags"]
-        health["Health endpoints<br/>gateway /healthz<br/>worker /healthz<br/>Triton /v2/health/ready"]
+        health["Health endpoints<br/>gateway /healthz<br/>worker /healthz<br/>Triton /v2/health/ready<br/>itn-service gRPC socket probe :50051<br/>(no HTTP /metrics on ITN)"]
         metrics["Prometheus metrics<br/>gateway /metrics<br/>worker /metrics<br/>node and GPU exporters"]
         grafana["Grafana dashboards<br/>service latency, fallbacks,<br/>WebSocket connections,<br/>GPU and host metrics"]
         logs["Structured logs and local files<br/>/home/ubuntu/logs<br/>eval event samples"]
@@ -124,6 +138,7 @@ flowchart TD
     compose --> nginx
     compose --> gw_accept
     compose --> wk_ingress
+    compose --> itn_ingress
     compose --> backend_choice
     env --> gw_validate
     env --> wk_headers
@@ -170,7 +185,7 @@ flowchart TD
     evals --> mix_train
     downstream -. human review and corrections .-> raw_exports
     smoke --> evals
-    nginx -. serving benchmark path .-> evals
+    gw_accept -. serving benchmark path .-> evals
 
     %% ---------------------------
     %% Styling
@@ -181,14 +196,16 @@ flowchart TD
     classDef worker fill:#f0f9ff,stroke:#0284c7,color:#0f172a,stroke-width:1px;
     classDef backend fill:#f5f3ff,stroke:#7c3aed,color:#0f172a,stroke-width:1px;
     classDef bias fill:#fdf2f8,stroke:#db2777,color:#0f172a,stroke-width:1px;
+    classDef itn fill:#fff1f2,stroke:#e11d48,color:#0f172a,stroke-width:1px;
     classDef ops fill:#f8fafc,stroke:#64748b,color:#0f172a,stroke-width:1px;
     classDef data fill:#fefce8,stroke:#ca8a04,color:#0f172a,stroke-width:1px;
 
     class browser,audio_client,partner,smoke,downstream client;
     class nginx,auth ingress;
-    class gw_accept,gw_validate,gw_session_update,gw_decode,gw_apm,gw_vad,gw_speaker,gw_buffer,gw_flush,gw_worker_call,gw_emit gateway;
+    class gw_accept,gw_validate,gw_session_update,gw_decode,gw_apm,gw_vad,gw_speaker,gw_buffer,gw_flush,gw_worker_call,gw_itn,gw_emit gateway;
     class wk_ingress,wk_headers,wk_preprocess,wk_lid,wk_audio,wk_baseline,wk_timeout,wk_eval_log,wk_response worker;
     class backend_choice,onnx,triton_worker,triton,hf_cache backend;
     class bias_decide,static_phrases,dynamic_context,assembler,nemo_bias,selector,bias_meta bias;
+    class itn_ingress,itn_engine,itn_response itn;
     class compose,env,health,metrics,grafana,logs ops;
     class raw_exports,inventory,inventory_out,normalize_text,segmentation,diarization,manifests,external_data,mix_train,peft,train_artifacts,export_model,evals,phrase_updates data;

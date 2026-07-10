@@ -7,7 +7,6 @@ from enum import Enum
 
 class GateState(str, Enum):
     CLOSED = "closed"
-    CANDIDATE = "candidate"
     OPEN = "open"
     HANGOVER = "hangover"
 
@@ -82,7 +81,7 @@ class VADGateStateMachine:
         self._open_window.clear()
         self._close_window.clear()
 
-    def process_frame(self, *, is_speech: bool, can_open: bool) -> GateUpdate:
+    def process_frame(self, *, is_speech: bool) -> GateUpdate:
         self._open_window.append(is_speech)
         self._close_window.append(is_speech)
 
@@ -102,19 +101,8 @@ class VADGateStateMachine:
 
         if self._state == GateState.CLOSED:
             if open_ready:
-                if can_open:
-                    self._state = GateState.OPEN
-                    reason = "vad_open"
-                else:
-                    self._state = GateState.CANDIDATE
-                    reason = "awaiting_speaker_accept"
-        elif self._state == GateState.CANDIDATE:
-            if open_ready and can_open:
                 self._state = GateState.OPEN
-                reason = "speaker_accept"
-            elif close_ready:
-                self._state = GateState.CLOSED
-                reason = "candidate_timeout"
+                reason = "vad_open"
         elif self._state == GateState.OPEN:
             if close_ready:
                 self._state = GateState.HANGOVER

@@ -13,7 +13,7 @@ Outputs:
 Acceptance:
     python tools/benchmarks/audio_bench.py tests/fixtures/audio_bench/
 
-The STT model is built via worker.app.main_v2.build_worker_model(), so the
+The STT model is built via worker.app.main.build_worker_model(), so the
 target backend (ONNX local vs Triton) is the same one production uses and
 follows env config (ASR_BACKEND, ASR_MODEL_NAME, TRITON_URL, ...).
 
@@ -179,13 +179,13 @@ def _aggregate_wer(refs: list[str], hyps: list[str]) -> float:
 def _build_stt_model():
     """Build and initialize the worker STT model used by the FastAPI app.
 
-    main_v2 creates `model` at module scope, but FastAPI normally calls
+    main creates `model` at module scope, but FastAPI normally calls
     `model.load()` from its startup event. The benchmark runs as a one-off
     process, so it must perform that startup step itself.
     """
-    from worker.app import main_v2
+    from worker.app import main
 
-    model = main_v2.model
+    model = main.model
     if not getattr(model, "ready", False):
         model.load()
     return model
@@ -285,7 +285,7 @@ def main() -> int:
     language = args.language
     if not args.no_stt:
         try:
-            _log("Building STT model via worker.app.main_v2.build_worker_model() ...")
+            _log("Building STT model via worker.app.main.build_worker_model() ...")
             model = _build_stt_model()
             from worker.app import config as worker_config
             if decoder is None:

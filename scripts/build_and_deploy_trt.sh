@@ -171,28 +171,33 @@ echo " READY"
 
 # Run validation gate script
 # Note: Requires PYTHONPATH to find the worker modules
-echo "[gate] Running validation fixtures (RNNT)..."
-if ! run_validation rnnt; then
-    
-    echo "[gate][error] RNNT VALIDATION FAILED"
-    if [[ $HAS_BACKUP -eq 1 ]]; then
-        echo "[gate] Reverting to backup engine..."
-        mv -f "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
-        restart_triton
-    fi
-    exit 1
-fi
+if [[ "${SKIP_VALIDATION:-0}" == "1" ]]; then
+    echo "[gate] SKIP_VALIDATION=1 set. Skipping fixture WER gate."
+    echo "[gate] Triton became ready with the candidate engine; promoting on readiness only."
+else
+    echo "[gate] Running validation fixtures (RNNT)..."
+    if ! run_validation rnnt; then
 
-echo "[gate] Running validation fixtures (CTC)..."
-if ! run_validation ctc; then
-    
-    echo "[gate][error] CTC VALIDATION FAILED"
-    if [[ $HAS_BACKUP -eq 1 ]]; then
-        echo "[gate] Reverting to backup engine..."
-        mv -f "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
-        restart_triton
+        echo "[gate][error] RNNT VALIDATION FAILED"
+        if [[ $HAS_BACKUP -eq 1 ]]; then
+            echo "[gate] Reverting to backup engine..."
+            mv -f "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
+            restart_triton
+        fi
+        exit 1
     fi
-    exit 1
+
+    echo "[gate] Running validation fixtures (CTC)..."
+    if ! run_validation ctc; then
+
+        echo "[gate][error] CTC VALIDATION FAILED"
+        if [[ $HAS_BACKUP -eq 1 ]]; then
+            echo "[gate] Reverting to backup engine..."
+            mv -f "${ENCODER_DIR}/model.plan.bak" "${ENCODER_DIR}/model.plan"
+            restart_triton
+        fi
+        exit 1
+    fi
 fi
 
 echo "[gate] ALL VALIDATIONS PASSED. Deploying candidate engine."

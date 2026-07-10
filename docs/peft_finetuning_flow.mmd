@@ -1,0 +1,128 @@
+%% CredResolve ASR — Conceptual PEFT (adapter) fine-tuning flow + what was actually tried
+%% Render with Mermaid. Numbers/configs reflect the current Vaani adapter PEFT flow.
+%% and tools/run_nemo_adapter_peft.py at the time of writing.
+
+flowchart TD
+    %% ---------------------------
+    %% Base model and the PEFT idea
+    %% ---------------------------
+    subgraph model["Base Model + PEFT Concept"]
+        base["IndicConformer-600M (multilingual)<br/>ai4bharat/indic-conformer-600m<br/>Conformer encoder + RNNT/CTC heads<br/>22 Indian languages, multi-softmax"]
+        frozen["Frozen weights (~99.9%)<br/>encoder blocks, decoder, joint<br/>preserves multilingual knowledge"]
+        adapter["Trainable LinearAdapters only<br/>NeMo LinearAdapter, bottleneck + swish<br/>per encoder layer<br/>dim 16 -> 835K params (0.13%)<br/>dim 32 -> 1.62M params (0.26%)"]
+        why["Why PEFT, not full FT<br/>full FT on Hindi-only regressed badly<br/>(catastrophic forgetting of other langs)<br/>adapters + multilingual replay avoid this"]
+    end
+
+    base --> frozen
+    base --> adapter
+    why -. motivates .-> adapter
+
+    %% ---------------------------
+    %% Data preparation
+    %% ---------------------------
+    subgraph data["Training Data Preparation"]
+        vaani["Vaani 50h multilingual<br/>~33,125 raw rows<br/>clean external anchor"]
+        domain["In-house call-center data<br/>~64h, 7 langs (Hi 27%, Te 20%,<br/>Mr 14%, Gu 13%, Kn 11%, Ta 10%, Bn 5%)<br/>Gemini-assisted labels"]
+        normalize["Text normalization<br/>tools/normalize_manifest_text.py<br/>strip noise/annotation tags<br/>+ rejects log"]
+        validate["Audio validation<br/>tools/validate_nemo_manifest_audio.py<br/>drop corrupt/stereo/non-16k<br/>filter <0.3s, >8s train / >10s val"]
+        cuda_drop["CUDA-stability drops<br/>remove 3 NaN-inducing samples<br/>-> 33,107 clean train rows"]
+        split["Deterministic split (seed=42)<br/>90% train / 5% dev / 5% test"]
+        mix["Domain+Vaani mix builder<br/>build_combined_asr_training_manifest.py<br/>weighted interleave, repeat domain 1-3x<br/>target 25-50% domain fraction"]
+    end
+
+    vaani --> normalize --> validate --> cuda_drop --> split
+    domain --> mix
+    split --> mix
+
+    %% ---------------------------
+    %% Training loop
+    %% ---------------------------
+    subgraph train["Adapter Training Loop — tools/run_nemo_adapter_peft.py"]
+        load["Load base .nemo<br/>attach LinearAdapters<br/>freeze_all + enable_only_adapter"]
+        remap["Per-batch multi-softmax remap<br/>language id from manifest<br/>map global token ids -> lang-local vocab"]
+        loss["Loss objective<br/>RNNT default (16kHz path)<br/>CTC variant (8kHz telephony path)<br/>optional aux-CTC blend"]
+        opt["Optimizer + schedule<br/>AdamW, WarmupAnnealing<br/>batch 1 x grad_accum 4 (eff 4)<br/>grad clip 1.0"]
+        precision["Precision = 32-true (FP32)<br/>16-mixed -> NaN grads at step 0<br/>NeMo Numba RNNT path needs FP32"]
+        valloop["Validation every 100-200 steps<br/>Hindi WER + multilingual macro WER<br/>early-stop on WER, NOT train loss"]
+    end
+
+    mix --> load --> remap --> loss --> opt --> precision --> valloop
+    adapter -. adapters injected .-> load
+
+    %% ---------------------------
+    %% Runs actually tried
+    %% ---------------------------
+    subgraph runs["Experiment Axes Explored (concept-level)"]
+        sweep_dim["Adapter-dim sweep<br/>dim 16 vs dim 32<br/>portable adapter .pt (a few MB)<br/>finding: small dim competitive"]
+        sweep_lr["Learning-rate / schedule sweep<br/>conservative lr + short warmup<br/>resume-from-checkpoint runs"]
+        fullft["Full FT contrast (NOT PEFT)<br/>Hindi-only, no replay<br/>loss improved but WER degraded<br/>-> kept as last resort only"]
+        ckpt8k["8kHz telephony probe<br/>run_vaani_adapter_peft_8khz.sh<br/>CTC objective, downsample to 8k<br/>robustness experiment"]
+    end
+
+    valloop --> sweep_dim
+    valloop --> sweep_lr
+    valloop -. contrast .-> fullft
+    precision -. variant .-> ckpt8k
+
+    %% ---------------------------
+    %% Export and serving validation
+    %% ---------------------------
+    subgraph export["Export + Serving Validation"]
+        merge["Merge adapter -> final .nemo<br/>+ portable adapter .pt"]
+        onnx["ONNX export<br/>tools/export_nemo_asr_to_onnx.py<br/>encoder/decoder/joint graphs<br/>optional TensorRT for Triton"]
+        variants["Variant sweep<br/>tools/validate_vaani_model_variants.py<br/>baseline / denoise / biasing / both"]
+    end
+
+    sweep_dim --> merge --> onnx --> variants
+
+    %% ---------------------------
+    %% Evaluation and feedback
+    %% ---------------------------
+    subgraph eval["Evaluation + Error Mining"]
+        wer_nemo["eval_nemo_manifest_wer.py<br/>offline .nemo WER"]
+        wer_serve["eval_serving_model_manifest_wer.py<br/>serving-path WER (worker HTTP)"]
+        wer_ws["eval_indicvoices_wer.py<br/>live WS gateway WER"]
+        lid["eval_lid.py<br/>language-ID accuracy"]
+        mine["Error mining<br/>del/ins/sub breakdown<br/>worst-first JSONL<br/>repeated-error cohorts"]
+    end
+
+    variants --> wer_nemo
+    variants --> wer_serve
+    variants --> wer_ws
+    variants --> lid
+    wer_nemo --> mine
+    wer_serve --> mine
+    wer_ws --> mine
+    mine -.->|select next correction batch / new data mix| mix
+
+    %% ---------------------------
+    %% Lessons learned
+    %% ---------------------------
+    subgraph lessons["Key Findings / Lessons"]
+        l1["Loss improvement is NOT predictive of WER"]
+        l2["Hindi-only adaptation regresses multilingual"]
+        l3["Validation during training is load-bearing"]
+        l4["Small adapter dim competitive with larger; smaller is cheaper"]
+        l5["Adapter WER plateaus; next levers:<br/>replay mix, active learning,<br/>pseudo-labeling, distillation before full FT"]
+    end
+
+    sweep_dim -. informs .-> lessons
+
+    %% ---------------------------
+    %% Styling
+    %% ---------------------------
+    classDef model fill:#f5f3ff,stroke:#7c3aed,color:#0f172a,stroke-width:1px;
+    classDef data fill:#fefce8,stroke:#ca8a04,color:#0f172a,stroke-width:1px;
+    classDef train fill:#ecfdf5,stroke:#059669,color:#0f172a,stroke-width:1px;
+    classDef runs fill:#fff7ed,stroke:#f97316,color:#0f172a,stroke-width:1px;
+    classDef export fill:#f0f9ff,stroke:#0284c7,color:#0f172a,stroke-width:1px;
+    classDef eval fill:#e8f4ff,stroke:#2563eb,color:#0f172a,stroke-width:1px;
+    classDef lessons fill:#fff1f2,stroke:#e11d48,color:#0f172a,stroke-width:1px;
+
+    class base,frozen,adapter,why model;
+    class vaani,domain,normalize,validate,cuda_drop,split,mix data;
+    class load,remap,loss,opt,precision,valloop train;
+    class sweep_dim,sweep_lr,fullft,ckpt8k runs;
+    class merge,onnx,variants export;
+    class wer_nemo,wer_serve,wer_ws,lid,mine eval;
+    class l1,l2,l3,l4,l5 lessons;

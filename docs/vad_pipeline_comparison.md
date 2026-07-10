@@ -49,7 +49,7 @@ webrtcvad (mode=3, most aggressive) har frame ko voiced / unvoiced label karta h
 │ VADGateStateMachine  (gateway/app/vad_gate.py)                     │
 │                                                                     │
 │  CLOSED                                                             │
-│    last 3 frames mein 2+ voiced → OPEN (ya CANDIDATE if throttled) │
+│    last 3 frames mein 2+ voiced → OPEN                              │
 │    ← single blip se trigger nahi hota (noise robustness)           │
 │                                                                     │
 │  OPEN                                                               │
@@ -58,10 +58,6 @@ webrtcvad (mode=3, most aggressive) har frame ko voiced / unvoiced label karta h
 │  HANGOVER  (200 ms grace window)                                   │
 │    speech wapas aayi → OPEN (same utterance continue)              │
 │    200 ms beet gaye → CLOSED (utterance finalize)                  │
-│                                                                     │
-│  CANDIDATE  (speaker throttling ke time)                           │
-│    can_open=True ho jaaye → OPEN                                   │
-│    close_ready → CLOSED (timeout)                                  │
 └─────────────────────────────────────────────────────────────────────┘
    ↓
 VADSegmenter  (gateway/app/vad.py)  buffer maintain karta hai:
@@ -138,6 +134,6 @@ Yeh issues production comparison se independent hain:
 | File | Role |
 |---|---|
 | [gateway/app/vad.py](../gateway/app/vad.py) | `VADSegmenter` — frame buffer, speech_end, max_utt logic |
-| [gateway/app/vad_gate.py](../gateway/app/vad_gate.py) | `VADGateStateMachine` — CLOSED/CANDIDATE/OPEN/HANGOVER states |
+| [gateway/app/vad_gate.py](../gateway/app/vad_gate.py) | `VADGateStateMachine` — CLOSED/OPEN/HANGOVER states |
 | [gateway/app/pipeline.py](../gateway/app/pipeline.py) | Gateway pipeline joining VAD + worker client |
 | [tests/test_client_vad_streaming.py](../tests/test_client_vad_streaming.py) | Silero-based offline batch client (not a test of production VAD) |

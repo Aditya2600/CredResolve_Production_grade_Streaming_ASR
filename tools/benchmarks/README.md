@@ -10,6 +10,23 @@ commands.
   worker STT.
 - `bench_worker_sequential.py`: sequentially POST utterances to the worker
   transcription endpoint and capture per-request timings.
+- `build_hindi_eval_manifest.py`: materialize a public Hindi set
+  (`sarvamai/contextual_asr_benchmark` or FLEURS `hi_in`) into a 16 kHz NeMo
+  JSONL manifest for offline ASR eval.
+- `run_nemotron_streaming.py`: run Nemotron 3.5 ASR cache-aware streaming
+  inference at one or more `att_context_size` latency points, timing each run.
+- `score_nemotron_manifest.py`: score Nemotron + IndicConformer hypotheses
+  against the same manifest through the shared normalizer + WER (apples-to-apples).
+
+## Nemotron 3.5 ASR vs IndicConformer (Hindi)
+
+End-to-end comparison harness. Nemotron needs an **isolated NeMo 26.06 env**
+(it conflicts with the worker's pinned NeMo 2.4.1) — full procedure, commands,
+and the results table are in
+[docs/nemotron_vs_indicconformer_hindi_benchmark.md](../../docs/nemotron_vs_indicconformer_hindi_benchmark.md).
+Pipeline: `build_hindi_eval_manifest.py` → `validate_nemo_manifest_audio.py` →
+`run_nemotron_streaming.py` (isolated env) + `eval_nemo_manifest_wer.py` (prod env)
+→ `score_nemotron_manifest.py`.
 
 ## Docker Notes
 

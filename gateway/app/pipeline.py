@@ -10,7 +10,6 @@ import webrtcvad
 
 from .apm import AudioProcessor
 from .metrics import FINAL_TRANSCRIPT_LATENCY, GATE_TRANSITIONS, TIME_TO_FIRST_GATE_OPEN, VAD_FRAMES
-from .speaker_gate import SpeakerVerificationGate
 from .vad_gate import GateState, VADGateConfig, VADGateStateMachine
 
 
@@ -95,7 +94,6 @@ class StreamingSpeechPipeline:
         *,
         config: PipelineConfig,
         audio_processor: AudioProcessor,
-        speaker_gate: SpeakerVerificationGate,
         rnnt_stream_factory: Callable[[], RNNTStream],
         session_id: str,
         vad_factory: Callable[[int], object] | None = None,
@@ -103,7 +101,6 @@ class StreamingSpeechPipeline:
     ):
         self.config = config
         self.audio_processor = audio_processor
-        self.speaker_gate = speaker_gate
         self.rnnt_stream_factory = rnnt_stream_factory
         self.session_id = session_id
         self.log = logger or logging.getLogger("gateway.pipeline")
@@ -161,12 +158,6 @@ class StreamingSpeechPipeline:
         self.audio_processor.reset()
         self._reset_utterance_state()
 
-    def record_false_accept(self, *, note: str = "") -> None:
-        self.speaker_gate.record_false_accept(note=note)
-
-    def record_false_reject(self, *, note: str = "") -> None:
-        self.speaker_gate.record_false_reject(note=note)
-
     async def _flush_partial_buffers(self) -> list[PipelineEvent]:
         events: list[PipelineEvent] = []
         if self._apm_buffer:
@@ -203,11 +194,7 @@ class StreamingSpeechPipeline:
         if self._gate.state not in {GateState.OPEN, GateState.HANGOVER}:
             self._ring_buffer.append(frame)
 
-        self.speaker_gate.process_frame(frame, is_speech=is_speech)
-        update = self._gate.process_frame(
-            is_speech=is_speech,
-            can_open=self.speaker_gate.allows_open(),
-        )
+        update = self._gate.process_frame(is_speech=is_speech)
 
         if update.transitioned:
             self._log_transition(update)
@@ -308,7 +295,6 @@ class StreamingSpeechPipeline:
 
     def _reset_utterance_state(self) -> None:
         self._gate.reset()
-        self.speaker_gate.reset()
         self._stream_audio_bytes = 0
         self._utterance_started_at = None
         self._first_gate_open_observed = False
@@ -323,10 +309,9 @@ class StreamingSpeechPipeline:
             reason=update.reason or "none",
         ).inc()
         self.log.info(
-            "Gate transition session_id=%s from=%s to=%s reason=%s speaker_mode=%s",
+            "Gate transition session_id=%s from=%s to=%s reason=%s",
             self.session_id,
             update.previous_state.value,
             update.state.value,
             update.reason or "-",
-            self.speaker_gate.mode.value,
         )

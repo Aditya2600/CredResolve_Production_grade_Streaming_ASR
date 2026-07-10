@@ -8,7 +8,7 @@ schema test only validates the JSON shape.
 Defaults:
     iterations per fixture : 20
     baseline output        : tests/fixtures/audio_bench/baseline/
-    STT                    : enabled (uses worker.app.main_v2.build_worker_model)
+    STT                    : enabled (uses worker.app.main.build_worker_model)
     VAD + denoise          : both enabled (production defaults)
 
 Pass extra flags through to tools/benchmarks/audio_bench.py via ``--`` if needed,

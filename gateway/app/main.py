@@ -4,14 +4,12 @@ import binascii
 import io
 import json
 import logging
-from pathlib import Path
 import time
 import uuid
 import wave
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Optional
 
-import numpy as np
 import orjson
 from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import PlainTextResponse
@@ -24,13 +22,6 @@ from .config import (
     ITN_LOCALE_POLICY,
     ITN_TIMEOUT_MS,
     PARTIAL_DECODE_INTERVAL_MS,
-    SPEAKER_VERIFICATION_BACKEND,
-    SPEAKER_VERIFICATION_DEBUG_SIMILARITY,
-    SPEAKER_VERIFICATION_ENROLLED_EMBEDDING_PATH,
-    SPEAKER_VERIFICATION_FIRST_DECISION_MS,
-    SPEAKER_VERIFICATION_MODE,
-    SPEAKER_VERIFICATION_RESCORE_MS,
-    SPEAKER_VERIFICATION_THRESHOLD,
     STREAMING_DENOISE_ENABLED,
     STREAMING_VAD_ENABLED,
     STREAMING_GATE_CLOSE_REQUIRED_UNVOICED_FRAMES,
@@ -67,13 +58,6 @@ from .pipeline import (
     RNNTStream,
     StreamingSpeechPipeline,
     VADSignalEvent,
-)
-from .speaker_backends import DebugFixedSimilaritySpeakerEmbedder
-from .speaker_gate import (
-    SpeakerEmbedder,
-    SpeakerGateConfig,
-    SpeakerVerificationGate,
-    SpeakerVerificationMode,
 )
 from .vad_gate import VADGateConfig
 from .worker_client import WorkerClient
@@ -223,70 +207,6 @@ class BufferedWorkerRNNTStream:
         return self.session_context.emitted_utterance_id_factory()
 
 
-def normalize_speaker_verification_mode(raw_mode: str) -> SpeakerVerificationMode:
-    try:
-        return SpeakerVerificationMode((raw_mode or "disabled").strip().lower())
-    except ValueError as exc:
-        raise RuntimeError(
-            "SPEAKER_VERIFICATION_MODE must be one of disabled, shadow, enforce"
-        ) from exc
-
-
-def load_enrolled_embedding(path: str) -> np.ndarray:
-    resolved = Path(path).expanduser()
-    if not resolved.exists():
-        raise RuntimeError(f"speaker embedding file not found: {resolved}")
-    suffix = resolved.suffix.lower()
-    if suffix == ".npy":
-        array = np.load(resolved)
-    elif suffix == ".json":
-        array = np.asarray(json.loads(resolved.read_text(encoding="utf-8")), dtype=np.float32)
-    else:
-        text = resolved.read_text(encoding="utf-8")
-        parts = [part for part in text.replace(",", " ").split() if part]
-        array = np.asarray([float(part) for part in parts], dtype=np.float32)
-    array = np.asarray(array, dtype=np.float32).reshape(-1)
-    if array.size == 0:
-        raise RuntimeError(f"speaker embedding file is empty: {resolved}")
-    return array
-
-
-def build_speaker_embedder() -> SpeakerEmbedder:
-    if SPEAKER_VERIFICATION_BACKEND == "debug_fixed_similarity":
-        return DebugFixedSimilaritySpeakerEmbedder(SPEAKER_VERIFICATION_DEBUG_SIMILARITY)
-    # TODO: Bind a real speaker embedding backend here.
-    raise NotImplementedError("speaker embedding backend is not configured")
-
-
-def build_speaker_gate(sample_rate: int) -> SpeakerVerificationGate:
-    mode = normalize_speaker_verification_mode(SPEAKER_VERIFICATION_MODE)
-    config = SpeakerGateConfig(
-        mode=mode,
-        sample_rate=sample_rate,
-        frame_ms=FRAME_MS,
-        threshold=SPEAKER_VERIFICATION_THRESHOLD,
-        decision_window_ms=SPEAKER_VERIFICATION_FIRST_DECISION_MS,
-        rescore_interval_ms=SPEAKER_VERIFICATION_RESCORE_MS,
-    )
-    if mode == SpeakerVerificationMode.DISABLED:
-        return SpeakerVerificationGate(config)
-    if SPEAKER_VERIFICATION_BACKEND == "debug_fixed_similarity":
-        return SpeakerVerificationGate(
-            config,
-            enrolled_embedding=np.asarray([1.0, 0.0], dtype=np.float32),
-            embedder=build_speaker_embedder(),
-        )
-    if not SPEAKER_VERIFICATION_ENROLLED_EMBEDDING_PATH:
-        raise RuntimeError(
-            "SPEAKER_VERIFICATION_ENROLLED_EMBEDDING_PATH is required when speaker verification is enabled"
-        )
-    return SpeakerVerificationGate(
-        config,
-        enrolled_embedding=load_enrolled_embedding(SPEAKER_VERIFICATION_ENROLLED_EMBEDDING_PATH),
-        embedder=build_speaker_embedder(),
-    )
-
-
 def build_rnnt_stream_factory(
     *,
     session_context: PipelineSessionContext,
@@ -342,7 +262,6 @@ def build_streaming_pipeline(
             ),
         ),
         audio_processor=NoOpAudioProcessor(sample_rate=session.sample_rate),
-        speaker_gate=build_speaker_gate(session.sample_rate),
         rnnt_stream_factory=build_rnnt_stream_factory(session_context=session_context),
         session_id=session_id,
     )
@@ -797,7 +716,7 @@ async def ws_stt(ws: WebSocket):
         pipeline_session_context.emitted_utterance_id_factory = next_emitted_utterance_id
 
         log.info(
-            "WS session started session_id=%s request_id=%s language=%s model=%s mode=%s sample_rate=%s codec=%s binary_audio=%s vad_signals=%s speaker_verification_mode=%s speaker_verification_backend=%s",
+            "WS session started session_id=%s request_id=%s language=%s model=%s mode=%s sample_rate=%s codec=%s binary_audio=%s vad_signals=%s",
             session_id,
             session.request_id,
             session.language_code,
@@ -807,8 +726,6 @@ async def ws_stt(ws: WebSocket):
             session.input_audio_codec,
             session.binary_audio,
             session.vad_signals,
-            SPEAKER_VERIFICATION_MODE,
-            SPEAKER_VERIFICATION_BACKEND,
         )
         if session.high_vad_sensitivity:
             log.info(

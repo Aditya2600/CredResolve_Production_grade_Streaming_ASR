@@ -144,11 +144,11 @@ Code/config landed (no model artefacts copied — those are deploy-time):
 - [triton/model_repository/indic_asr_ctc/config.pbtxt](../triton/model_repository/indic_asr_ctc/config.pbtxt) — ensemble that wires the three above.
 - [worker/app/config.py](../worker/app/config.py): `TRITON_MODEL_NAME_CTC` / `TRITON_MODEL_VERSION_CTC`.
 - [worker/app/triton.py](../worker/app/triton.py): new `TritonCTCEnsembleClient` (calls the ensemble, applies language mask + greedy CTC decode + optional word timestamps in-process) and `_TritonDispatchModel` (routes `decoding='ctc'` to the ensemble, falls back to the python backend on any ensemble error).
-- [worker/app/main.py](../worker/app/main.py) and [worker/app/main_v2.py](../worker/app/main_v2.py): pass the new knobs into `TritonIndicASRWorker`.
+- [worker/app/main.py](../worker/app/main.py): passes the new knobs into `TritonIndicASRWorker`.
 - [worker/tests/test_triton_ctc_ensemble.py](../worker/tests/test_triton_ctc_ensemble.py): unit tests for greedy decoding, word timestamps, dispatcher routing, and fallback-on-error.
 - [.env.example](../.env.example): documents `TRITON_MODEL_NAME_CTC`.
 - [triton/model_repository/indic_asr/1/indic_asr_model.py](../triton/model_repository/indic_asr/1/indic_asr_model.py): RNNT Python path calls the shared TensorRT encoder through Triton BLS.
-- [docs/triton_deploy_runbook_bls_and_timing_instrumentation.md](triton_deploy_runbook_bls_and_timing_instrumentation.md): deploy runbook, BLS notes, and timing instrumentation.
+- [docs/triton_deploy_runbook.md](triton_deploy_runbook.md): deploy runbook, BLS notes, and timing instrumentation.
 
 RNNT requests still flow through `indic_asr`, but its encoder stage is served through BLS by `indic_asr_encoder`. With `TRITON_MODEL_NAME_CTC` unset, CTC requests fall back to the Python entry model; RNNT continues to use the BLS-enabled Python entry model.
 

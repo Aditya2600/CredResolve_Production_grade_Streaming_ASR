@@ -88,6 +88,7 @@ Miniconda3-latest-Linux-x86_64.sh
 
 # Generated benchmark/evaluation outputs.
 loadtest/*_results.csv
+loadtest/prom_snapshot_runA/
 outputs/
 predictions_*.jsonl
 *.jsonl
