@@ -92,3 +92,8 @@ loadtest/prom_snapshot_runA/
 outputs/
 predictions_*.jsonl
 *.jsonl
+
+# tokensave generated code-graph DB.
+.tokensave/tokensave.db
+.tokensave/tokensave.db-shm
+.tokensave/tokensave.db-wal
